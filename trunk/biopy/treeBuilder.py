@@ -1,3 +1,10 @@
+## This file is part of biopy.
+## Copyright (C) 2010 Joseph Heled
+## Author: Joseph Heled <jheled@gmail.com>
+## See the files gpl.txt and lgpl.txt for copying conditions.
+#
+# $Id:$ 
+
 from Bio.Nexus import Trees, Nodes
 
 """ Small helper in building BioPython trees. """
