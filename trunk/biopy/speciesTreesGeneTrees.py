@@ -5,6 +5,10 @@
 #
 # $Id:$ 
 
+""" Compute probabilities of gene trees under the multispecies coalescent.
+
+"""
+
 from __future__ import division
 
 from treeCombinatorics import nLabeledHistories, numberOfLabeledForests, \

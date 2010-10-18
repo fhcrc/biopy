@@ -5,9 +5,9 @@
 #
 # $Id:$ 
 
-from Bio.Nexus import Trees, Nodes
-
 """ Small helper in building BioPython trees. """
+
+from Bio.Nexus import Trees, Nodes
 
 class TreeBuilder(object) :
   """ A basic helper for building BioPython trees.
