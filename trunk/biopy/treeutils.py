@@ -7,7 +7,14 @@
 
 """ Small helper in building BioPython trees. """
 
+import operator
+
+# Bio.Nexus.Tree stuff
+
 from Bio.Nexus import Trees, Nodes
+
+__all__ = ["TreeBuilder", "getClade", "getTreeClades", "getCommonAncesstor"]
+
 
 class TreeBuilder(object) :
   """ A basic helper for building BioPython trees.
@@ -55,3 +62,32 @@ class TreeBuilder(object) :
       t.node(p).set_prev(t.root)
     t.kill(n.id)
     return t
+
+def getClade(tree, nodeId) :
+  n = tree.node(nodeId)
+  if n.data.taxon :
+    return [nodeId,]
+  return reduce(operator.add, [getClade(tree, x) for x in n.succ])
+
+def getCommonAncesstor(tree, taxaIds) :
+  return reduce(tree.common_ancestor, taxaIds)
+
+def _getTreeClades_i(tree, nodeID) :
+  node = tree.node(nodeID)
+  if node.data.taxon :
+    return ([node.data.taxon], [])
+
+  cl = [_getTreeClades_i(tree, ch) for ch in node.succ]
+  allt = apply(operator.add, [x[0] for x in cl])
+  clades = [(allt,node)]
+  for cl1 in [x[1] for x in cl if x[1]] :
+    clades.extend(cl1)
+  return (allt, clades)
+
+def getTreeClades(tree):
+  """ Clades of subtree as a list of (taxa-list, tree-node).
+
+  taxa-list is a list of strings.
+  """
+
+  return _getTreeClades_i(tree, tree.root)[1]

@@ -103,7 +103,7 @@ def BDexpected(k,n,lam,mu) :
 
   return float(Decimal(str(((k+1)/lam) * choose(n, k+1) * (-1)**k)) * s1)
 
-from treeBuilder import TreeBuilder
+from treeutils import TreeBuilder
 import random
 
 def treeFromTimes(times, order = None) :
