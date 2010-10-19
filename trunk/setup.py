@@ -8,9 +8,27 @@ module1 = Extension('cchelp',
 module2 = Extension('cnexus',
                     sources = ['biopy/cnexus.c'])
 
+classifiers=[
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: GNU Affero General Public License v3",
+  "Programming Language :: Python",
+  "Programming Language :: C",
+  "Topic :: Scientific/Engineering :: Bio-Informatics"
+  ]
+
 setup (name = 'biopy',
-       version = '1.0',
-       description = 'biopy',
+       version = '0.1.0',
+       description = 'Bioinformatics Python utilities',
+       long_description = 'Bioinformatics Python utilities',
+       author = 'Joseph Heled',
+       author_email = 'jheled@gmail.com',
+       url = 'http://http://code.google.com/p/biopy/',
+       license = 'LGPL (V3)',
+       classifiers = classifiers,
+       platforms = ["Linux", "Mac OS-X"],
        packages = ['biopy'],
        package_dir={'biopy': 'biopy'},
        ext_modules = [module1,module2])
