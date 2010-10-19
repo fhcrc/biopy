@@ -1,5 +1,5 @@
 from distutils.core import setup, Extension
-import numpy
+import numpy, glob
 
 module1 = Extension('cchelp',
                     include_dirs = [numpy.get_include()],
@@ -31,4 +31,5 @@ setup (name = 'biopy',
        platforms = ["Linux", "Mac OS-X"],
        packages = ['biopy'],
        package_dir={'biopy': 'biopy'},
-       ext_modules = [module1,module2])
+       ext_modules = [module1,module2],
+       scripts = glob.glob('scripts/*.py'))
