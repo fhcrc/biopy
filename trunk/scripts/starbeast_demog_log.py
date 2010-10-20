@@ -9,7 +9,7 @@
 from __future__ import division
 
 from biopy import INexus, beastLogHelper
-from biopy.treeutils import getTreeClades
+from biopy.treeutils import getTreeClades, toNewick, countNexusTrees
 
 import optparse, sys, os.path
 parser = optparse.OptionParser(sys.argv[0] +
@@ -20,13 +20,20 @@ parser = optparse.OptionParser(sys.argv[0] +
 
 parser.add_option("-t", "--threshold", dest="threshold",
                   help="""Exclude all clades with posterior probability lower"""
-                  + """than threshold""", default = "5") 
+                  + """than threshold (percent, default 5)""", default = "5") 
+
+parser.add_option("-b", "--burnin", dest="burnin",
+                  help="Burn-in amount (percent, default 10)", default = "10")
 
 parser.add_option("-r", "--report", dest="report",
                   help="Report all clades percentages",
                   action="store_true", default = False)
 
 options, args = parser.parse_args()
+
+nexusTreesFileName = args[0]
+burnIn =  float(options.burnin)/100.0
+tops = True
 
 threshold = float(options.threshold)/100.0
 
@@ -40,16 +47,22 @@ else :
   logFile = sys.stdout
   
 cladesDict = dict()
+treeTopologies = list()
 
-tree = INexus.INexus().read(args[0]).next()
+tree = INexus.INexus().read(nexusTreesFileName).next()
 for n in tree.get_terminals():
   data = tree.node(n).data
   cladesDict[frozenset([data.taxon])] = []
 
+nTrees = countNexusTrees(nexusTreesFileName)
+
 statesNos = []
 nexusFile = INexus.INexus()
-for stateNo,tree in enumerate(nexusFile.read(args[0])):
+for stateNo,tree in enumerate(nexusFile.read(nexusTreesFileName,
+                                             slice(int(burnIn*nTrees), -1, 1))):
   beastLogHelper.setDemographics([tree])
+  if tops:
+    treeTopologies.append(toNewick(tree, topologyOnly=True))
   
   clades = getTreeClades(tree)
   for c,node in clades:
@@ -83,6 +96,9 @@ for c in torem:
   del cladesDict[c]
       
 print >> logFile, "state",
+if tops:
+  print >> logFile, "\ttopology",
+  
 vals = []
 for c in sorted(cladesDict, key = lambda c : (len(c), '-'.join(sorted(c)))):
   vals.append(cladesDict[c])
@@ -90,11 +106,56 @@ for c in sorted(cladesDict, key = lambda c : (len(c), '-'.join(sorted(c)))):
   print >> logFile, '\t' + k + "_b" + '\t' + k + "_e",
 print >> logFile
 
+def dist1(c1,c2) :
+  d = 0
+  for x in c1:
+    if x not in c2:
+      d += 1
+  for x in c2:
+    if x not in c1:
+      d += 1
+  return d
+
+# Assigning unique numbers to topologies is a hard problem. I use a very rough
+# huristic here: first sort topologies by posterior probability (higher to
+# lower), then order them by starting with the first and picking as next the
+# first one with the smallest distance (Robinson-Foulds) to the last one.
+
+if tops:
+  uniqTops = dict()
+  for nt,top in enumerate(treeTopologies):
+    if top in uniqTops:
+      uniqTops[top].append(nt)
+    else:
+       uniqTops[top] = [nt]
+
+  sTops = sorted([(len(l),top) for top,l in uniqTops.items()], reverse=True)
+  trees = [INexus.Tree(x[1]) for x in sTops]
+  cTrees = [dict.fromkeys([tuple(sorted(c)) for c,n in getTreeClades(t)])
+            for t in trees]
+  order = []
+  k = 0
+
+  while True:
+    s = sTops.pop(k)
+    tree,ctree = trees.pop(k),cTrees.pop(k)
+    order.append((s,tree,ctree))
+
+    if len(cTrees) == 0 :
+      break
+    d1 = [dist1(ctree, t) for t in cTrees]
+    k = d1.index(min(d1))
+
+  topsIndex = dict([(x[0][1],k) for k,x in enumerate(order)])
+  
 cur = [list(x[0][1]) for x in vals]
 sno = 0
 
 while sno < stateNo:
-  print  >> logFile, statesNos[sno],
+  print >> logFile, statesNos[sno],
+  if tops:
+    print >> logFile, '\t', topsIndex[treeTopologies[sno]],
+    
   for x,y in cur:
     print >> logFile, '\t',x,'\t',y,
   print >> logFile

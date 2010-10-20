@@ -8,12 +8,14 @@
 """ Small helper in building BioPython trees. """
 
 import operator
+from genericutils import fileFromName
 
 # Bio.Nexus.Tree stuff
 
 from Bio.Nexus import Trees, Nodes
 
-__all__ = ["TreeBuilder", "getClade", "getTreeClades", "getCommonAncesstor"]
+__all__ = ["TreeBuilder", "getClade", "getTreeClades", "getCommonAncesstor",
+           "countNexusTrees", "toNewick"]
 
 
 class TreeBuilder(object) :
@@ -91,3 +93,35 @@ def getTreeClades(tree):
   """
 
   return _getTreeClades_i(tree, tree.root)[1]
+
+
+def countNexusTrees(nexFileName) :
+  """ Number of trees in a nexus file."""
+  nexFile = fileFromName(nexFileName)
+  c = 0
+  for l in nexFile:
+    if l.startswith("tree ") :
+      c += 1
+  return c
+
+def toNewick(tree, nodeId = None, topologyOnly = False) :
+  """ BioPython tree or sub-tree to unique newick format.
+
+  Children nodes are sorted (via text), so representation is unique and does not
+  depend on arbitrary children ordering.
+  """
+  
+  if not nodeId :
+    nodeId = tree.root
+  node = tree.node(nodeId)
+  data = node.data
+  if data.taxon :
+    rep = data.taxon
+  else :
+    reps = [toNewick(tree, n, topologyOnly) for n in node.succ]
+    reps.sort()
+    rep = "(" + reps[0] + "," + reps[1] + ")"
+    
+  if not topologyOnly and nodeId != tree.root :
+    rep = rep + (":%r" % data.branchlength)
+  return rep
