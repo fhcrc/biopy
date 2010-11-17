@@ -88,4 +88,4 @@ def setDemographics(trees) :
           dtxt = data.attributes[dmf]
           data.demographic = _toDemog(dtxt)
         elif dmv in data.attributes:
-          data.demographic = _toDemog1(data.attributes[dmt], data.attributes.get(dmv))
+          data.demographic = _toDemog1(data.attributes.get(dmt), data.attributes.get(dmv))

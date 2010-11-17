@@ -72,6 +72,9 @@ for stateNo,tree in enumerate(nexusFile.read(nexusTreesFileName,
       l = cladesDict[cladeSet] = []
     demo = node.data.demographic
     b = node.data.branchlength if node.id != tree.root else demo.naturalLimit()
+    if b is None :
+      # constant root
+      b = 0
     l.append( (stateNo, (demo.population(0), demo.population(b))) )
   for n in tree.get_terminals():
     data = tree.node(n).data
