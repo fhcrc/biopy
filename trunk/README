@@ -1,6 +1,6 @@
 
 This is a standard python package. To install run 'python setup.py install'.
-To install locally run 'python setup.py install  --home=DIR', and add DIR/lib/python to
+To install locally run 'python setup.py install --home=DIR', and add DIR/lib/python to
 your PYTHONPATH environment variable.
 
 For example:

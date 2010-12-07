@@ -19,7 +19,8 @@ import scipy.special
 
 from combinatorics import choose
 
-__all__ = ["yuleHeights",
+__all__ = ["yuleTimes",
+           "yuleHeights",
            "yuleHeightsConditionalOnRoot",
            "yuleHeightsLogLiklihood",
            "yuleHeightsCondRootLogLiklihood",
