@@ -15,7 +15,7 @@ from genericutils import fileFromName
 from Bio.Nexus import Trees, Nodes
 
 __all__ = ["TreeBuilder", "getClade", "getTreeClades", "getCommonAncesstor",
-           "countNexusTrees", "toNewick"]
+           "countNexusTrees", "toNewick", "nodeHeights", "treeHeight"]
 
 
 class TreeBuilder(object) :
@@ -125,3 +125,39 @@ def toNewick(tree, nodeId = None, topologyOnly = False) :
   if not topologyOnly and nodeId != tree.root :
     rep = rep + (":%r" % data.branchlength)
   return rep
+
+
+def _getNodeHeight(tree, n, heights, w = 0):
+  if n.id in heights:
+    return heights[n.id]
+  
+  if len(n.succ) == 0 :
+    heights[n.id] = 0.0
+    return 0.0
+
+  i = n.succ[w]
+  if i not in heights:
+    if n.succ[1-w] in heights:
+      w = 1-w
+      i = n.succ[w]
+      
+  c = tree.node(i)
+  h = _getNodeHeight(tree, c, heights, 1-w) + c.data.branchlength
+  
+  heights[n.id] = h
+  return h
+
+def nodeHeights(tree, nodes) :
+  """ Return a mapping from node ids to node heights"""
+
+  w = 0
+  
+  heights = dict()
+  for n in nodes :
+    _getNodeHeight(tree, n, heights, w)
+    w = 1-w
+    
+  return heights
+
+def treeHeight(tree) :
+  return nodeHeights(tree, [tree.node(tree.root)])[tree.root]
