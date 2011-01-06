@@ -6,7 +6,7 @@ Version 0.1.2 contains three utilities which may be of interest to non programme
 
 * starbeast_demog_log.py
 
-  Population size(s) values, as saved in the `*`BEAST log, are   
+  A specialized utility for `*`BEAST users. Utility to generate a log 
 
 * summary_tree.py
 
