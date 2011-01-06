@@ -1,7 +1,5 @@
 #summary biopy utilities.
 
-= Utilities =
-
 Version 0.1.2 contains three utilities which may be of interest to non programmers.
 
 == BEAST utilities ==
