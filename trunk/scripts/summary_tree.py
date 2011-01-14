@@ -40,6 +40,17 @@ parser.add_option("-l", "--limit", dest="limit",
                   """ M$windows or OSX""", 
                   default = "-1") 
 
+parser.add_option("-t", "--topology", dest="topology",
+                  help="""Try only this topology""", default = None)
+
+parser.add_option("", "--score", dest="score",
+                  help="Print score as a tree attribute",
+                  action="store_true", default = False)
+
+parser.add_option("", "--matching", dest="matching",
+                  help="",
+                  action="store_true", default = False)
+
 parser.add_option("-p", "--progress", dest="progress",
                   help="Print out progress messages to terminal (standard error)",
                   action="store_true", default = False)
@@ -59,7 +70,19 @@ burnIn =  float(options.burnin)/100.0
 every = int(options.every)
 ntops = int(options.ntops)
 limit = int(options.limit)
+useOnlyMatchingTopologies = options.matching
 
+if options.topology is not None :
+  try :
+    options.topology = INexus.Tree(options.topology)
+  except Exception,e:
+    print >> sys.stderr, "Error in parsing tree:", e.message
+    sys.exit(1)
+else :
+  if useOnlyMatchingTopologies:
+    print >> sys.stderr, """Using --matching without --topology is\
+ dubious. procceding anyway..."""
+    
 if progress:
   print >> sys.stderr, "counting trees ...,",
 nTrees = countNexusTrees(nexusTreesFileName)
@@ -88,7 +111,13 @@ if 1:
   # Sort by amount of support
   allt.sort(reverse=1, key = lambda l : len(l[1]))
 
-if limit <= 0 :
+if ntops > len(allt) :
+  ntops = len(allt)
+  
+if options.topology is not None :
+  candidates = [options.topology]
+  limit = -1
+elif limit <= 0 :
   if progress:
     pPost = sum([len(x[1]) for x in allt[:ntops]]) / len(trees)
     print >> sys.stderr, """using top %d topologies out of %d, covering %.1f%% of\
@@ -134,9 +163,25 @@ nCandidatesTried = 0
 
 if limit > 0 :
   startTime = time()
-  
+
+postTrees = trees
+
 for tree in candidates:
-  tr, score = minPosteriorDistanceTree(tree, trees)
+  if useOnlyMatchingTopologies:
+    k = toNewick(tree, None, topologyOnly=True)
+    if k not in topology :
+      # no such trees, skip topology
+      print >> sys.stderr, "*** skip %s, no posterior trees" % k
+      continue
+    postTrees = topology[k]
+    print >> sys.stderr, "Using %d posterior trees (out of %d) for %s" \
+          % (len(postTrees), len(trees), k) 
+      
+  tr, score = minPosteriorDistanceTree(tree, postTrees)
+
+  # normalize score
+  score = (score / len(postTrees)) ** 0.5
+
   if score < bestScore:
     bestScore = score
     bestTree = tr
@@ -153,4 +198,8 @@ if limit > 0:
 if progress or limit > 0:
   print >>  sys.stderr, "done." 
 
-print toNewick(bestTree)
+if options.score:
+  print '[&W %g]' % bestScore,
+
+if bestTree:
+  print toNewick(bestTree)
