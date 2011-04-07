@@ -4,14 +4,14 @@
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 #
 
-__all__ = [""]
+__all__ = ["minPosteriorDistanceTree"]
 
 import scipy, scipy.optimize, copy, random
 
 from treeMeasure import allPartitions
 from treeutils import treeHeight, nodeHeights
 
-def treeBranchAssignmentExprs(tree, clades) :
+def _treeBranchAssignmentExprs(tree, clades) :
   allid = set(tree.all_ids())
   terms = set(tree.get_terminals())
   allint = allid - terms
@@ -96,7 +96,7 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf) :
     return (None, 0.0)
 
   # Get code which transforms heights to branch lengths 
-  ba = treeBranchAssignmentExprs(tree, treeParts)
+  ba = _treeBranchAssignmentExprs(tree, treeParts)
 
   # Define the posterior distance function on the fly.
   exec "def f(x):\n  " + "\n  ".join(ba) + "\n  return " + ee
