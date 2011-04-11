@@ -18,7 +18,7 @@ def genBinomial(x, k) :
   """ Generalized binomial """
   return prod([(x-i)/(k-i) for i in range(k)])
 
-def ASD(n, ne, mu, lam) :
+def ASD(n, ne, mu, lam, withVariance = False) :
   """ Average Sequence Dissimilarity
 
   Return a pair of (within,between) ASD's for C{n} species, Yule species tree
@@ -34,5 +34,17 @@ def ASD(n, ne, mu, lam) :
   between = within + (9*(n+1)/(4*(n-1)*(w-1)*dm)) * \
             ((w+1)/genBinomial(w + n, n) + ((w *  (n-1))/(n+1)) - 1)
 
+  if withVariance :
+    dm1 = (3 + 16 * mune)
+    varWithin = within**2 * (3/dm1)
+    within = (within, varWithin)
+
+    v1 = (12 - 6*n*(n+1)/genBinomial(w + n, n-1)) / (dm * (w-1))
+    v2 = (6 - 3*n*(n+1)/genBinomial(2*w + n, n-1)) / (dm1 * (2*w-1))
+    ex2 = 9/16 * ( 1 -  (v1 - v2)/(n-1))
+    print ex2
+
+    between = (between, ex2 - between**2)
+    
   return (within, between)
   
