@@ -10,7 +10,7 @@ Version 0.1.2 contains three utilities which may be of interest to non programme
 
 * summary_tree.py
 
-  Create a summary tree from posterior trees. BEAST tree annotator utility first picks up a topology, then independently assigns heights to each internal node. Sometimes this can be suboptimal - in the worst case the tree contains branched of negative length.  summary_tree takes a more global approach and looks for a tree which minimizes the overall distance to the whole set of posterior trees, using a tree distance measure.  
+  Create a summary tree from posterior trees. BEAST tree annotator utility first picks up a topology, then independently assigns heights to each internal node. Sometimes this can be suboptimal - in the worst case the tree contains negative branch lengths.  summary_tree takes a more global approach and looks for a tree which minimizes the overall distance to the whole set of posterior trees, using a tree distance measure.  
 
 == Generic utilities ==
 
