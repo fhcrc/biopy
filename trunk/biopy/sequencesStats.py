@@ -30,21 +30,26 @@ def ASD(n, ne, mu, lam, withVariance = False) :
   dm = (8*mune+3)
   within = 6*mune/dm
 
-  w = (8*mu)/(3*lam)
-  between = within + (9*(n+1)/(4*(n-1)*(w-1)*dm)) * \
-            ((w+1)/genBinomial(w + n, n) + ((w *  (n-1))/(n+1)) - 1)
+  if lam == 0 :
+    between = 3/4.
+  else :
+    w = (8*mu)/(3*lam)
+    between = within + (9*(n+1)/(4*(n-1)*(w-1)*dm)) * \
+              ((w+1)/genBinomial(w + n, n) + ((w *  (n-1))/(n+1)) - 1)
 
   if withVariance :
     dm1 = (3 + 16 * mune)
     varWithin = within**2 * (3/dm1)
     within = (within, varWithin)
 
-    v1 = (12 - 6*n*(n+1)/genBinomial(w + n, n-1)) / (dm * (w-1))
-    v2 = (6 - 3*n*(n+1)/genBinomial(2*w + n, n-1)) / (dm1 * (2*w-1))
-    ex2 = 9/16 * ( 1 -  (v1 - v2)/(n-1))
-    print ex2
-
-    between = (between, ex2 - between**2)
+    if lam == 0:
+      between = (between, 0)
+    else :
+      v1 = (12 - 6*n*(n+1)/genBinomial(w + n, n-1)) / (dm * (w-1))
+      v2 = (6 - 3*n*(n+1)/genBinomial(2*w + n, n-1)) / (dm1 * (2*w-1))
+      ex2 = 9/16 * ( 1 -  (v1 - v2)/(n-1))
+      #print ex2
+      between = (between, ex2 - between**2)
     
   return (within, between)
   

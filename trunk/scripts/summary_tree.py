@@ -17,7 +17,7 @@ from biopy import INexus
 
 
 parser = optparse.OptionParser(sys.argv[0] +
-                               """ [OPTIONS] posterior-trees-nexus 
+                               """ [OPTIONS] posterior-trees.nexus 
 
   Generate a single summary tree for a set of posterior trees. """)
 

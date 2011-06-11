@@ -20,7 +20,7 @@ classifiers=[
   ]
 
 setup (name = 'biopy',
-       version = '0.1.4',
+       version = '0.1.5',
        description = 'Bioinformatics Python utilities',
        long_description = 'Bioinformatics Python utilities',
        author = 'Joseph Heled',

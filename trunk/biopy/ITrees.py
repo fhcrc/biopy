@@ -78,11 +78,12 @@ class Tree(Nodes.Chain):
         #assert not tree[0].isspace()
         if tree[0] != '(': # a leaf
             lb = tree.find('[')
+            colon = tree.rfind(':')   
+
             if lb > -1 :
                 values = self._get_values(tree[lb:])
-                tree = tree[:lb]
+                tree = tree[:lb if colon==-1 else min(lb,colon)]
             else :
-                colon=tree.rfind(':')   
                 if colon > -1:
                     values = self._get_values(tree[colon+1:])
                     tree = tree[:colon]
@@ -155,7 +156,15 @@ class Tree(Nodes.Chain):
             attr = _parseAttributes(comment)
             values = [attr,]
             text = text[end+1:]
-        else :
+        elif text[0] == ':' and text[1:].lstrip().startswith('['):
+            c0 = 1 + text[1:].find('[')
+            lcomment = _getStuff(text[c0:], ']')
+            end = c0+lcomment
+            comment = text[c0+1:end]
+            attr = _parseAttributes(comment)
+            values = [attr,]
+            text = ':' + text[end+1:]
+        else:
             values = []
 
         return [float(t) for t in text.split(':') if t.strip()] + values

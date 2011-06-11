@@ -15,7 +15,15 @@ list of trees. (Yes this prohibits internal nodes with only one descendant).
 
 from __future__ import division
 
-from combinatorics import nPairs as c2, factorial as fac
+from combinatorics import nPairs as c2, factorial as fac, _prod as prod
+
+def toNewick(p) :
+  """ From internal nested list representation to human readable form. """
+  isl = isinstance(p, list)
+  if isl and len(p) == 1 or not isl :
+    l = p if not isl else p[0]
+    return str(l)
+  return '(' + ",".join(sorted([toNewick(x) for x in p])) + ')'
 
 # Various counting formulas on number of trees/forests under special conditions
 
@@ -70,7 +78,10 @@ def _LHsize(p) :
   """
 
   # leaf - no internal nodes, 1 to 1 mapping
-  if len(p) == 1 :
+  # allow string leafs (i.e. anything which is not a list is a leaf)
+  
+  isl = isinstance(p, list)
+  if isl and len(p) == 1 or not isl :
     return (0,1)
 
   # get counts from all trees in forest
