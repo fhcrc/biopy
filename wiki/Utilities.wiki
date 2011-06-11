@@ -12,6 +12,10 @@ Version 0.1.2 contains three utilities which may be of interest to non programme
 
   Create a summary tree from posterior trees. BEAST tree annotator utility first picks up a topology, then independently assigns heights to each internal node. Sometimes this can be suboptimal - in the worst case the tree contains negative branch lengths.  summary_tree takes a more global approach and looks for a tree which minimizes the overall distance to the whole set of posterior trees, using a tree distance measure.  
 
+* multispecies_coalescent_estimate.py
+
+  Heuristically estimate the birth rate and effective population size from a multispecies data in a `*`BEAST XML file.
+
 == Generic utilities ==
 
 * sample_ranked_tree.py
