@@ -86,16 +86,17 @@ within = dict([ (sp,[]) for  sp in species.keys()])
 
 for alk in alignments:
   al = alignments[alk]
-  w = []
   for spk in within:
+    w = []
     sp = species[spk]
     for s1,s2 in allPairs(sp) :
       if s1 in al and s2 in al:
         w.append(seqSim(al[s1], al[s2]))
-    within[spk].append([alk, w])
+    if len(w) :
+      within[spk].append([alk, w])
 
-  b = []
   for spi,spj in between:
+    b = []
     iIndiv,jIndiv = species[spi],species[spj]
     for x1 in iIndiv:
       if x1 in al:
@@ -103,7 +104,8 @@ for alk in alignments:
           if y1 in al:
              b.append(seqSim(al[x1], al[y1]))
     
-    between[(spi,spj)].append([alk, b])
+    if len(b) :
+      between[(spi,spj)].append([alk, b])
 
 ws = dict()
 bs = dict()
@@ -149,7 +151,8 @@ def solve(fmus, avgs, ns) :
       w,b = ASD(ns, p*ne, mu, lam, True)
       s +=  (ws[-1]+bs[-1]) * ( (w[0] - a1(*ws))**2 + (b[0] - a1(*bs))**2 )
       if not meanOnly:
-        s +=  (ws[-1]+bs[-1]) * ( (w[1]**0.5 - v1(*ws)**0.5)**2 + (b[1]**0.5 - v1(*bs)**0.5)**2 )
+        s +=  (ws[-1]+bs[-1]) * ( (w[1]**0.5 - v1(*ws)**0.5)**2 + \
+                                  (b[1]**0.5 - v1(*bs)**0.5)**2 )
     return s
   
   extra = sum([x is None for x in fmus])

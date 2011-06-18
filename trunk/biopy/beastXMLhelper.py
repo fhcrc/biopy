@@ -74,7 +74,7 @@ def readBeastFile(path, what) :
 
   if "species" in what :
     xspecies = root.find('species')
-    if xspecies :
+    if xspecies is not None :
       species = dict()
 
       for sp in xspecies.findall('sp') :
