@@ -149,10 +149,14 @@ def solve(fmus, avgs, ns) :
     s = 0.0
     for (p,(ws,bs)),mu in zip(avgs,mus) :
       w,b = ASD(ns, p*ne, mu, lam, True)
-      s +=  (ws[-1]+bs[-1]) * ( (w[0] - a1(*ws))**2 + (b[0] - a1(*bs))**2 )
+      wt = ws[-1]+bs[-1]
+      if ws[-1] > 0 :
+        s +=  wt * (w[0] - a1(*ws))**2
+      s += wt * (b[0] - a1(*bs))**2
       if not meanOnly:
-        s +=  (ws[-1]+bs[-1]) * ( (w[1]**0.5 - v1(*ws)**0.5)**2 + \
-                                  (b[1]**0.5 - v1(*bs)**0.5)**2 )
+        if ws[-1] > 0 :
+          s +=  wt * (w[1]**0.5 - v1(*ws)**0.5)**2
+        s += wt * (b[1]**0.5 - v1(*bs)**0.5)**2
     return s
   
   extra = sum([x is None for x in fmus])
@@ -171,11 +175,22 @@ def toPer(x,y) :
 
 amus = combineMus(mus, sl[2:])
 
-for (p,(w,b)),mu in zip([[x , [(a1(*z),v1(*z)) for z in [ws[x],  bs[x]]]]
-                         for x in ws], amus):
+vals = [[x , [(a1(*z),v1(*z)) if z[-1]>0 else None 
+              for z in [ws[x],  bs[x]]]] for x in ws]
+for (p,(w,b)),mu in zip(vals, amus):
   xw,xb = ASD(len(species), p*sl[0], mu, sl[1], True)
-  print "ploidy=%.3g mu= %.5g\tASD(w)= %g ASD(b)= %g error= %s,%s" \
-        % (p, mu, w[0], b[0], toPer(xw[0],w[0]), toPer(xb[0],b[0]))
+  if w is None:
+    print "ploidy= %3.3g  mu= %.5g\tASD(w)=  N/A ASD(b)= %g error= N/A,%s" \
+          % (p, mu, b[0], toPer(xb[0],b[0]))
+  else :
+    print "ploidy= %3.3g  mu= %.5g\tASD(w)= %g ASD(b)= %g error= %s,%s" \
+          % (p, mu, w[0], b[0], toPer(xw[0],w[0]), toPer(xb[0],b[0]))
   if not meanOnly:
-    sw, sb, sxw, sxb = [x**0.5 for x in (w[1], b[1], xw[1], xb[1])]
-    print "\t\t\tSdSD(w)= %g SdSD(b)= %g error= %s,%s" % (sw, sb, toPer(sxw,sw), toPer(sxb,sb))
+    if w is None:
+      sb, sxb = [x**0.5 for x in (b[1], xb[1])]
+      print "\t\t\tSdSD(w)= N/A SdSD(b)= %g error= N/A,%s" % \
+            (sb, toPer(sxb,sb))
+    else :
+      sw, sb, sxw, sxb = [x**0.5 for x in (w[1], b[1], xw[1], xb[1])]
+      print "\t\t\tSdSD(w)= %g SdSD(b)= %g error= %s,%s" % \
+            (sw, sb, toPer(sxw,sw), toPer(sxb,sb))
