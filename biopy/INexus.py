@@ -554,12 +554,17 @@ class INexus(object):
                 raise NexusError, 'Unrecognized input: %s ...' % input[:100]
         if C:
             decommented=cnexus.scanfile(file_contents)
+            # large files, free memory
+            del file_contents
+
             #check for unmatched parentheses
             if decommented=='[' or decommented==']':
                 raise NexusError, 'Unmatched %s' % decommented
             # cnexus can't return lists, so in analogy we separate commandlines with chr(7)
             # (a character that shoudn't be part of a nexus file under normal circumstances)
-            commandlines=_adjust_lines(decommented.split(chr(7)))
+            ds = decommented.split(chr(7))
+            del decommented
+            commandlines=_adjust_lines(ds)
         else:
             commandlines=_adjust_lines(_kill_comments_and_break_lines(file_contents))
         # get rid of stupid 'NEXUS token'

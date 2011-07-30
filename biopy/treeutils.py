@@ -15,7 +15,7 @@ from genericutils import fileFromName
 from Bio.Nexus import Trees, Nodes
 
 __all__ = ["TreeBuilder", "getClade", "getTreeClades", "getCommonAncesstor",
-           "countNexusTrees", "toNewick", "nodeHeights", "treeHeight"]
+           "countNexusTrees", "toNewick", "nodeHeights", "nodeHeight", "treeHeight"]
 
 
 class TreeBuilder(object) :
@@ -158,6 +158,16 @@ def nodeHeights(tree, nodes) :
     w = 1-w
     
   return heights
+
+def nodeHeight(tree, node) :
+  if node.data.taxon :
+    h = 0
+  else :
+    ch = [tree.node(i) for i in node.succ]
+
+    h = max([n.data.branchlength + nodeHeight(tree, n) for n in ch])
+    
+  return h
 
 def treeHeight(tree) :
   return nodeHeights(tree, [tree.node(tree.root)])[tree.root]
