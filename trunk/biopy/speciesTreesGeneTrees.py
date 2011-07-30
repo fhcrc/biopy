@@ -14,7 +14,7 @@ from __future__ import division
 from treeCombinatorics import nLabeledHistories, numberOfLabeledForests, \
      allCompatibleLabeledHistories
 
-__all__ = ["compatibleGeneTreesInSpeciesTree"]
+__all__ = ["compatibleGeneTreesInSpeciesTree", "simulateGeneTree"]
 
 _c_vals = dict()
 
@@ -120,3 +120,79 @@ def compatibleGeneTreesInSpeciesTree(tree, nodeId, compat) :
         resultForests[ni][0] += p1
   
   return resultForests
+
+
+
+from treeutils import TreeBuilder, nodeHeights
+from coalescent import getArrivalTimes
+import random
+
+def _simulateGeneTreeForNode(tree, nodeId, simTree, nodeHeights) :
+  """ Simulate gene tree for sub-tree of species tree C{tree} rooted at father
+  of C{nodeId}.
+
+  Return a list of pairs (s,h) where s is a sub-tree in NEWICK format and h is
+  height of s.
+  """
+  
+  node = tree.node(nodeId)
+  if node.data.taxon :
+    tips = node.data.geneTreeTips
+    strees = [list([simTree.createLeaf(x), 0.0]) for x in tips]
+  else :
+    strees = [_simulateGeneTreeForNode(tree, child, simTree, nodeHeights)
+              for child in node.succ]
+
+    # Don't care where they came from, all are in one ancestral species now.
+    strees = strees[0] + strees[1]
+
+    # if verbose > 2 : print nodeId,"strees",strees
+    
+  # Total lineages at start
+  nl = len(strees)
+  
+  # Coalesce upwards until end of branch 
+  demo = node.data.demographic
+  aTimes = getArrivalTimes(demo, nl)
+  
+  # if verbose > 2 : print nodeId, "demo",demo, "at",aTimes
+  # time 0 relative to sub-species
+  
+  notRoot = nodeId != tree.root
+
+  branch = node.data.branchlength if notRoot else float('inf')
+  height = nodeHeights[node.id]
+
+  # if verbose > 2 : print "br",branch,"ht",height
+  
+  for t in aTimes :
+    if t > branch or len(strees) == 1 :
+      break
+    
+    i,j = random.sample(range(len(strees)), 2)
+    l1,l2 = strees[i],strees[j]
+
+    # height in tree axis
+    th = height + t
+    
+    # if verbose> 2 : print "th",th
+
+    subtree = simTree.mergeNodes(l1[0], th - l1[1], l2[0], th - l2[1])
+  
+    strees.pop(max(i,j))
+    strees[min(i,j)] = [subtree, th]
+
+  return strees
+
+def simulateGeneTree(sTree) :
+  """ Simulate one gene tree under species (spp) tree C{sTree}.
+
+  Return a pair of tree and root height.
+"""
+
+  nh = nodeHeights(sTree, [sTree.node(x) for x in sTree.all_ids()])
+
+  simTree = TreeBuilder()
+  t,rootHeight = _simulateGeneTreeForNode(sTree, sTree.root, simTree, nh)[0]
+  t = simTree.finalize(t)
+  return (t,rootHeight)
