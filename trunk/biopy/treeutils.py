@@ -86,13 +86,20 @@ def _getTreeClades_i(tree, nodeID) :
     clades.extend(cl1)
   return (allt, clades)
 
-def getTreeClades(tree):
+def getTreeClades(tree, trivialClades = False):
   """ Clades of subtree as a list of (taxa-list, tree-node).
 
   taxa-list is a list of strings.
   """
 
-  return _getTreeClades_i(tree, tree.root)[1]
+  c = _getTreeClades_i(tree, tree.root)[1]
+
+  if trivialClades :
+    for n in tree.get_terminals():
+      nd = tree.node(n)
+      c.append(([nd.data.taxon], nd))
+    
+  return c
 
 
 def countNexusTrees(nexFileName) :
@@ -104,7 +111,7 @@ def countNexusTrees(nexFileName) :
       c += 1
   return c
 
-def toNewick(tree, nodeId = None, topologyOnly = False) :
+def toNewick(tree, nodeId = None, topologyOnly = False, attributes = None) :
   """ BioPython tree or sub-tree to unique newick format.
 
   Children nodes are sorted (via text), so representation is unique and does not
@@ -118,9 +125,18 @@ def toNewick(tree, nodeId = None, topologyOnly = False) :
   if data.taxon :
     rep = data.taxon
   else :
-    reps = [toNewick(tree, n, topologyOnly) for n in node.succ]
+    reps = [toNewick(tree, n, topologyOnly, attributes) for n in node.succ]
     reps.sort()
     rep = "(" + reps[0] + "," + reps[1] + ")"
+
+  if attributes is not None :
+    attrs = getattr(data, attributes, None)
+    if attrs is not None and len(attrs) :
+      s = '[&'
+      for a in attrs:
+        s += (a+'='+str(attrs[a])+",")
+      s = s[:-1] + ']'
+      rep += s
     
   if not topologyOnly and nodeId != tree.root :
     rep = rep + (":%r" % data.branchlength)

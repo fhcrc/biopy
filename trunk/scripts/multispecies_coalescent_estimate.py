@@ -74,7 +74,7 @@ def seqSim(seq1, seq2) :
 
 alignments = d['DNA']
 species = d['species']['species']
-genes = d['species']['genes'];
+genes = d['species']['genes']
 pl = sorted(dict.fromkeys([genes[x]['ploidy'] for x in genes]).keys())
 
 if len(pl) != len(mus) :

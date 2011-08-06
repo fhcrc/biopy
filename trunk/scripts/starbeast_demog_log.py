@@ -16,7 +16,7 @@ parser = optparse.OptionParser(sys.argv[0] +
                                """ [OPTIONS] beast-species-tree output-log-file
 
   Generate a tracer-readable file with population size information per clade, to
-  really judge the ESS's on population sizes. """)
+  truly assess the ESS's on population sizes. """)
 
 parser.add_option("-t", "--threshold", dest="threshold",
                   help="""Exclude all clades with posterior probability lower"""
@@ -26,7 +26,8 @@ parser.add_option("-b", "--burnin", dest="burnin",
                   help="Burn-in amount (percent, default 10)", default = "10")
 
 parser.add_option("-r", "--report", dest="report",
-                  help="Report all clades percentages",
+                  help="""Output a sorted list of clade percentages to """
+                  + """standard output.""",
                   action="store_true", default = False)
 
 options, args = parser.parse_args()
@@ -120,7 +121,7 @@ def dist1(c1,c2) :
   return d
 
 # Assigning unique numbers to topologies is a hard problem. I use a very rough
-# huristic here: first sort topologies by posterior probability (higher to
+# heuristic here: first sort topologies by posterior probability (higher to
 # lower), then order them by starting with the first and picking as next the
 # first one with the smallest distance (Robinson-Foulds) to the last one.
 
