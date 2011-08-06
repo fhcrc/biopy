@@ -48,7 +48,8 @@ parser.add_option("", "--score", dest="score",
                   action="store_true", default = False)
 
 parser.add_option("", "--matching", dest="matching",
-                  help="",
+                  help="With --topology, use only posterior trees with an """ +
+                  """identical topology to the target.""",
                   action="store_true", default = False)
 
 parser.add_option("-p", "--progress", dest="progress",
@@ -121,7 +122,7 @@ elif limit <= 0 :
   if progress:
     pPost = sum([len(x[1]) for x in allt[:ntops]]) / len(trees)
     print >> sys.stderr, """using top %d topologies out of %d, covering %.1f%% of\
-  posterior topologies...,""" % \
+ posterior topologies...,""" % \
           (min(ntops, len(allt)), len(allt), 100*pPost),
 
   k = ntops-1
