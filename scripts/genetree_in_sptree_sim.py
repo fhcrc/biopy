@@ -9,7 +9,7 @@
 from __future__ import division
 
 import optparse, sys, os.path
-parser = optparse.OptionParser(sys.argv[0] +
+parser = optparse.OptionParser(os.path.basename(sys.argv[0]) +
                                """ [OPTIONS] species-trees-file
 
   Generate gene trees compatible with species tree. The species

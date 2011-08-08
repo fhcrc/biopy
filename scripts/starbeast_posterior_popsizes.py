@@ -16,11 +16,14 @@ from biopy.genericutils import fileFromName
 from biopy import INexus, beastLogHelper, demographic
 from biopy.treeutils import toNewick, countNexusTrees, getTreeClades
 
-parser = optparse.OptionParser(sys.argv[0] +
+parser = optparse.OptionParser(os.path.basename(sys.argv[0]) +
                                """ [OPTIONS] tree posterior-trees.nexus.
 
 	Annotate tree with posterior estimate of population sizes. Prints newick
-	tree to standard output.""")
+	tree to standard output. On UNIX it is easy to get the tree for the
+	first argument using biopy, e.g (using bash)
+          starbeast_posterior_popsizes `summary_tree.py trees.nexus` trees.nexus 
+        """)
 
 parser.add_option("-b", "--burnin", dest="burnin",
                   help="Burn-in amount (percent, default 10)", default = "10")
@@ -105,7 +108,7 @@ if constDemos :
         break
     if len(vals) :
       pop = 1/mean(vals)
-    n.data.attributes = {'dmv' : '%g' % pop}
+      n.data.attributes = {'dmv' : '%g' % pop}
 else :
   if progress:
     print >>  sys.stderr, "optimizing ...," ,
