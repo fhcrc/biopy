@@ -16,7 +16,7 @@ from biopy.treesPosterior import minPosteriorDistanceTree
 from biopy import INexus
 
 
-parser = optparse.OptionParser(sys.argv[0] +
+parser = optparse.OptionParser(os.path.basename(sys.argv[0]) +
                                """ [OPTIONS] posterior-trees.nexus 
 
   Generate a single summary tree for a set of posterior trees. """)
@@ -36,8 +36,8 @@ parser.add_option("-l", "--limit", dest="limit",
                   help="""run at most 'l' seconds, trying out topologies in""" + \
                   """ decreasing order of support and in random order for""" + \
                   """ topologies with equal support (default -1, i.e no""" + \
-                  """ time limits). Note that I have not tested timing code under""" + \
-                  """ M$windows or OSX""", 
+                  """ time limits). Note that timing code has not been""" + \
+                  """ tested under M$windows or OSX """, 
                   default = "-1") 
 
 parser.add_option("-t", "--topology", dest="topology",

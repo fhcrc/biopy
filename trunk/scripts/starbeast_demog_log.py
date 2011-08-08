@@ -12,7 +12,7 @@ from biopy import INexus, beastLogHelper
 from biopy.treeutils import getTreeClades, toNewick, countNexusTrees
 
 import optparse, sys, os.path
-parser = optparse.OptionParser(sys.argv[0] +
+parser = optparse.OptionParser(os.path.basename(sys.argv[0]) +
                                """ [OPTIONS] beast-species-tree output-log-file
 
   Generate a tracer-readable file with population size information per clade, to

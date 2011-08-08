@@ -11,7 +11,7 @@ from scipy.optimize import fmin_powell
 
 from biopy.sequencesStats import ASD
 
-parser = optparse.OptionParser(sys.argv[0] +
+parser = optparse.OptionParser(os.path.basename(sys.argv[0]) +
                                """ [OPTIONS] starbeast-file.xml mutation-rate[,rate2,,...]
 
   Heuristically estimate the birth rate and effective population size from a
