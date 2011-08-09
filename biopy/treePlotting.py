@@ -108,6 +108,8 @@ def drawTree(tree, nid, cladesDict = None, positioning = descendantMean,
     else :
       x = x + (x[0],) ;  y = y + (y[0],)
       pylab.plot(x,y, color=color)
+
+  if nid == tree.root :
     return hpar
   
   return (centerc, h, hpar, xright, p, p1, clade)
@@ -173,7 +175,7 @@ def getCR(oo, dis) :
   cr = corrcoef(x,y)[0,1]
   return cr
 
-def getTaxaOrder(trees, refTree = None) :
+def getTaxaOrder(trees, refTree = None, reportTopologies = False) :
   tops = [toNewick(tree, topologyOnly=1) for tree in trees]
   dtops = dict([(x,0) for x in tops])
   for t in tops :
@@ -216,5 +218,13 @@ def getTaxaOrder(trees, refTree = None) :
     else :
       break
 
+  if reportTopologies :
+    for top in dtops:
+      dtops[top] = []
+    for k,top in enumerate(tops):
+      dtops[top].append(k)
+      
+    return (moo, tree, dtops)
+  
   return (moo, tree)
 
