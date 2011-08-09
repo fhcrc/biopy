@@ -16,7 +16,8 @@ import operator
 from scipy.special import gammaln
 
 __all__ = ["listcombinations", "permutations", "factorial", "nPairs",
-           "uniformvec", "lbinomial", "uniformLike", "choose", "lchoose"]
+           "allPairs",  "uniformvec", "lbinomial", "uniformLike", "choose",
+           "lchoose"] 
 
 def _prod(x) :
   """ Element-wise product of vector x.
@@ -114,6 +115,16 @@ def permutations(t) :
         yield perm[:i] + t[0:1] + perm[i:]
 
 
+def allPairs(lst) :
+  """ An iterator over all distinct pairs of elements in C{lst}.  """
+  if len(lst) < 2:
+    return
+  
+  x0 = lst[0]
+  for x in lst[1:] :
+    yield (x0, x)
+  for p in allPairs(lst[1:]) :
+    yield p
 
 
 def lbinomial(k, n, p) :

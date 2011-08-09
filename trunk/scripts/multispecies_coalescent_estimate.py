@@ -10,6 +10,8 @@ import optparse, sys, os.path
 from scipy.optimize import fmin_powell
 
 from biopy.sequencesStats import ASD
+from biopy.combinatorics import allPairs
+
 
 parser = optparse.OptionParser(os.path.basename(sys.argv[0]) +
                                """ [OPTIONS] starbeast-file.xml mutation-rate[,rate2,,...]
@@ -54,16 +56,6 @@ except Exception,e:
   print >> sys.stderr, "Error:", e.message
   sys.exit(1)
 
-
-def allPairs(lst) :
-  if len(lst) < 2:
-    return
-  
-  x0 = lst[0]
-  for x in lst[1:] :
-    yield (x0, x)
-  for p in allPairs(lst[1:]) :
-    yield p
 
 def seqSim(seq1, seq2) :
   ne = sum([x!=y and x not in '-?' and y not in '-?'
