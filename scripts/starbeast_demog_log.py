@@ -32,6 +32,10 @@ parser.add_option("-r", "--report", dest="report",
 
 options, args = parser.parse_args()
 
+if len(args) == 0 :
+  parser.print_help(sys.stderr)
+  sys.exit(1)
+  
 nexusTreesFileName = args[0]
 burnIn =  float(options.burnin)/100.0
 tops = True
