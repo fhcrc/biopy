@@ -13,7 +13,7 @@ import pylab
 from biopy.genericutils import fileFromName
 
 from biopy import INexus, beastLogHelper, treePlotting
-from biopy.treeutils import getTreeClades, countNexusTrees
+from biopy.treeutils import getTreeClades, countNexusTrees, treeHeight
 
 parser = optparse.OptionParser(os.path.basename(sys.argv[0]) +
                                """ [OPTIONS] posterior-trees.nexus figfilename
@@ -43,10 +43,27 @@ parser.add_option("", "--yclip", dest="yclip",
                   help="""Clip display of root demographic using upper HPD \
 (0 < level < 1)""", default = 1) 
 
+parser.add_option("", "--ychop", dest="ychop",
+                  help="""chop root demographic to fraction of total tree \
+(0 < level < 1)""", default = None) 
+
+parser.add_option("", "--alphafactor", dest="afactor",
+                  help="""Lower values result in lower drawing intensity.""", default = 10.0) 
+
 parser.add_option("", "--positioning", dest="positioning",
                   type='choice', choices=['mean', 'taxonmean', 'between'],
                   help="Method of positioning internal nodes based on clade \
 taxa (mean [default] | taxonmean | between).", default = 'mean') 
+
+parser.add_option("", "--fontsize", dest="fontsize",
+                  help="""labels font size.""", default = 12) 
+
+parser.add_option("", "--mcolors", dest="mcolors", action="append",
+                  help="""colors for mean tree(s).""", default = None) 
+
+parser.add_option("-i", "--interactive", dest="interactive", action="store_true",
+                  help="""present plot interactively to user..""", default = False) 
+
 
 parser.add_option("-p", "--progress", dest="progress",
                   help="Print out progress messages to terminal (standard error)",
@@ -58,6 +75,7 @@ progress = options.progress
 every = int(options.every)
 burnIn =  float(options.burnin)/100.0
 colorTops = options.color
+alphaFactor = float(options.afactor)
 
 if options.positioning == 'mean' :
   positioning = treePlotting.descendantMean
@@ -123,8 +141,9 @@ if progress:
 pylab.ioff()
 fig = pylab.figure()
 
+pheights = []
 heights = []
-alpha = min(10./len(trees), .3)
+alpha = min(alphaFactor/len(trees), .3)
 
 if colorTops :
   import colorsys
@@ -143,7 +162,8 @@ if colorTops :
         tree.node(x).data.x = xs[tree.node(x).data.taxon]
       h = treePlotting.drawTree(tree, tree.root, cd, positioning = positioning,
                                 color=col, alpha = alpha)
-      heights.append(h)
+      pheights.append(h)
+      heights.append(treeHeight(tree))
     c0 = (c0 + topPercent) % 1
     
     
@@ -155,32 +175,51 @@ else :
        tree.node(x).data.x = xs[tree.node(x).data.taxon]
     h = treePlotting.drawTree(tree, tree.root, cd, positioning = positioning,
                               color="lime", alpha = alpha)
-    heights.append(h)
+    pheights.append(h)
+    heights.append(treeHeight(tree))
 
 from biopy.bayesianStats import hpd
 
 yc = float(options.yclip)
 yclip = 0 < yc < 1
 if yclip :
-  hmin = hpd(heights, yc)[1]
+  hmin = hpd(pheights, yc)[1]
 else :
   hmin = 0
-  
-for tree,col in zip(mainTree, ["red", "blue", "green"]):
-  for x in tree.get_terminals() :
-     tree.node(x).data.x = xs[tree.node(x).data.taxon]
-  h = treePlotting.drawTree(tree, tree.root, None,
-                            positioning = positioning, fill=False, color=col)
-  hmin = max(h, hmin)
+
+if options.ychop is not None :
+  from numpy import mean
+  level = max(float(options.ychop), 0)
+  chop = mean(heights) * (1+level)
+
+if len(mainTree) :
+  if options.mcolors is not None :
+    colors = options.mcolors
+  else :
+    colors = ["red", "blue", "green"]
+    
+  for tree,col in zip(mainTree, colors):
+    for x in tree.get_terminals() :
+       tree.node(x).data.x = xs[tree.node(x).data.taxon]
+    h = treePlotting.drawTree(tree, tree.root, None,
+                              positioning = positioning, fill=False, color=col)
+    hmin = max(h, hmin)
 
 for ni in tree.get_terminals():
   node = tree.node(ni)
-  t = pylab.text(xs[node.data.taxon], -0.1, node.data.taxon, fontsize = 12,
-                 va='top', ha='center')
-  
-ymax = hmin if yclip else  pylab.ylim()[1]
+  t = pylab.text(xs[node.data.taxon], -0.1, node.data.taxon,
+                 fontsize = float(options.fontsize), va='top', ha='center')
+
+if options.ychop is not None:
+  ymax = chop
+else :
+  ymax = hmin if yclip else pylab.ylim()[1]
 
 pylab.ylim((-0.5*ymax/10, ymax))
+
+if options.interactive:
+  pylab.ion()
+  pylab.show()
 
 pylab.savefig(args[1], dpi=300)
 
