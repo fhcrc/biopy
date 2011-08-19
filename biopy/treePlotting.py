@@ -6,6 +6,8 @@
 
 from __future__ import division
 
+import sys
+       
 from numpy import mean, median, corrcoef
 import pylab
 from biopy.genericutils import fileFromName
@@ -154,34 +156,50 @@ def taxaDistance(tree, nid, distance) :
         distance[tuple(sorted([xl,xr]))] = n-1
     return (n, l[1] + r[1])
 
-def getTaxa(tree, nid, rand = False) :
+
+def getAllSingleFlipTaxaOrders(tree, nid) :
   node = tree.node(nid)
   if not node.succ:
-    return [node.data.taxon]
+    return [[node.data.taxon]]
   else:
-    l,r = [getTaxa(tree, x, rand) for x in node.succ]
-    if rand :
-      if random.random() < .5:
-        l,r = r,l
-    return l + r
+    l,r = [getAllSingleFlipTaxaOrders(tree, x) for x in node.succ]
+    l0,r0 = l[0],r[0]
+
+    all = []
+    all.append(l0+r0)
+    all.append([r0+l0, node])
+    for x,i in l[1:] :
+      all.append([x + r0, i])
+    for x,i in r[1:] :
+      all.append([l0 + x, i])
+    return all
 
 def getCR(oo, dis) :
   x,y = [],[]
-  for k in dis:
-    tx1,tx2 = k
-    x.append(abs(oo.index(tx1) - oo.index(tx2)))
-    y.append(dis[k])
-
+  n = len(oo)
+  for i in range(n) :
+    ti = oo[i]
+    for j in range(i+1,n) :
+      tj = oo[j]
+      k = (ti,tj) if ti < tj else (tj,ti)
+      x.append(j-i)
+      y.append(dis[k])
   cr = corrcoef(x,y)[0,1]
   return cr
 
-def getTaxaOrder(trees, refTree = None, reportTopologies = False) :
+
+def getTaxaOrder(trees, refTree = None, reportTopologies = False,
+                    nSample = 1, progress = False) :
+  if progress: print >> sys.stderr, "getting tops...",
+  
   tops = [toNewick(tree, topologyOnly=1) for tree in trees]
   dtops = dict([(x,0) for x in tops])
   for t in tops :
     dtops[t] += 1
-
   dis = dict()
+
+  if progress: print >> sys.stderr, ("taxa distance matrix (%d tops)..." % len(dtops)),
+  
   for tx in dtops:
     tree = INexus.Tree(tx)
     d = dict()
@@ -192,31 +210,48 @@ def getTaxaOrder(trees, refTree = None, reportTopologies = False) :
       dis[k] += d[k] * dtops[tx]/len(trees)
     
   if refTree is None:
-    refTree = INexus.Tree(sorted(dtops, key = lambda x : dtops[x])[-1])
+    sdtops = sorted(dtops, key = lambda x : dtops[x])
+    refTrees = [INexus.Tree(t) for t in sdtops[-nSample:]]
+  else :
+    refTrees = [refTree]
 
-  tree = refTree
-  moo = getTaxa(tree, tree.root)
-  mcr = getCR(moo, dis)
+  mmcr = -1
+  
+  for tree in refTrees :
+    a = getAllSingleFlipTaxaOrders(tree, tree.root)
+    moo = a[0]
+    mcr = getCR(moo, dis)
 
-  while True:
-    mnode = None
+    if progress: print >> sys.stderr, "optimizing...",mcr,
+    nt = 0
 
-    for nid in tree.all_ids() :
-      node = tree.node(nid)
-      if node.succ:
-        node.succ = [node.succ[1], node.succ[0]]
-        oo = getTaxa(tree, tree.root)
+    while True:
+      nt += 1
+      mnode = None
+
+      for oo,node in a[1:] :
         cr = getCR(oo, dis)
-
+        
         if cr > mcr:
           mcr = cr
           moo = oo
           mnode = node
-        node.succ = [node.succ[1], node.succ[0]]
-    if mnode is not None:
-      mnode.succ = [mnode.succ[1], mnode.succ[0]]
-    else :
-      break
+      if progress: print >> sys.stderr, mcr,
+
+      if mnode is not None:
+        mnode.succ = [mnode.succ[1], mnode.succ[0]]
+        a = getAllSingleFlipTaxaOrders(tree, tree.root)
+      else :
+        break
+
+    if mcr > mmcr :
+      mmcr = mcr
+      mmoo = moo
+      mtree = tree
+      
+    if progress: print >> sys.stderr, ("%d tries" % nt)
+
+  if progress: print >> sys.stderr, "done"
 
   if reportTopologies :
     for top in dtops:
@@ -224,7 +259,106 @@ def getTaxaOrder(trees, refTree = None, reportTopologies = False) :
     for k,top in enumerate(tops):
       dtops[top].append(k)
       
-    return (moo, tree, dtops)
+    return (mmoo, mtree, dtops)
   
-  return (moo, tree)
+  return (mmoo, mtree)
+
+
+
+## def getTaxa(tree, nid, rand = False) :
+##   node = tree.node(nid)
+##   if not node.succ:
+##     return [node.data.taxon]
+##   else:
+##     l,r = [getTaxa(tree, x, rand) for x in node.succ]
+##     if rand :
+##       if random.random() < .5:
+##         l,r = r,l
+##     return l + r
+## def getCRold(oo, dis) :
+##   x,y = [],[]
+##   for k in dis:
+##     tx1,tx2 = k
+##     x.append(abs(oo.index(tx1) - oo.index(tx2)))
+##     y.append(dis[k])
+
+##   cr = corrcoef(x,y)[0,1]
+##   return cr
+
+## def getTaxaOrderOld(trees, refTree = None, reportTopologies = False, nSample = 1) :
+##   print >> sys.stderr, "getting tops...",
+##   tops = [toNewick(tree, topologyOnly=1) for tree in trees]
+##   dtops = dict([(x,0) for x in tops])
+##   for t in tops :
+##     dtops[t] += 1
+##   dis = dict()
+
+##   print >> sys.stderr, ("taxa distance matrix (%d tops)..." % len(dtops)),
+  
+##   for tx in dtops:
+##     tree = INexus.Tree(tx)
+##     d = dict()
+##     taxaDistance(tree, tree.root, d)
+##     for k in d:
+##       if k not in dis:
+##         dis[k] = 0.0
+##       dis[k] += d[k] * dtops[tx]/len(trees)
+    
+##   if refTree is None:
+##     sdtops = sorted(dtops, key = lambda x : dtops[x])
+##     refTrees = [INexus.Tree(t) for t in sdtops[-nSample:]]
+##   else :
+##     refTrees = [refTree]
+
+##   mmcr = -1
+  
+##   for tree in refTrees :
+##     moo = getTaxa(tree, tree.root)
+##     mcr = getCRold(moo, dis)
+
+##     print >> sys.stderr, "optimizing...",mcr,
+##     nt = 0
+
+##     while True:
+##       nt += 1
+##       mnode = None
+
+##       for nid in tree.all_ids() :
+##         node = tree.node(nid)
+##         if node.succ:
+##           node.succ = [node.succ[1], node.succ[0]]
+##           oo = getTaxa(tree, tree.root)
+##           cr = getCRold(oo, dis)
+
+##           if cr > mcr:
+##             mcr = cr
+##             moo = oo
+##             mnode = node
+##           node.succ = [node.succ[1], node.succ[0]]
+##       print >> sys.stderr, mcr,
+
+##       if mnode is not None:
+##         mnode.succ = [mnode.succ[1], mnode.succ[0]]
+##       else :
+##         break
+
+##     if mcr > mmcr :
+##       mmcr = mcr
+##       mmoo = moo
+##       mtree = tree
+      
+##     print >> sys.stderr, ("%d tries" % nt)
+
+##   print >> sys.stderr, "done"
+
+##   if reportTopologies :
+##     for top in dtops:
+##       dtops[top] = []
+##     for k,top in enumerate(tops):
+##       dtops[top].append(k)
+      
+##     return (mmoo, mtree, dtops)
+  
+##   return (mmoo, mtree)
+
 
