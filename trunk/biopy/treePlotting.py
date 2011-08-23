@@ -10,6 +10,9 @@ import sys
        
 from numpy import mean, median, corrcoef
 import pylab
+
+from collections import Counter, namedtuple, defaultdict
+
 from biopy.genericutils import fileFromName
 
 from biopy import INexus, beastLogHelper, demographic
@@ -117,23 +120,23 @@ def drawTree(tree, nid, cladesDict = None, positioning = descendantMean,
   return (centerc, h, hpar, xright, p, p1, clade)
 
 
+_Info = namedtuple('Info', 'width widthatend maxspace')
+
 def treeMinSpace(tree, nid = -1) :
-  # 0:node, 1:width, 2:widthatend, 3:maxspace
   if nid == -1 :
     nid = tree.root
   node = tree.node(nid)
   d = node.data.demographic
   if not node.succ:
-    return (node, d.population(0),
-            d.population(node.data.branchlength), 0)
+    return _Info(d.population(0), d.population(node.data.branchlength), 0)
 
   l,r = [treeMinSpace(tree, x) for x in node.succ]
-  spc = 2*max(l[2] - l[1], r[2] - r[1], 0)
+  spc = 2*max(l.widthatend - l.width, r.widthatend - r.width, 0)
 
-  spc = max(spc, l[3],r[3])
+  spc = max(spc, l.maxspace,r.maxspace)
   if nid == tree.root:
     return spc
-  return (node, spc +  l[1] + r[1], d.population(d.naturalLimit()),spc)
+  return _Info(spc +  l.width + r.width, d.population(d.naturalLimit()),spc)
 
 def getSpacing(trees, additional = 0) :
   wd = max([mean(sorted([tree.node(x).data.demographic.population(0) for x in
@@ -153,7 +156,8 @@ def taxaDistance(tree, nid, distance) :
     n = l[0] + r[0]
     for xl in l[1] :
       for xr in r[1] :
-        distance[tuple(sorted([xl,xr]))] = n-1
+        key = (xl,xr) if xl < xr else (xr,xl)
+        distance[key] = n-1
     return (n, l[1] + r[1])
 
 
@@ -177,37 +181,34 @@ def getAllSingleFlipTaxaOrders(tree, nid) :
 def getCR(oo, dis) :
   x,y = [],[]
   n = len(oo)
-  for i in range(n) :
+  for i in xrange(n) :
     ti = oo[i]
-    for j in range(i+1,n) :
-      tj = oo[j]
-      k = (ti,tj) if ti < tj else (tj,ti)
+    for j in xrange(i+1,n) :
       x.append(j-i)
-      y.append(dis[k])
+      tj = oo[j]
+      key = (ti,tj) if ti < tj else (tj,ti)
+      y.append(dis[key])
   cr = corrcoef(x,y)[0,1]
   return cr
 
 
 def getTaxaOrder(trees, refTree = None, reportTopologies = False,
                     nSample = 1, progress = False) :
-  if progress: print >> sys.stderr, "getting tops...",
   
-  tops = [toNewick(tree, topologyOnly=1) for tree in trees]
-  dtops = dict([(x,0) for x in tops])
-  for t in tops :
-    dtops[t] += 1
-  dis = dict()
+  if progress: print >> sys.stderr, "getting topologies...",
+
+  dtops = Counter(toNewick(tree, topologyOnly=1) for tree in trees)
+
+  averagedPosteriorDistances = defaultdict(lambda : 0)
 
   if progress: print >> sys.stderr, ("taxa distance matrix (%d tops)..." % len(dtops)),
   
   for tx in dtops:
     tree = INexus.Tree(tx)
-    d = dict()
-    taxaDistance(tree, tree.root, d)
-    for k in d:
-      if k not in dis:
-        dis[k] = 0.0
-      dis[k] += d[k] * dtops[tx]/len(trees)
+    distances = dict()
+    taxaDistance(tree, tree.root, distances)
+    for k in distances:
+      averagedPosteriorDistances[k] += distances[k] * dtops[tx]/len(trees)
     
   if refTree is None:
     sdtops = sorted(dtops, key = lambda x : dtops[x])
@@ -215,54 +216,126 @@ def getTaxaOrder(trees, refTree = None, reportTopologies = False,
   else :
     refTrees = [refTree]
 
-  mmcr = -1
+  overallMaxCR = -1
   
   for tree in refTrees :
-    a = getAllSingleFlipTaxaOrders(tree, tree.root)
-    moo = a[0]
-    mcr = getCR(moo, dis)
+    allOrders = getAllSingleFlipTaxaOrders(tree, tree.root)
+    maximizingOrder = allOrders[0]
+    treeMaxCR = getCR(maximizingOrder, averagedPosteriorDistances)
 
-    if progress: print >> sys.stderr, "optimizing...",mcr,
-    nt = 0
+    if progress: print >> sys.stderr, "optimizing... (cr",treeMaxCR,")",
+    nTries = 0
 
     while True:
-      nt += 1
+      nTries += 1
       mnode = None
 
-      for oo,node in a[1:] :
-        cr = getCR(oo, dis)
+      for order,node in allOrders[1:] :
+        cr = getCR(order, averagedPosteriorDistances)
         
-        if cr > mcr:
-          mcr = cr
-          moo = oo
+        if cr > treeMaxCR:
+          treeMaxCR = cr
+          maximizingOrder = order
           mnode = node
-      if progress: print >> sys.stderr, mcr,
+          
+      if progress: print >> sys.stderr, treeMaxCR,
 
       if mnode is not None:
         mnode.succ = [mnode.succ[1], mnode.succ[0]]
-        a = getAllSingleFlipTaxaOrders(tree, tree.root)
+        allOrders = getAllSingleFlipTaxaOrders(tree, tree.root)
       else :
         break
 
-    if mcr > mmcr :
-      mmcr = mcr
-      mmoo = moo
+    if treeMaxCR > overallMaxCR :
+      overallMaxCR = treeMaxCR
+      overallMaximizingOrder = maximizingOrder
       mtree = tree
       
-    if progress: print >> sys.stderr, ("%d tries" % nt)
+    if progress: print >> sys.stderr, ("%d tries" % nTries)
 
   if progress: print >> sys.stderr, "done"
 
   if reportTopologies :
-    for top in dtops:
-      dtops[top] = []
-    for k,top in enumerate(tops):
+    dtops = dict([(top,[]) for top in dtops])
+    for k,top in enumerate(toNewick(tree, topologyOnly=1) for tree in trees) :
       dtops[top].append(k)
       
-    return (mmoo, mtree, dtops)
+    return (overallMaximizingOrder, mtree, dtops)
   
-  return (mmoo, mtree)
+  return (overallMaximizingOrder, mtree)
 
+
+_Info1 = namedtuple('Info1', 'left right lleft lright rleft rright lchild')
+
+def _setLeftRight(tree, nid) :
+  node = tree.node(nid)
+  if not node.succ:
+    x = node.data.x
+    node.data.cladeInfo = _Info1(x, x, x, x, x, x, None)
+  else :
+    chi = [_setLeftRight(tree, si) for si in node.succ]
+    r = max([x.right for x in chi])
+    l = min([x.left for x in chi])
+    ilchild = 0 if (chi[0].left + chi[0].right) < (chi[1].left + chi[1].right) \
+              else 1
+    node.data.cladeInfo = _Info1(l, r,
+                                 chi[ilchild].left, chi[ilchild].right,
+                                 chi[1-ilchild].left, chi[1-ilchild].right,
+                                 node.succ[ilchild])
+
+  return node.data.cladeInfo
+
+def _drawTreeOnly(tree, nid, xnode, nh, color, alpha) :
+  node = tree.node(nid)
+  if not node.succ:
+    return
+  cInfo = node.data.cladeInfo
+  myh = nh[node.id]
+  pr = []
+  for si in node.succ :
+    chh =  nh[si]
+    if si == cInfo.lchild :
+      if 0 :
+        a = (xnode - cInfo.lleft) / myh
+        dx = a * (myh - chh)
+
+        a1 = (xnode - cInfo.lright) / myh
+        dx1 = a1 * (myh - chh)
+        xchild = xnode - (dx+dx1)/2
+
+      if 1 :
+        a = (xnode - (cInfo.lleft+cInfo.lright)/2) / myh
+        dx = a * (myh - chh)
+        xchild = xnode - dx
+
+    else :
+      if 0 :
+        a = (cInfo.rright - xnode) / myh
+        dx = a * (myh - chh)
+
+        a1 = (cInfo.rleft - xnode) / myh
+        dx1 = a1 * (myh - chh)
+        xchild = xnode + (dx+dx1)/2
+
+      if 1 :
+        a = ((cInfo.rright+ cInfo.rleft)/2 - xnode) / myh
+        dx = a * (myh - chh)
+
+        xchild = xnode + dx
+    # print node.id, xnode, si, si == cInfo.lchild, xchild, myh, chh, cInfo
+    pylab.plot([xnode, xchild], [myh, chh], color = color, alpha = alpha) 
+    _drawTreeOnly(tree, si, xchild, nh, color, alpha)
+
+
+def drawTreeOnly(tree, color="green", alpha = 0.05) :
+  rl = _setLeftRight(tree, tree.root)
+
+  xroot = (rl.right + rl.left)/2
+  nh = nodeHeights(tree, [tree.node(x) for x in tree.all_ids()])
+  _drawTreeOnly(tree, tree.root, xroot, nh, color= color, alpha = alpha)
+  
+  for i in tree.all_ids() :
+    del tree.node(i).data.cladeInfo
 
 
 ## def getTaxa(tree, nid, rand = False) :
