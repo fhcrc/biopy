@@ -190,7 +190,7 @@ def simulateGeneTree(sTree) :
   Return a pair of tree and root height.
 """
 
-  nh = nodeHeights(sTree, [sTree.node(x) for x in sTree.all_ids()])
+  nh = nodeHeights(sTree)
 
   simTree = TreeBuilder()
   t,rootHeight = _simulateGeneTreeForNode(sTree, sTree.root, simTree, nh)[0]

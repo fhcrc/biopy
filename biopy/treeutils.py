@@ -5,7 +5,11 @@
 #
 # $Id:$ 
 
-""" Small helper in building BioPython trees. """
+""" Small helper in building BioPython trees.
+
+Unless explicitly specified, any tree is assumed to be Ultrametric
+(tips are contemporaneous).
+"""
 
 import operator
 from genericutils import fileFromName
@@ -112,7 +116,7 @@ def countNexusTrees(nexFileName) :
   return c
 
 def toNewick(tree, nodeId = None, topologyOnly = False, attributes = None) :
-  """ BioPython tree or sub-tree to unique newick format.
+  """ BioPython tree or sub-tree to unique NEWICK format.
 
   Children nodes are sorted (via text), so representation is unique and does not
   depend on arbitrary children ordering.
@@ -163,27 +167,82 @@ def _getNodeHeight(tree, n, heights, w = 0):
   heights[n.id] = h
   return h
 
-def nodeHeights(tree, nodes) :
-  """ Return a mapping from node ids to node heights"""
-
-  w = 0
+def _collectNodeHeights(tree, nid, heights) :
+  node = tree.node(nid)
   
+  if len(node.succ) == 0 :
+    heights[node.id] = 0.0
+    return (node.data.branchlength, [node.id])
+
+  (hs0,tips0), (hs1,tips1) = [_collectNodeHeights(tree, c, heights)
+                               for c in node.succ]
+  if hs0 != hs1 :
+    if hs0 < hs1 :
+      h = hs1
+      dx = hs1-hs0
+      # add hs1-hs0 to all left (0) side
+      for n in tips0 :
+        heights[n] += dx
+    else :
+      # add hs0-hs1 to all right (1) side 
+      h = hs0
+      dx = hs0-hs1
+      for n in tips1 :
+        heights[n] += dx
+  else :
+    h = hs0
+  heights[node.id] = h
+  return (h + node.data.branchlength, [nid] + tips0 + tips1)
+
+def _collectNodeHeightsSimple(tree, nid, heights) :
+  node = tree.node(nid)
+  
+  if len(node.succ) == 0 :
+    heights[node.id] = 0.0
+    return node.data.branchlength
+
+  h = max([_collectNodeHeightsSimple(tree, c, heights) for c in node.succ])
+  heights[node.id] = h
+  return h + node.data.branchlength
+
+def nodeHeights(tree, nids = None, allTipsZero = True) :
+  """ Return a mapping from node ids to node heights.
+  Without nids - for all nodes.
+
+  The mapping may contain heights for other nodes as well.
+
+  With !allTipsZero, handle non-ultrametric trees as well.
+  """
+
   heights = dict()
-  for n in nodes :
-    _getNodeHeight(tree, n, heights, w)
-    w = 1-w
-    
+
+  if allTipsZero :
+    if nids == None :
+      _collectNodeHeightsSimple(tree, tree.root, heights)
+    else :
+      w = 0
+      for nid in nids :
+        _getNodeHeight(tree, tree.node(nid), heights, w)
+        w = 1-w
+  else :
+      # have to scan all tree to account for tip heights, ignore nids if
+      # present
+      _collectNodeHeights(tree, tree.root, heights)
+     
   return heights
 
-def nodeHeight(tree, node) :
+def nodeHeight(tree, nid) :
+  """ Height of node. """
+  
+  node = tree.node(nid)
   if node.data.taxon :
     h = 0
   else :
-    ch = [tree.node(i) for i in node.succ]
-
-    h = max([n.data.branchlength + nodeHeight(tree, n) for n in ch])
+    h = max([node.data.branchlength + nodeHeight(tree, c)
+             for c in node.succ])
     
   return h
 
 def treeHeight(tree) :
-  return nodeHeights(tree, [tree.node(tree.root)])[tree.root]
+  """ Height of tree. """
+  return _getNodeHeight(tree, tree.node(tree.root), dict())

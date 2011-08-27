@@ -265,23 +265,43 @@ def getTaxaOrder(trees, refTree = None, reportTopologies = False,
   return (overallMaximizingOrder, mtree)
 
 
-_Info1 = namedtuple('Info1', 'left right lleft lright rleft rright lchild')
+#_Info1 = namedtuple('Info1', 'left right lleft lright rleft rright lchild')
 
-def _setLeftRight(tree, nid) :
+# left right: x-position of leftest and rightest tips in clade
+# lmid rmid:  x-position of left and right descentands to aim for
+# lh rh:      y-position of left and right descentands to aim for
+# lchild:     node id of the left child
+
+_Info1 = namedtuple('Info1', 'left right lmid rmid lh rh lchild')
+
+def _setLeftRight(tree, nid, nh) :
   node = tree.node(nid)
   if not node.succ:
     x = node.data.x
-    node.data.cladeInfo = _Info1(x, x, x, x, x, x, None)
+    h = nh[nid]
+    node.data.cladeInfo = _Info1(x, x, x, x, h, h, None)
   else :
-    chi = [_setLeftRight(tree, si) for si in node.succ]
+    chi = [_setLeftRight(tree, si, nh) for si in node.succ]
     r = max([x.right for x in chi])
     l = min([x.left for x in chi])
-    ilchild = 0 if (chi[0].left + chi[0].right) < (chi[1].left + chi[1].right) \
-              else 1
+    m = [x.left + x.right for x in chi]
+
+    ilchild = 0 if m[0] < m[1] else 1
+    
+    chil = chi[ilchild]
+    chir = chi[1-ilchild]
     node.data.cladeInfo = _Info1(l, r,
-                                 chi[ilchild].left, chi[ilchild].right,
-                                 chi[1-ilchild].left, chi[1-ilchild].right,
+                                 (chil.left + chil.right)/2,
+                                 (chir.left + chir.right)/2,
+                                 (chil.lh + chil.rh)/2,
+                                 (chir.lh + chir.rh)/2,
                                  node.succ[ilchild])
+    ## node.data.cladeInfo = _Info1(l, r,
+    ##                              (chil.left + chil.right)/2,
+    ##                              (chir.left + chir.right)/2,
+    ##                              max(chil.lh , chil.rh),
+    ##                              max(chir.lh , chir.rh),
+    ##                              node.succ[ilchild])
 
   return node.data.cladeInfo
 
@@ -295,43 +315,31 @@ def _drawTreeOnly(tree, nid, xnode, nh, color, alpha) :
   for si in node.succ :
     chh =  nh[si]
     if si == cInfo.lchild :
-      if 0 :
-        a = (xnode - cInfo.lleft) / myh
-        dx = a * (myh - chh)
-
-        a1 = (xnode - cInfo.lright) / myh
-        dx1 = a1 * (myh - chh)
-        xchild = xnode - (dx+dx1)/2
-
-      if 1 :
-        a = (xnode - (cInfo.lleft+cInfo.lright)/2) / myh
-        dx = a * (myh - chh)
-        xchild = xnode - dx
+      a = (xnode - cInfo.lmid) / (myh - cInfo.lh)
+      dx = a * (myh - chh)
+      xchild = xnode - dx
 
     else :
-      if 0 :
-        a = (cInfo.rright - xnode) / myh
-        dx = a * (myh - chh)
-
-        a1 = (cInfo.rleft - xnode) / myh
-        dx1 = a1 * (myh - chh)
-        xchild = xnode + (dx+dx1)/2
-
-      if 1 :
-        a = ((cInfo.rright+ cInfo.rleft)/2 - xnode) / myh
-        dx = a * (myh - chh)
-
-        xchild = xnode + dx
+      a = (cInfo.rmid - xnode) / (myh - cInfo.rh)
+      dx = a * (myh - chh)
+      xchild = xnode + dx
+      
     # print node.id, xnode, si, si == cInfo.lchild, xchild, myh, chh, cInfo
     pylab.plot([xnode, xchild], [myh, chh], color = color, alpha = alpha) 
     _drawTreeOnly(tree, si, xchild, nh, color, alpha)
 
 
-def drawTreeOnly(tree, color="green", alpha = 0.05) :
-  rl = _setLeftRight(tree, tree.root)
+def drawTreeOnly(tree, color="green", alpha = 0.05, allTipsZero = True) :
+  # A mapping from node id to (positive) node height ( with !allTipsZero, tips
+  # may have > 0 height, at least one tip has 0 height). 
+  nh = nodeHeights(tree, allTipsZero = allTipsZero)
 
+  # set auxiliary info per node
+  rl = _setLeftRight(tree, tree.root, nh)
+
+  # position root in the middle
   xroot = (rl.right + rl.left)/2
-  nh = nodeHeights(tree, [tree.node(x) for x in tree.all_ids()])
+  
   _drawTreeOnly(tree, tree.root, xroot, nh, color= color, alpha = alpha)
   
   for i in tree.all_ids() :
