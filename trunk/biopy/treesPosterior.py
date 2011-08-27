@@ -15,7 +15,8 @@ def _treeBranchAssignmentExprs(tree, clades) :
   allid = set(tree.all_ids())
   terms = set(tree.get_terminals())
   allint = allid - terms
-  nh = nodeHeights(tree, [tree.node(x) for x in allint])
+  # works for dated tips as well - but rest of code does not support that
+  nh = nodeHeights(tree, allTipsZero = False)
   nhInOrder = sorted([(nh[x],x) for x in allint])
   nInOrder = [x[1] for x in reversed(nhInOrder)]
 
