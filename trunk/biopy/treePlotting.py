@@ -305,13 +305,12 @@ def _setLeftRight(tree, nid, nh) :
 
   return node.data.cladeInfo
 
-def _drawTreeOnly(tree, nid, xnode, nh, color, alpha) :
+def _drawTreeOnly(tree, nid, xnode, nh, color, alpha, keepPositions) :
   node = tree.node(nid)
   if not node.succ:
     return
   cInfo = node.data.cladeInfo
   myh = nh[node.id]
-  pr = []
   for si in node.succ :
     chh =  nh[si]
     if si == cInfo.lchild :
@@ -325,11 +324,14 @@ def _drawTreeOnly(tree, nid, xnode, nh, color, alpha) :
       xchild = xnode + dx
       
     # print node.id, xnode, si, si == cInfo.lchild, xchild, myh, chh, cInfo
+    if keepPositions :
+      node.data.x = xnode
     pylab.plot([xnode, xchild], [myh, chh], color = color, alpha = alpha) 
-    _drawTreeOnly(tree, si, xchild, nh, color, alpha)
+    _drawTreeOnly(tree, si, xchild, nh, color, alpha, keepPositions)
 
 
-def drawTreeOnly(tree, color="green", alpha = 0.05, allTipsZero = True) :
+def drawTreeOnly(tree, color="green", alpha = 0.05, allTipsZero = True, xroot =
+                 None, keepPositions = False) :
   # A mapping from node id to (positive) node height ( with !allTipsZero, tips
   # may have > 0 height, at least one tip has 0 height). 
   nh = nodeHeights(tree, allTipsZero = allTipsZero)
@@ -338,9 +340,11 @@ def drawTreeOnly(tree, color="green", alpha = 0.05, allTipsZero = True) :
   rl = _setLeftRight(tree, tree.root, nh)
 
   # position root in the middle
-  xroot = (rl.right + rl.left)/2
+  if xroot is None :
+    xroot = (rl.right + rl.left)/2
   
-  _drawTreeOnly(tree, tree.root, xroot, nh, color= color, alpha = alpha)
+  _drawTreeOnly(tree, tree.root, xroot, nh, color= color, alpha = alpha,
+                keepPositions = keepPositions)
   
   for i in tree.all_ids() :
     del tree.node(i).data.cladeInfo
