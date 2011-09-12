@@ -105,7 +105,7 @@ def numberOfLabeledForests(forest) :
   C{forest}."""
 
   # number of ranked possibilities for each tree
-  z = [LHsize(x) for x in forest]
+  z = [_LHsize(x) for x in forest]
 
   # prune single lineages 
   u = [(n,k) for n,k in z if n > 0]

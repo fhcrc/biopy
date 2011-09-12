@@ -7,9 +7,14 @@
 
 """ Compute probabilities of gene trees under the multispecies coalescent.
 
+Simulate gene trees based on the multispecies coalescent.
 """
 
 from __future__ import division
+
+from math import exp
+from combinatorics import nPairs as c2
+from treeCombinatorics import toNewick
 
 from treeCombinatorics import nLabeledHistories, numberOfLabeledForests, \
      allCompatibleLabeledHistories
@@ -68,14 +73,14 @@ def standarizeForest(f) :
 # With a compat function which always returns True, this computes probabilities
 # for all gene trees.
 
-def compatibleGeneTreesInSpeciesTree(tree, nodeId, compat) :
+def _compatibleGeneTreesInSpeciesTree(tree, nodeId, compat) :
   node = tree.node(nodeId)
   
   if node.data.taxon :
     labels = node.data.labels
-    forests = [(1.0, list([list(x) for x in labels])),]
+    forests = [(1.0, list([[x] for x in labels])),]
   else :
-    cth0,cth1 = [compatibleGeneTreesInSpeciesTree(tree, child, compat)
+    cth0,cth1 = [_compatibleGeneTreesInSpeciesTree(tree, child, compat)
                  for child in node.succ]
     # combine them
     forests = [(p0*p1,f0+f1) for p0,f0 in cth0 for p1,f1 in cth1]
@@ -121,6 +126,10 @@ def compatibleGeneTreesInSpeciesTree(tree, nodeId, compat) :
   
   return resultForests
 
+
+def compatibleGeneTreesInSpeciesTree(tree, compat = None) :
+  trees = _compatibleGeneTreesInSpeciesTree(tree, tree.root, compat)
+  return [(t[0], toNewick(t[1][0])) for t in trees]
 
 
 from treeutils import TreeBuilder, nodeHeights

@@ -11,36 +11,76 @@ import scipy, scipy.optimize, copy, random
 from treeMeasure import allPartitions
 from treeutils import treeHeight, nodeHeights
 
+## def _treeBranchAssignmentExprs(tree, clades) :
+##   allid = set(tree.all_ids())
+##   terms = set(tree.get_terminals())
+##   allint = allid - terms
+##   # works for dated tips as well - but rest of code does not support that
+##   nh = nodeHeights(tree, allTipsZero = False)
+##   nhInOrder = sorted([(nh[x],x) for x in allint])
+##   nInOrder = [x[1] for x in reversed(nhInOrder)]
+
+##   # x[0] is root
+  
+##   sr = []
+##   sr.append("h%d = x[0]" % nInOrder[0])
+##   for k in nInOrder[1:]:
+##     sr.append("h%d = x[%d] * h%d" % (k, nInOrder.index(k), tree.node(k).prev))
+    
+##   for r,k in enumerate(clades) :
+##     n = clades[k][0][1] ; assert n != tree.root
+##     if n in terms:
+##       sr.append("b%d=(h%d) # %d" % (r, tree.node(n).prev, n))
+##     else :
+##       sr.append("b%d=(h%d * (1-x[%d])) # %d" %
+##               (r, tree.node(n).prev, nInOrder.index(n), n))
+##   return sr
+
+
 def _treeBranchAssignmentExprs(tree, clades) :
   allid = set(tree.all_ids())
   terms = set(tree.get_terminals())
   allint = allid - terms
-  # works for dated tips as well - but rest of code does not support that
+
+  # works for dated tips as well
   nh = nodeHeights(tree, allTipsZero = False)
   nhInOrder = sorted([(nh[x],x) for x in allint])
   nInOrder = [x[1] for x in reversed(nhInOrder)]
 
+  # mapping for minimum node height
+  mh = dict()
+  for n in terms:
+    mh[n] = nh[n]
+  for h,n in nhInOrder:
+    mh[n] = max([mh[c] for c in tree.node(n).succ])
+  
   # x[0] is root
   
   sr = []
   sr.append("h%d = x[0]" % nInOrder[0])
-  for k in nInOrder[1:]:
-    sr.append("h%d = x[%d] * h%d" % (k, nInOrder.index(k), tree.node(k).prev))
+  for i,k in enumerate(nInOrder[1:]):
+    if mh[k] != 0 :
+      m = "%g" % mh[k]
+      sr.append("h%d = x[%d] * (h%d - %s) + %s" % (k, i+1, tree.node(k).prev, m, m))
+    else :
+      sr.append("h%d = x[%d] * h%d" % (k, i+1, tree.node(k).prev))
     
   for r,k in enumerate(clades) :
     n = clades[k][0][1] ; assert n != tree.root
+    p = tree.node(n).prev
     if n in terms:
-      sr.append("b%d=(h%d) # %d" % (r, tree.node(n).prev, n))
+      if mh[n] != 0 :
+        sr.append("b%d=(h%d - %g) # %d" % (r, p, mh[n], n))
+      else :
+        sr.append("b%d=(h%d) # %d" % (r, p, n))
     else :
-      sr.append("b%d=(h%d * (1-x[%d])) # %d" %
-              (r, tree.node(n).prev, nInOrder.index(n), n))
-  return sr
+      sr.append("b%d=(h%d - h%d) # %d" % (r, p, n, n))
+  return sr, mh[tree.root]
 
 
 def minPosteriorDistanceTree(tree, trees, limit = scipy.inf) :
   """ Find a branch length assignment for C{tree} which minimizes the total
   distance to the set of C{trees}.
-
   """
   
   treeParts = allPartitions(tree, [tree])
@@ -97,7 +137,7 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf) :
     return (None, 0.0)
 
   # Get code which transforms heights to branch lengths 
-  ba = _treeBranchAssignmentExprs(tree, treeParts)
+  ba,minRoot = _treeBranchAssignmentExprs(tree, treeParts)
 
   # Define the posterior distance function on the fly.
   exec "def f(x):\n  " + "\n  ".join(ba) + "\n  return " + ee
@@ -114,7 +154,7 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf) :
                                     [treeHeight(tree)] + [random.random() for k
                                                       in range(nx-1)],
                                     approx_grad=1,
-                                    bounds = [[0,None]] + [[0,1]]*(nx-1),
+                                    bounds = [[minRoot,None]] + [[0,1]]*(nx-1),
                                     iprint=-1, maxfun=maxfun)
   if zz[2]['warnflag'] != 0 :
     print "WARNING:", zz[2]['task']

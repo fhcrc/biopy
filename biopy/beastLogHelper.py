@@ -78,9 +78,11 @@ def setDemographics(trees) :
   
   dmf = "dmf"
   dmv,dmt = "dmv", "dmt"
-  
+
+  hasAll = []
   # Read demographics in
   for tree in trees :
+    has = True
     for i in tree.all_ids() :
       data = tree.node(i).data
       if hasattr(data, "attributes") :
@@ -89,3 +91,8 @@ def setDemographics(trees) :
           data.demographic = _toDemog(dtxt)
         elif dmv in data.attributes:
           data.demographic = _toDemog1(data.attributes.get(dmt), data.attributes.get(dmv))
+        else :
+          has = False
+    hasAll.append(has)
+
+  return hasAll
