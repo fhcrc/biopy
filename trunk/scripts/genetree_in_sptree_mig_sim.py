@@ -17,6 +17,10 @@ parser.add_option("-n", "--ntrees", dest="ngenetrees",
                   help="""Number of gene trees per species tree """
                   + """(default 1)""", default = "1") 
 
+parser.add_option("-e", "--redraw", dest="redraw",
+                  help="""Change model based parameters every"""
+                  + """ (default 1) trees.""", default = "1") 
+
 parser.add_option("-t", "--per-species", dest="ntips",
                   help="""Number of individuals per species."""
                   + """(default 2)""", default = "2") 
@@ -35,6 +39,7 @@ nGeneTrees = int(options.ngenetrees) ; assert nGeneTrees > 0
 nTips = int(options.ntips)           ; assert nTips > 0
 
 nTotal = int(options.total) if options.total is not None else -1           
+reDraw = int(options.redraw)
 
 tipNameTemplate = "%s_tip%d"
 
@@ -68,9 +73,18 @@ for tree,hasPop,hasLab in zip(trees,hasPops,hasLabels):
   if not hasPop:
     assert False
 
-  setIMrates(tree) 
-  s = GeneTreeSimulator(tree)
-  print s.simulateGeneTree()
+  counter = 0
+  for k in range(nGeneTrees) :
+    if counter == 0 :
+      setIMrates(tree) 
+      s = GeneTreeSimulator(tree)
+    print s.simulateGeneTree()
+    
+    counter = (counter + 1) % reDraw
+
+  nTotal -= 1
+  if nTotal == 0 :
+    break
   
 sys.exit(0)
 

@@ -73,15 +73,14 @@ if outName is not None:
   print >> outFile, "#NEXUS"
   print >> outFile, "begin trees;"
   def outTree(k,p,t) :
-    return "tree tree_%d = [&W %0.14f] %s ;" % (k,p,t)
+     print >> outFile, "tree tree_%d = [&W %0.14f] %s ;" % (k,p,t)
   def closeOut() :
     print >> outFile, "end;"
     outFile.close()
     
 else:
-  outFile = sys.stdout
   def outTree(k,p,t) :
-    return "%0.14f %s" % (p,t)
+    print "%0.14f %s" % (p,t)
   def closeOut() :
     pass
   
@@ -89,6 +88,6 @@ compat = None
 trees = speciesTreesGeneTrees.compatibleGeneTreesInSpeciesTree(tree, compat)
 
 for count,t in enumerate(sorted(trees, key = lambda x : x[0], reverse=True)) :
-  print >> outFile, outTree(count,t[0],treeCombinatorics.toNewick(t[1]))
+  outTree(count,t[0],treeCombinatorics.toNewick(t[1]))
 
 closeOut()
