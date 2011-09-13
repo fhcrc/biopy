@@ -90,8 +90,8 @@ def _f1(r,k,i) :
 
 def BDexpected(k,n,lam,mu) :
   """ Expected k'th speciation time for BD tree conditioned on n taxa.
-  k == 1 is root. Have serious numerical issues for small mu, but with python
-  2.5 using Decimal means changing the code :(
+  k == 1 is root. Have serious numerical issues for small mu, so using
+  'Decimal', which unfortuanetly requires changing code :(
   """
   if mu == 0 :
     return sum([1/i for i in range(k+1, n+1)])/lam

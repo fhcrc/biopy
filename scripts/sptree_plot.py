@@ -93,7 +93,10 @@ if len(args) != 2 :
 mainTree = []
 if options.mainTree :
   mainTree = [INexus.Tree(t) for t in options.mainTree]
-  beastLogHelper.setDemographics(mainTree)
+  has = beastLogHelper.setDemographics(mainTree)
+  if not all(has):
+    print >> sys.stderr, "Main tree(s) missing population size data"
+    sys.exit(1)
   
 nexusTreesFileName = args[0]
 
@@ -116,7 +119,8 @@ if progress:
 
 trees = []
 for tree in nexusReader.read(nexFile, slice(int(burnIn*nTrees), -1, every)):
-  beastLogHelper.setDemographics([tree])
+  has = beastLogHelper.setDemographics([tree])
+  assert has[0]
   trees.append(tree)
   
 if progress:

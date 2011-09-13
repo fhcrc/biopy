@@ -78,7 +78,7 @@ if progress:
 rBranches = []
 
 for tree in nexusReader.read(nexFile, slice(int(burnIn*nTrees), -1, every)):
-  beastLogHelper.setDemographics([tree])
+  has = beastLogHelper.setDemographics([tree])         ; assert has[0]
   clades = getTreeClades(tree, True)
     
   for c,node in clades:
