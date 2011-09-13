@@ -65,7 +65,9 @@ statesNos = []
 nexusFile = INexus.INexus()
 for stateNo,tree in enumerate(nexusFile.read(nexusTreesFileName,
                                              slice(int(burnIn*nTrees), -1, 1))):
-  beastLogHelper.setDemographics([tree])
+  has = beastLogHelper.setDemographics([tree])
+  assert has[0]
+  
   if tops:
     treeTopologies.append(toNewick(tree, topologyOnly=True))
   
