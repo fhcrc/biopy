@@ -3,7 +3,6 @@
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 #
-# $Id:$ 
 
 """ Generic combinatorial utilities.
 """

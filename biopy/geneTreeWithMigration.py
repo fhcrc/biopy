@@ -382,7 +382,7 @@ class GeneTreeSimulator(object) :
 
 
 
-import dists
+import randomDistributions
 from treeutils import nodeHeights
 
 def setIMrates(stree, pim = 0.05, spr = 0.15, bdLambda = None, bdMu = 0,
@@ -395,7 +395,7 @@ def setIMrates(stree, pim = 0.05, spr = 0.15, bdLambda = None, bdMu = 0,
     mm = mean([stree.node(n).data.branchlength
                for n in stree.all_ids() if n != stree.root])
     
-  e1 = dists.LogNormal(mm, .25)
+  e1 = randomDistributions.LogNormal(mm, .25)
 
   nh = nodeHeights(stree)
   

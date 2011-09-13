@@ -114,8 +114,10 @@ def treeFromTimes(times, order = None) :
   Without an order, the joining is random. With C{order}, use the given ordering
   supplied as a sequence of pairs, each pair is two indices picked to join."""
   
-  assert len(times) == len(order)
+  assert order is None or len(times) == len(order)
 
+  n = len(times) + 1
+  
   tb = TreeBuilder()
   taxa = [[tb.createLeaf("ID%d" % k), 0.0] for k in range(n)]
   height = 0.0
@@ -128,7 +130,7 @@ def treeFromTimes(times, order = None) :
     taxa.pop(max(i,j))
     taxa[min(i,j)] = [nd, height]
 
-  return tb.fin(taxa[0][0])
+  return tb.finalize(taxa[0][0])
 
 def drawYuleTree(birthRate, n, order = None) :
   times = yuleTimes(birthRate, n)
@@ -212,5 +214,3 @@ def yuleHeightsCondRootLogLiklihood(h, birthRate, normed=True) :
   
   ll = -birthRate * sum(h[:-1]) + (n-1) * c1 + c0
   return ll
-
-
