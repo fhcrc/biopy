@@ -59,69 +59,15 @@ def readTraces(beastFile, traces) :
 
   return [ (cols[iTraces[k]],[v[k] for v in values]) for k in range(len(iTraces)) ]
 
-from demographic import LinearPiecewisePopulation as LPP
-
-def _tod(xt, yt) :
-  xt = [float(x) for x in xt.split(',') if len(x)]
-  yt = [float(x) for x in yt.split(',')]
-  return LPP(yt, xt)
-
-def _toDemog(dtxt) :
-  return _tod(*dtxt.split('|'))
-
-def _toDemog1(dmt, dmv) :
-  return _tod(dmt if dmt is not None else "", dmv)
+from treeutils import convertDemographics
 
 def setDemographics(trees) :
-  """ Convert demographic function stored in BEAST trees attributes to biopy
-  demographic.
-
-  Support old-style dmf attribute and new-style dmv,dmt
-  """
-  
-  dmf = "dmf"
-  dmv,dmt = "dmv", "dmt"
+  """ Convert demographics for all trees """
 
   hasAll = []
-  # Read demographics in
   for tree in trees :
-    has = True
-    for i in tree.all_ids() :
-      data = tree.node(i).data
-      if hasattr(data, "attributes") :
-        if dmf in data.attributes:
-          dtxt = data.attributes[dmf]
-          data.demographic = _toDemog(dtxt)
-        elif dmv in data.attributes:
-          data.demographic = _toDemog1(data.attributes.get(dmt), data.attributes.get(dmv))
-        else :
-          has = False
-      else :
-        has = False
-    hasAll.append(has)
+    missing = convertDemographics(tree)
+    hasAll.append(missing == 0)
 
   return hasAll
 
-def setLabels(trees) :
-  """ Convert labels attribute to tree node member (python list).
-
-  Return boolean array per tree indicating if tree has complete meta-data.
-
-  (Not strictly BEAST related, probably needs a better home)
-"""
-  hasAll = []
-  for tree in trees :
-    has = True 
-    for i in tree.get_terminals() :
-      data = tree.node(i).data
-      ok = False
-      if hasattr(data, "attributes") :
-        if "labels" in data.attributes:
-          l = data.attributes["labels"].split(' ')
-          data.labels = l
-          ok = len(l) > 0
-      if not ok :
-        has = False
-    hasAll.append(has)
-
-  return hasAll

@@ -3,8 +3,6 @@
 ## Copyright (C) 2010 Joseph Heled
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
-#
-# $Id:$ 
 
 from __future__ import division
 
@@ -12,18 +10,18 @@ from biopy import INexus, beastLogHelper
 from biopy.treeutils import getTreeClades, toNewick, countNexusTrees
 
 import optparse, sys, os.path
-parser = optparse.OptionParser(os.path.basename(sys.argv[0]) +
-                               """ [OPTIONS] beast-species-tree output-log-file
+parser = optparse.OptionParser(usage = 
+                               """ %prog [OPTIONS] beast-species-tree output-log-file
 
   Generate a tracer-readable file with population size information per clade, to
   truly assess the ESS's on population sizes. """)
 
 parser.add_option("-t", "--threshold", dest="threshold",
                   help="""Exclude all clades with posterior probability lower"""
-                  + """than threshold (percent, default 5)""", default = "5") 
+                  + """than THRESHOLD (percent, default %default)""", default = "5") 
 
 parser.add_option("-b", "--burnin", dest="burnin",
-                  help="Burn-in amount (percent, default 10)", default = "10")
+                  help="Burn-in amount (percent, default %default)", default = "10")
 
 parser.add_option("-r", "--report", dest="report",
                   help="""Output a sorted list of clade percentages to """
