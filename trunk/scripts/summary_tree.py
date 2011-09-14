@@ -16,24 +16,24 @@ from biopy.treesPosterior import minPosteriorDistanceTree
 from biopy import INexus
 
 
-parser = optparse.OptionParser(os.path.basename(sys.argv[0]) +
-                               """ [OPTIONS] posterior-trees.nexus 
+parser = optparse.OptionParser(usage =  """ %prog [OPTIONS] posterior-trees.nexus 
 
-  Generate a single summary tree for a set of posterior trees. """)
+  Generate a single summary tree for a set of posterior trees.""")
 
 parser.add_option("-b", "--burnin", dest="burnin",
-                  help="Burn-in amount (percent, default 10)", default = "10")
+                  help="Burn-in amount (percent, default %default)", default = "10")
 
-parser.add_option("-e", "--every", dest="every",
-                  help="""thin out - take one tree for every 'e'. Especially \
-useful if you run out of memory (default all, i.e. 1)""", default = "1")
+parser.add_option("-e", "--every", dest="every", metavar="E",
+                  help="""thin out - take one tree for every E. Especially
+                  useful if you run out of memory (default all,
+                  i.e. %default)""", default = "1")
 
-parser.add_option("-n", "--ntops", dest="ntops",
-                  help="""Use the top 'n' topologies from the posterior (default\
- 10)""", default = "10")
+parser.add_option("-n", "--ntops", dest="ntops", metavar="N",
+                  help="""Use the top N topologies from the posterior (default
+                  %default)""", default = "10")
 
-parser.add_option("-l", "--limit", dest="limit",
-                  help="""run at most 'l' seconds, trying out topologies in""" + \
+parser.add_option("-l", "--limit", dest="limit", metavar="S",
+                  help="""run at most S seconds, trying out topologies in""" + \
                   """ decreasing order of support and in random order for""" + \
                   """ topologies with equal support (default -1, i.e no""" + \
                   """ time limits). Note that timing code has not been""" + \

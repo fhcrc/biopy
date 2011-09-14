@@ -16,21 +16,21 @@ from biopy.genericutils import fileFromName
 from biopy import INexus, beastLogHelper, demographic
 from biopy.treeutils import toNewick, countNexusTrees, getTreeClades
 
-parser = optparse.OptionParser(os.path.basename(sys.argv[0]) +
-                               """ [OPTIONS] tree posterior-trees.nexus.
+parser = optparse.OptionParser(usage =
+                               """ %prog [OPTIONS] tree posterior-trees.nexus.
 
 	Annotate tree with posterior estimate of population sizes. Prints newick
 	tree to standard output. On UNIX it is easy to get the tree for the
 	first argument using biopy, e.g (using bash)
-          starbeast_posterior_popsizes `summary_tree.py trees.nexus` trees.nexus 
-        """)
+        starbeast_posterior_popsizes `summary_tree.py trees.nexus` trees.nexus.""")
 
 parser.add_option("-b", "--burnin", dest="burnin",
-                  help="Burn-in amount (percent, default 10)", default = "10")
+                  help="Burn-in amount (percent, default %default)", default = "10")
 
-parser.add_option("-e", "--every", dest="every",
-                  help="""thin out - take one tree for every 'e'. Especially \
-useful if you run out of memory (default all, i.e. 1)""", default = "1")
+parser.add_option("-e", "--every", dest="every", metavar="E",
+                  help="""thin out - take one tree for every E. Especially
+                  useful if you run out of memory (default all,
+                  i.e. %default)""", default = "1")  
 
 parser.add_option("-p", "--progress", dest="progress",
                   help="Print out progress messages to terminal (standard error)",
