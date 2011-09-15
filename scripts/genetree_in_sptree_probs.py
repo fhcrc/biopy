@@ -68,6 +68,6 @@ compat = None
 trees = speciesTreesGeneTrees.compatibleGeneTreesInSpeciesTree(tree, compat)
 
 for count,t in enumerate(sorted(trees, key = lambda x : x[0], reverse=True)) :
-  tlog.outTree(treeCombinatorics.toNewick(t[1]). p = t[0])
+  tlog.outTree(treeCombinatorics.toNewick(t[1]), {'W' : "%0.14f" % pt[0]})
 
 tlog.close()

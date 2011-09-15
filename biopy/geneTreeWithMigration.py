@@ -11,8 +11,7 @@ from numpy import array, cumsum, inf, mean
 
 from scipy.optimize import brentq
 
-from treeutils import nodeHeight, treeHeight
-
+from treeutils import nodeHeight, treeHeight, nodeHeights
 import demographic
 
 
@@ -32,7 +31,17 @@ def _getXsList(ds, x0, x1) :
   xs = [x for k,x in enumerate(xs) if k == len(xs)-1 or x != xs[k+1]]
   return xs
 
+def _isZero(demo, x0, dx) :
+  
+  if demo.population(x0) != 0 or demo.population(x0+dx) != 0 :
+    return False
 
+  for x in _getXsList([demo], x0, x0+dx) :
+    if demo.population(x) != 0 :
+      return False
+
+  return True
+  
 def _integrateLinRatio(t, a,b,c,d) :
   """ Integrate (a+b*x)/(c+d*x) in [0,t] """
   return ((a*d - b*c)*log((d/c)*t + 1) + b*d*t)/d**2
@@ -143,8 +152,8 @@ def _timeToNextA2BmigrationD(t, nl_a, p_b2aD, pa_d, pb_d) :
   return brentq(f, t, h) - t
 
 
-def sampleTaxaName(species, k) :
-  return species + ("_%03d" % k)
+#def sampleTaxaName(species, k) :
+#  return species + ("_%03d" % k)
 
 
 def _simplify(dls, x1) :
@@ -170,9 +179,10 @@ def _dcombine(tls, dls) :
 
 class LineageInfo(object) :
   """ Gene subtrees of one sp (extant or ancestral) """
-  def __init__(self, tree, node, trees) :
+  def __init__(self, node, nh, trees) :
     self.node = node
-    self.nodeH = nodeHeight(tree, node.id) # tree.nodeHeight(node)
+    assert nh is not None
+    self.nodeH = nh # nodeHeight(tree, node.id) # tree.nodeHeight(node)
     self.trees = trees
 
   def __str__(self) :
@@ -181,7 +191,9 @@ class LineageInfo(object) :
   
   def popAtAbsTime(self, t) :
     d = self.node.data.demographic
-    assert t >= self.nodeH and t <= self.nodeH + d.naturalLimit()
+    # assert  d.naturalLimit() is not None, str(d)
+    assert t >= self.nodeH and \
+           (d.naturalLimit() is None or t <= self.nodeH + d.naturalLimit()), (t, str(d), self.nodeH,)
     
     return d.population(t - self.nodeH)
 
@@ -198,7 +210,8 @@ class LineageInfo(object) :
 class GeneTreeSimulator(object) :
   def __init__(self, tree) :
     self.tree = tree
-    
+    self.nhts = nodeHeights(tree)
+
   def _startup(self, nodeId) :
     #def _startup(self, nodeId, tipNameFunc) :
     """ Return (linages, mp, species, demographics)
@@ -220,10 +233,11 @@ class GeneTreeSimulator(object) :
     
     node = tree.node(nodeId)
     if node.data.taxon :
-      #tips = [tipNameFunc(node.data.taxon, k) for k in
-      #range(node.data.nSamples)]
       tips = list(node.data.labels)
-      lins = [LineageInfo(tree, node, [list(x) for x in zip(tips, [0.0,]*len(tips))])]
+      #lins = [LineageInfo(tree, node, [list(x) for x in zip(tips,
+      #[0.0,]*len(tips))])]
+      lins = [LineageInfo(node, self.nhts[nodeId],
+                          [list(x) for x in zip(tips, [0.0,]*len(tips))])]
       sps = [node.data.taxon]
       dms = node.data.demographic
       mp = []
@@ -231,7 +245,10 @@ class GeneTreeSimulator(object) :
       s1,s2 = [self._startup(child) for child in node.succ]
       lins = s1[0] + s2[0]
       sps = s1[2] + s2[2]
-      nh = nodeHeight(tree, node.id) # tree.nodeHeight(node)
+      nh = self.nhts[node.id]
+      #from treeutils import toNewick
+      #assert nh == nodeHeight(tree, node.id), (nh, node.id, nodeHeight(tree,
+    # node.id), toNewick(tree),  nodeHeights(tree), [(x,nodeHeight(tree,x),tree.node(x).data.branchlength) for x in tree.all_ids()])
       br = node.data.branchlength
       #print ([nh, nh+br], [[s1[1][-1][2], s2[1][-1][2]], [node.data.demographic]])
       #dms = dcombine([nh, nh+br], [[s1[1][-1][2], s2[1][-1][2]], [node.data.demographic]])
@@ -256,7 +273,8 @@ class GeneTreeSimulator(object) :
 
     #lim = min([(tree.nodeHeight(tree.node(sp.node.prev)),nk) for nk,sp in
     #enumerate(sps)])
-    lim = min([(nodeHeight(tree, sp.node.prev),nk) for nk,sp in enumerate(sps)])
+    #lim = min([(nodeHeight(tree, sp.node.prev),nk) for nk,sp in enumerate(sps)])
+    lim = min([(self.nhts[sp.node.prev],nk) for nk,sp in enumerate(sps)])
 
     while not (len(sps) == 1 and len(sps[0].trees) == 1) :
       # Generate a coal waiting time for all species. 
@@ -275,33 +293,33 @@ class GeneTreeSimulator(object) :
       itimes = []
       for nk, ((linLeft,linRight), (pLeft, pRight), (dLeft, dRight)) in enumerate(mp) :
 
-        if not (pRight.population(t) == 0 and pRight.population(t+cwt) == 0) :
+        if not _isZero(pRight, t, cwt) :
           # a left, b right
           nl_a = sum([len(sps[i].trees) for i in linLeft])
 
           wt1 = _timeToNextA2BmigrationD(t, nl_a, pRight, dLeft, dRight)
           # 0 means a (left) jumps into b (right) pool
-          itimes.append((wt1, nk, 0))
-          assert pRight.population(t + wt1) > 0
+          itimes.append((wt1, nk, 0))                     ; assert pRight.population(t + wt1) > 0
           
-        if not (pLeft.population(t) == 0 and pLeft.population(t+cwt) == 0) :
+        if not _isZero(pLeft, t, cwt) : 
           nl_b = sum([len(sps[i].trees) for i in linRight])
           
           wt2 = _timeToNextA2BmigrationD(t, nl_b, pLeft, dRight, dLeft)
           # 1 means b (right) jumps into a (left) pool
-          itimes.append((wt2, nk, 1))
-          assert pLeft.population(t + wt2) > 0
+          itimes.append((wt2, nk, 1))                     ; assert pLeft.population(t + wt2) > 0
 
       iwt,ink,idir = min(itimes) if len(itimes) else (inf,-1,-1)
 
-      if 0:
-        print "t",t
-        print atimes
-        print itimes
-        print
-        
       wt = min(iwt, cwt)
       
+      if 0:
+        print "t",t
+        print "lim",lim
+        print "atimes", atimes
+        print "itimes",itimes
+        print "wt", wt
+        print
+        
       if t + wt > lim[0]:
         # Advance to next speciation, not necessarily the one whose waiting time was exceeded 
         n1 = lim[1]
@@ -313,12 +331,18 @@ class GeneTreeSimulator(object) :
         lins = sps[n1].trees + sps[nk].trees
         np = tree.node(p)
         lmerged, ljoins = min(n1,nk), max(n1,nk)
-        sps[lmerged] = LineageInfo(tree, np, lins)
+        #sps[lmerged] = LineageInfo(tree, np, lins)
+        sps[lmerged] = LineageInfo(np, self.nhts[p], lins)        
         t = sps[n1].nodeH
         sps.pop(ljoins)
-        lim = min([(nodeHeight(tree, sp.node.prev),nk)   # (tree.nodeHeight(tree.node(sp.node.prev)),nk)
+
+        lim = min([(self.nhts[sp.node.prev],nk)   # (tree.nodeHeight(tree.node(sp.node.prev)),nk)
                    if sp.node.prev is not None else (inf,nk)
                    for nk,sp in enumerate(sps)])
+
+        #lim = min([(nodeHeight(tree, sp.node.prev),nk)   # (tree.nodeHeight(tree.node(sp.node.prev)),nk)
+        #           if sp.node.prev is not None else (inf,nk)
+        #           for nk,sp in enumerate(sps)])
 
         found = False
         for k,m in enumerate(mp) :
@@ -368,6 +392,8 @@ class GeneTreeSimulator(object) :
         i,k = random.choice(lcan)
         stree = sps[i].trees.pop(k)
 
+        # advance time to event
+        t += iwt
         pops = array([sps[i].popAtAbsTime(t) for i in linTo])
         aprobs = cumsum(pops / pops.sum())
 
@@ -376,20 +402,20 @@ class GeneTreeSimulator(object) :
         sps[linTo[ito]].trees.append(stree)
 
         nIM += 1
-        t += iwt
+
 
     return (sps[0].trees[0], nIM)
 
 
 
 import randomDistributions
-from treeutils import nodeHeights
 
-def setIMrates(stree, pim = 0.05, spr = 0.15, bdLambda = None, bdMu = 0,
+def setIMrates(stree, pim = 0.05, spr = 0.15, bdGrowth = None,
                restrictToTree = True) :
+  # growth rate = lambda - mu
   # Distribution of times from split until complete separation
-  if bdLambda is not None :
-    mm = spr*(0.5/(bdLambda-bdMu))
+  if bdGrowth is not None :
+    mm = spr*(0.5/bdGrowth)
   else :
     # Crude: take mean from tree 
     mm = mean([stree.node(n).data.branchlength

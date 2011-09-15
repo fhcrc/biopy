@@ -7,16 +7,24 @@
 from __future__ import division
 
 import optparse, sys, os.path
-parser = optparse.OptionParser(usage = """ %prog [OPTIONS] species-trees-file
+parser = optparse.OptionParser(usage = """ %prog [OPTIONS] species-tree
 
+Generate gene trees under a multispecies with migration model. 'species-tree' is
+either a nexus file or a tree in Newick format. Population sizes are specified
+with the tree. Migration rates are either specified in the tree or generated
+using a stochastic model.
 """)
 
 parser.add_option("-n", "--ntrees", dest="ngenetrees", metavar="N",
                   help="""Number of gene trees per species tree """
                   + """(default %default)""", default = "1") 
 
-parser.add_option("-e", "--redraw", dest="redraw", metavar="N",
-                  help="""Change model based parameters every N"""
+parser.add_option("-m", "--migration", dest="migration",
+                  help="""migration model """
+                  + """(default %default)""", default = "1") 
+
+parser.add_option("-e", "--redraw", dest="redraw", metavar="E",
+                  help="""Change model based parameters every E"""
                   + """ (default %default) trees.""", default = "1") 
 
 parser.add_option("-t", "--per-species", dest="ntips", metavar="N",
@@ -29,19 +37,20 @@ parser.add_option("-o", "--nexus", dest="nexfile", metavar="FILE",
 parser.add_option("-l", "--log", dest="sfile", metavar="FILE",
                   help="Log species trees in nexus format to FILE", default = None)
 
-parser.add_option("", "--total", dest="total", metavar="N",
-                  help="""Stop after processing N species trees.""",
-                  default = None) 
+#parser.add_option("", "--total", dest="total", metavar="N",
+#                  help="""Stop after processing N species trees.""",
+#                  default = None) 
+
+# options for M and S. more scenarios?
 
 options, args = parser.parse_args()
 
 nGeneTrees = int(options.ngenetrees) ; assert nGeneTrees > 0
 nTips = int(options.ntips)           ; assert nTips > 0
 
-nTotal = int(options.total) if options.total is not None else -1           
+# nTotal = int(options.total) if options.total is not None else -1           
 reDraw = int(options.redraw)
 
-tipNameTemplate = "%s_tip%d"
 
 nexusTreesFileName = args[0]
 
@@ -67,7 +76,7 @@ if not all(hasPops) :
   print >> sys.stderr, "Error: Missing demographic(s)"
   sys.exit(1)
 
-# hasLabels = setLabels(trees)
+tipNameTemplate = "%s_tip%d"
 
 for tree in trees:
   terms = tree.get_terminals()
@@ -93,7 +102,8 @@ for tree in trees:
       if not hasPimr:
         setIMrates(tree) 
       s = GeneTreeSimulator(tree)
-    tlog.outTree(s.simulateGeneTree())
+    gt,nim = s.simulateGeneTree()
+    tlog.outTree(gt, {'N' : str(nim)})
     if slog is not None :
       # prepare demographic attributes
       revertDemographics(tree)
@@ -109,9 +119,9 @@ for tree in trees:
                    
     counter = (counter + 1) % reDraw
 
-  nTotal -= 1
-  if nTotal == 0 :
-    break
+  #nTotal -= 1
+  #if nTotal == 0 :
+  #  break
 
 tlog.close()
 

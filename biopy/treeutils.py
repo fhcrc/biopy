@@ -90,18 +90,16 @@ class TreeLogger(object) :
       print >> outFile, "#NEXUS"
       print >> outFile, "begin trees;"
       
-  def outTree(self, tree, p = None) :
+  def outTree(self, tree, treeAttributes = None) :
+    c = ""
+    if treeAttributes is not None :
+      v = ",".join(["%s %s" % (k,v) for k,v in treeAttributes.items()])
+      c = "[&" + v + "] "
     if self.outName :
-      c = ""
-      if p is not None :
-        c = "[&W %0.14f] " % p
       print >> self.outFile, "tree tree_%d = %s%s ;" % (self.count,c,tree)
       self.count += 1
     else :
-      if p is not None :
-        print "%0.14f %s" % (p,tree)
-      else:
-        print tree
+      print "%s%s" % (c,tree)
       
   def close(self) :
     if self.outName :
@@ -274,10 +272,10 @@ def nodeHeight(tree, nid) :
   """ Height of node. """
   
   node = tree.node(nid)
-  if node.data.taxon :
+  if not node.succ :
     h = 0
   else :
-    h = max([node.data.branchlength + nodeHeight(tree, c)
+    h = max([tree.node(c).data.branchlength + nodeHeight(tree, c)
              for c in node.succ])
     
   return h
