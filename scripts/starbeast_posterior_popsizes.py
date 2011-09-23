@@ -8,7 +8,7 @@ from __future__ import division
 
 import optparse, sys, os.path
 
-from numpy import mean
+from numpy import mean, median
 from scipy.optimize import fmin_powell
 
 from biopy.genericutils import fileFromName
@@ -31,6 +31,11 @@ parser.add_option("-e", "--every", dest="every", metavar="E",
                   help="""thin out - take one tree for every E. Especially
                   useful if you run out of memory (default all,
                   i.e. %default)""", default = "1")  
+
+## parser.add_option("-o", "--optimizeTaxa", dest="optTaxa",
+##                   help="Optimize population size at time 0 - default is to fix
+##                   it at mean posterior value.",
+##                   action="store_true", default = False)
 
 parser.add_option("-p", "--progress", dest="progress",
                   help="Print out progress messages to terminal (standard error)",
@@ -56,6 +61,10 @@ cladesDict = dict()
   
 for c,n in targetClades:
   cladesDict[frozenset(c)] = []
+
+noTaxaOpt = True ; # not options.optTaxa
+if noTaxaOpt :
+  taxaDict = dict([(tx,[]) for tx in target.get_taxa()])
 
 try :
   nexFile = fileFromName(nexusTreesFileName)
@@ -94,7 +103,9 @@ for tree in nexusReader.read(nexFile, slice(int(burnIn*nTrees), -1, every)):
           rBranches.append(l)
         ipop = node.data.demographic.integrate(l)/l
       e.append(ipop)
-
+      if noTaxaOpt and len(cladeSet) == 1 :
+        taxaDict[iter(cladeSet).next()].append( node.data.demographic.population(0))
+        
 constDemos = all([tree.node(x).data.demographic.naturalLimit() is None
                   for x in tree.all_ids()])
 
@@ -122,10 +133,14 @@ else :
   popIndices = []
   for ni in target.all_ids() :
     n = target.node(ni)
+    pp = None
     if n.data.taxon :
       s = [ms[ni],None]
+      if noTaxaOpt :
+        pp = median(taxaDict[n.data.taxon])
     else :
       s = [me[x] for x in n.succ]
+      
     b =  n.data.branchlength if ni != target.root else mean(rBranches)
 
     vals = []
@@ -138,19 +153,26 @@ else :
       v = (len(vals), sum(vals), sum([x**2 for x in vals]))
     else :
       v = (0,0,0)
-    popIndices.append((s, me[ni], b, v, n))
+    popIndices.append((s, me[ni], b, v, n, pp))
 
   def err(p, pasn) :
     pops = [abs(x) for x in p] 
     err = 0.0
-    for (s1,s2),e,branch,(n,mn,smn),nd in pasn :
+    for (s1,s2),e,branch,(n,mn,smn),nd,pp in pasn :
       ps,pe = pops[s1] + (pops[s2] if s2 is not None else 0), pops[e]
+      if pp is not None :
+        ps = pp
       d = demographic.LinearPiecewisePopulation([ps,pe], [branch])
       ipop = d.integrate(branch)/branch
       xerr2 = n*ipop**2 - 2*ipop*mn + smn
       err += xerr2 * branch
     return err
 
+  if 0 : # debug
+    target.display()
+    print [((s1,s2), e, branch, mn/n, (smn/n - (mn/n)**2)**.5,pp)
+           for (s1,s2),e,branch,(n,mn,smn),nd,pp in popIndices]
+    
   nTaxa = len(tax)
   nPopParams = 3*nTaxa - 1 # or 3n-1 or n
   pops = [1]*nPopParams
@@ -158,11 +180,15 @@ else :
   oo = fmin_powell(lambda x : err(x, popIndices), pops, disp=0, full_output=1)
   pops = [abs(x) for x in oo[0]]
 
-  for (s1,s2),e,branch,(n,mn,smn),nd in popIndices :
+  for (s1,s2),e,branch,(n,mn,smn),nd,pp in popIndices :
     ps,pe = pops[s1] + (pops[s2] if s2 is not None else 0), pops[e]
-    #d = demographic.LinearPiecewisePopulation([ps,pe], [branch])
-    #ipop = d.integrate(branch)/branch
-    #print e, ipop, mn/n
+    if pp is not None :
+      ps = pp
+    d = demographic.LinearPiecewisePopulation([ps,pe], [branch])
+    ipop = d.integrate(branch)/branch
+    if 0 :
+      print (s1,s2),e, ipop, mn/n, (ps - d.population(0), ps, d.population(0))
+      
     nd.data.attributes = {'dmv' : ('{%g,%g}' % (ps,pe)), 'dmt' : str(branch)}
 
 if progress:
