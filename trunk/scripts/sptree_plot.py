@@ -15,9 +15,7 @@ from biopy.genericutils import fileFromName
 from biopy import INexus, beastLogHelper, treePlotting
 from biopy.treeutils import getTreeClades, countNexusTrees, treeHeight
 
-parser = optparse.OptionParser(os.path.basename(sys.argv[0]) +
-                               """ [OPTIONS] posterior-trees.nexus figfilename
-        """)
+parser = optparse.OptionParser("""%prog [OPTIONS] posterior-trees.nexus figfilename""")
 
 parser.add_option("-b", "--burnin", dest="burnin",
                   help="Burn-in amount (percent, default 10)", default = "10")
@@ -36,7 +34,7 @@ topology, or the one from the mean-tree when given""",
                   action="store_true", default = False)
 
 parser.add_option("-c", "--color", dest="color",
-                  help=""" """,
+                  help="""Color based on topology.""",
                   action="store_true", default = False)
 
 parser.add_option("", "--yclip", dest="yclip",
@@ -147,7 +145,8 @@ fig = pylab.figure()
 
 pheights = []
 heights = []
-alpha = min(alphaFactor/len(trees), .3)
+# matplotlib has only 8 bit support for alpha
+alpha = min(max(alphaFactor/len(trees), 1/500.), .3)
 
 if colorTops :
   import colorsys
@@ -209,16 +208,34 @@ if len(mainTree) :
                               positioning = positioning, fill=False, color=col)
     hmin = max(h, hmin)
 
+labels = []
 for ni in tree.get_terminals():
   node = tree.node(ni)
-  t = pylab.text(xs[node.data.taxon], -0.1, node.data.taxon,
+  t = pylab.text(xs[node.data.taxon], 0, node.data.taxon,
                  fontsize = float(options.fontsize), va='top', ha='center')
-
+  labels.append(t)
+  
 if options.ychop is not None:
   ymax = chop
 else :
   ymax = hmin if yclip else pylab.ylim()[1]
 
+
+if 0 :
+  pylab.draw()
+
+  m = 0
+  for label in labels:
+    bbox = label.get_window_extent(dpi=300)
+    # the figure transform goes from relative coords->pixels and we
+    # want the inverse of that
+    bboxi = bbox.inverse_transformed(fig.transFigure)
+    (x0,y0),(x1,y1) = bboxi.get_points()
+    m = max(m , y1 - y0)
+    # print bbox, bboxi, m , y1-y0, (x0,y0),(x1,y1)
+  
+# A total hack for an annoying bug (text ends up outside the frame)
+# - I wish I knew how to get text height. above does not work 
 pylab.ylim((-0.5*ymax/10, ymax))
 
 if options.interactive:
