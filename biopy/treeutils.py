@@ -33,8 +33,8 @@ class TreeBuilder(object) :
    - Call tb.finalize(root-node) to get the tree
   """
   
-  def __init__(self) :
-    self.t = Trees.Tree()
+  def __init__(self, weight=1.0, rooted = True, name='') :
+    self.t = Trees.Tree(weight=weight, rooted = rooted, name=name)
 
   def createLeaf(self, name) :
     nd = Trees.NodeData()
@@ -64,9 +64,12 @@ class TreeBuilder(object) :
 
   def finalize(self, n) :
     t = self.t
-    t.node(t.root).set_succ(n.succ)
+    rr = t.node(t.root)
+    rr.set_succ(n.succ)
     for p in n.succ :
       t.node(p).set_prev(t.root)
+    if hasattr(n.data,"attributes") :
+      rr.data.attributes = n.data.attributes
     t.kill(n.id)
     return t
 

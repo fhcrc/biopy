@@ -139,7 +139,7 @@ class Tree(Nodes.Chain):
                 self.add(sn,parent_id)
                 self._add_subtree(sn.id,st[0])
             else: # it's a leaf
-                nd.taxon=st[0]
+                nd.taxon=st[0].strip()
                 leaf=Nodes.Node(nd)
                 self.add(leaf,parent_id)
     

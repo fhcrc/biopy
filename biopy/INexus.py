@@ -481,6 +481,8 @@ class Block:
         self.title=title
         self.commandlines=[]
 
+from parseNewick import parseNewick
+
 class INexus(object):
 
     __slots__=['original_taxon_order','__dict__']
@@ -932,8 +934,9 @@ class INexus(object):
             elif special=='W':
                 weight=float(value)
 
-
-        tree=Tree(name=name,weight=weight,rooted=rooted,tree=opts.rest().strip())
+        # tree=Tree(name=name,weight=weight,rooted=rooted,tree=opts.rest().strip())
+        # paster "C" parsing: maybe still buggy
+        tree = parseNewick(opts.rest().strip(), weight=weight, rooted=rooted, name=name)
         # if there's an active translation table, translate
         if self.translate:
             for n in tree.get_terminals():

@@ -45,10 +45,10 @@ parser.add_option("-c", "--continuous", dest="continuous", metavar="DIST",
                   help=\
 """Population size functions are linear over branch and continuous at divergence
 points (population splits into two parts). The argument specifies a distribution
-for the rate of change in population.
-The population at the start of the branch is P_0 2^{-r b}, where P_0 is the
-population at the end of the branch, r is the rate and b is the branch length,
-as a fraction of total tree height.""",
+for the rate of change in population.  The population at the start of the branch
+(i.e at divergence) is P_0 2^{-r b}, where P_0 is the population at the end of
+the branch, r is the rate and b is the branch length, as a fraction of total
+tree height.""",
                   default = None)
 
 parser.add_option("-o", "--nexus", dest="nexfile", metavar="FILE",
