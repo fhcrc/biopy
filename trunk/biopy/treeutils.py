@@ -49,17 +49,17 @@ class TreeBuilder(object) :
     self.t.add(node, None)
     return node
   
-  def mergeNodes(self, n1, h1, n2, h2) :
+  def mergeNodes(self, nodes) :
+    """ nodes: a sequence of [node,height] """
     nd = Trees.NodeData()
     node = Nodes.Node(nd)
     self.t.add(node, None)
 
-    n1.set_prev(node.id)
-    n1.data.branchlength = h1
-    n2.set_prev(node.id)
-    n2.data.branchlength = h2
+    for n1,h1 in nodes:
+      n1.set_prev(node.id)
+      n1.data.branchlength = h1
 
-    node.add_succ([n1.id, n2.id])
+    node.add_succ([x.id for x,h in nodes])
     return node
 
   def finalize(self, n) :
@@ -171,7 +171,7 @@ def toNewick(tree, nodeId = None, topologyOnly = False, attributes = None) :
   else :
     reps = [toNewick(tree, n, topologyOnly, attributes) for n in node.succ]
     reps.sort()
-    rep = "(" + reps[0] + "," + reps[1] + ")"
+    rep = "(" + ",".join(reps) + ")"
 
   if attributes is not None :
     attrs = getattr(data, attributes, None)
@@ -182,7 +182,7 @@ def toNewick(tree, nodeId = None, topologyOnly = False, attributes = None) :
       s = s[:-1] + ']'
       rep += s
     
-  if not topologyOnly and nodeId != tree.root :
+  if not topologyOnly and nodeId != tree.root and data.branchlength is not None:
     rep = rep + (":%r" % data.branchlength)
   return rep
 

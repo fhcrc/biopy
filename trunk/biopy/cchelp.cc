@@ -423,10 +423,12 @@ readSubTree(const char* txt, PyObject* nodes)
     }
   } else {
     // a terminal
-    int n1 = 0;
-    while( ! isspace(txt[n1]) && txt[n1] != ':' && txt[n1] != '[' ) {
-      n1 += 1;
+    const char* s = txt;
+    while( ! isspace(*s) && *s != ':' && *s != '[' && *s != ','
+	   && *s != '(' && *s != ')' && *s != ']' ) {
+      ++s;
     }
+    int const n1 = s - txt;
 
     nodeData = PyList_New(4);
     PyList_SET_ITEM(nodeData, 0, PyString_FromStringAndSize(txt, n1));
