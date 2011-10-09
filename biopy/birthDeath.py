@@ -126,7 +126,7 @@ def treeFromTimes(times, order = None) :
           random.sample(range(len(taxa)), 2)
     l1,l2 = taxa[i],taxa[j]
     height += t
-    nd = tb.mergeNodes(l1[0], height - l1[1], l2[0], height - l2[1])
+    nd = tb.mergeNodes([[x[0], height - x[1]] for x in (l1,l2)])
     taxa.pop(max(i,j))
     taxa[min(i,j)] = [nd, height]
 

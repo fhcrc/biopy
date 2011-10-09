@@ -91,7 +91,7 @@ def _readSubTree(txt, nodesList) :
   else :
     # a terminal
     n1 = 0
-    while not txt[n1].isspace() and txt[n1] != ':' and txt[n1] != '[':
+    while not txt[n1].isspace() and txt[n1] not in ":[,()]":
       n1 += 1
     nodesList.append([txt[:n1], None, None, None])
     n += n1
@@ -133,8 +133,7 @@ def _build(nodes, weight=1.0, rooted=True, name='') :
     if x[0] is not None :
       t[k] = tb.createLeaf(x[0])
     else :
-      l,r = x[2]
-      t[k] = tb.mergeNodes(t[l], nodes[l][1], t[r], nodes[r][1])
+      t[k] = tb.mergeNodes([ [t[l], nodes[l][1]] for l in x[2]])
     if x[3] is not None:
       t[k].data.attributes = dict(x[3])
   return tb.finalize(t[-1])

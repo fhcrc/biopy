@@ -186,7 +186,7 @@ def _simulateGeneTreeForNode(tree, nodeId, simTree, nodeHeights) :
     
     # if verbose> 2 : print "th",th
 
-    subtree = simTree.mergeNodes(l1[0], th - l1[1], l2[0], th - l2[1])
+    subtree = simTree.mergeNodes([[x[0], th - x[1]] for x in (l1,l2)])
   
     strees.pop(max(i,j))
     strees[min(i,j)] = [subtree, th]
