@@ -7,6 +7,7 @@
 #include "numpy/arrayobject.h"
 #include <string>
 #include <vector>
+using std::vector;
 
 static inline bool
 is1Darray(PyArrayObject* a) {
@@ -320,7 +321,7 @@ findIndex(const char* s, char const ch, const char* stopAt)
 }
 
 static int
-parseAttributes(const char* s, PyObject* vals)
+parseAttributes(const char* s, vector<PyObject*>& vals)
 {
   int eat = 0;
   while( *s != ']' ) {
@@ -361,7 +362,7 @@ parseAttributes(const char* s, PyObject* vals)
     PyObject* o = PyTuple_New(2);
     PyTuple_SET_ITEM(o, 0, PyString_FromString(name.c_str()));
     PyTuple_SET_ITEM(o, 1, PyString_FromString(v.c_str()));
-    PyList_Append(vals, o);
+    vals.push_back(o);
   }
   return eat;
 }
@@ -378,7 +379,7 @@ skipSpaces(const char* txt)
 }
 
 static int
-readSubTree(const char* txt, PyObject* nodes)
+readSubTree(const char* txt, vector<PyObject*>& nodes)
 {
   int n = skipSpaces(txt);
   txt += n;
@@ -387,12 +388,12 @@ readSubTree(const char* txt, PyObject* nodes)
   PyObject* nodeData;
   
   if( *txt == '(' ) {
-    std::vector<int> subs;
+    vector<int> subs;
     while( true ) {
       int n1 = readSubTree(txt+1, nodes);
       n += 1+n1;
       txt += 1+n1;
-      subs.push_back(PyList_Size(nodes)-1);
+      subs.push_back(nodes.size()-1);
 
       n1 = skipSpaces(txt);
       n += n1;
@@ -413,8 +414,6 @@ readSubTree(const char* txt, PyObject* nodes)
 	Py_INCREF(Py_None);
 	PyList_SET_ITEM(nodeData, 0, Py_None);
 
-	PyList_Append(nodes, nodeData);
-
 	n += 1;
         txt += 1;
         break;
@@ -432,7 +431,6 @@ readSubTree(const char* txt, PyObject* nodes)
 
     nodeData = PyList_New(4);
     PyList_SET_ITEM(nodeData, 0, PyString_FromStringAndSize(txt, n1));
-    PyList_Append(nodes, nodeData);
 
     Py_INCREF(Py_None);
     PyList_SET_ITEM(nodeData, 2, Py_None);
@@ -448,8 +446,8 @@ readSubTree(const char* txt, PyObject* nodes)
   }
   
   if( *txt && *txt == '[' && txt[1] == '&' ) {
-    vals = PyList_New(0);
-    int n1 = parseAttributes(txt+2, vals);
+    vector<PyObject*> vs;
+    int n1 = parseAttributes(txt+2, vs);
     if( n1 < 0 ) {
       return -1;
     }
@@ -457,6 +455,13 @@ readSubTree(const char* txt, PyObject* nodes)
     n1 += skipSpaces(txt+n1);
     n += n1;
     txt += n1;
+
+    if( vs.size() > 0 ) {
+      vals = PyTuple_New(vs.size());
+      for(int k = 0; k < vs.size(); ++k) {
+	PyTuple_SET_ITEM(vals, k, vs[k]);
+      }
+    }
   }
   
   if( ! vals ) {
@@ -485,7 +490,10 @@ readSubTree(const char* txt, PyObject* nodes)
     Py_INCREF(Py_None);
     branch = Py_None;
   }
+  
   PyList_SET_ITEM(nodeData, 1, branch);
+  nodes.push_back(nodeData);
+
   return n;
 }
 
@@ -499,25 +507,67 @@ parseSubTree(PyObject*, PyObject* args)
     PyErr_SetString(PyExc_ValueError, "wrong args.") ;
     return 0;
   }
-  PyObject* nodes = PyList_New(0);
+  vector<PyObject*> nodes;
   
   // if( ! PyList_Check(nodes) && PyList_Size(nodes) == 0 ) {
   //   PyErr_SetString(PyExc_ValueError, "wrong args: nodes should be an empty list") ;
   if( readSubTree(treeTxt, nodes) < 0 ) {
     // clean !!!
-    for(int k = 0; k < PyList_Size(nodes); ++k) {
-      PyObject* o = PyList_GET_ITEM(nodes, k);
-      Py_DECREF(o);
+    for(int k = 0; k < nodes.size(); ++k) {
+      Py_DECREF(nodes[k]);
     }
-    Py_DECREF(nodes);
+    //Py_DECREF(nodes);
     
     PyErr_SetString(PyExc_ValueError, "failed parsing.") ;
     return 0;
   }
+  
+  PyObject* n = PyTuple_New(nodes.size());
+  for(int k = 0; k < nodes.size(); ++k) {
+    PyTuple_SET_ITEM(n, k, nodes[k]);
+  }
+  
+  return n;
+}
+
+static PyObject*
+test(PyObject*, PyObject* args)
+{
+  const char* s;
+  //PyObject* nodes;
+
+  if( !PyArg_ParseTuple(args, "s", &s) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    return 0;
+  }
+
+  // causes problems
+  PyObject* nodes = PyList_New(0);
+  PyList_Append(nodes, PyString_FromString(s));
+  PyList_Append(nodes, PyString_FromString(s));
+
+  //for k in range(10000) :   a = cchelp.test('a'*1000000)
+// ---------------------------------------------------------------------------
+// SystemError                               Traceback (most recent call last)
+
+// /home/joseph/research/Projects/migration/data/case21s/04nl_b0p4_d0/m0_s0/<ipython console> in <module>()
+
+// SystemError: ../Objects/listobject.c:290: bad argument to internal function
+
+  // //  PyList_Append(nodes, PyString_FromStringAndSize(s, strlen(s)));
+  // //  PyList_Append(nodes, PyString_FromStringAndSize(s, strlen(s)));
+
+
+  // PyObject* nodes = PyTuple_New(2);
+  // PyTuple_SET_ITEM(nodes, 0, PyString_FromString(s));
+  // PyTuple_SET_ITEM(nodes, 1, PyString_FromString(s));
+
+  // PyObject* nodes = PyList_New(2);
+  // PyList_SET_ITEM(nodes, 0, PyString_FromString(s));
+  // PyList_SET_ITEM(nodes, 1, PyString_FromString(s));
 
   return nodes;
 }
-
 
 static PyMethodDef cchelpMethods[] = {
   {"nonEmptyIntersection",  nonEmptyIntersection, METH_VARARGS,
@@ -539,6 +589,9 @@ static PyMethodDef cchelpMethods[] = {
   {"parsetree",  parseSubTree, METH_VARARGS,
    ""},
 
+  {"test",  test, METH_VARARGS,
+   ""},
+  
   {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
