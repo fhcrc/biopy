@@ -4,8 +4,10 @@
 // See the files gpl.txt and lgpl.txt for copying conditions.
 
 #include <Python.h>
-#include "numpy/arrayobject.h"
+#include <numpy/arrayobject.h>
+
 #include <string>
+using std::string;
 #include <vector>
 using std::vector;
 
@@ -46,7 +48,6 @@ nonEmptyIntersection(PyObject*, PyObject* args)
   //std::cout << aLen << std::endl;
   //  << " " <<  alb[k] << " " <<  aSetb[k] << std::endl;
   for(int k = 0; k < aLen; ++k) {
-
     if( alb[k] && aSetb[k] ) {
       inone = true;
       break;
@@ -90,12 +91,13 @@ demoLPpopulation(PyObject*, PyObject* args)
     return 0;
   }
 
-  unsigned int const ll =  PySequence_Size(xvals);
+  unsigned int const ll = PySequence_Size(xvals);
 
   unsigned int k = 0;
   while ( k < ll && darrayElement(xvals, k) < t ) {
     k += 1;
   }
+  
   double pop;
   if( k == ll ) {
     pop = darrayElement(vals, k);
@@ -178,7 +180,6 @@ seqEvolve(PyObject*, PyObject* args)
 {
   PyObject* pmat;
   PyObject* seq;
-  //  double xHigh;
 
   if( !PyArg_ParseTuple(args, "OO", &pmat, &seq) ) {
     PyErr_SetString(PyExc_ValueError, "wrong args.") ;
@@ -189,17 +190,18 @@ seqEvolve(PyObject*, PyObject* args)
      PyErr_SetString(PyExc_ValueError, "wrong args: not a 2d matrix") ;
      return 0;
   }
-  
+
   if( ! PyList_Check(seq) ) {
     PyErr_SetString(PyExc_ValueError, "wrong args: not a list");
     return 0;
   }
-
+  
   PyObject* nn[4];
   for(int k = 0; k < 4; ++k) {
     nn[k] = PyLong_FromLong(k);
   }
-  
+	
+  // speed, not beuty 
   const double* v = reinterpret_cast<const double*>(PyArray_GETPTR1(pmat, 0));
   double const p0[4] = {v[0],v[0]+v[1],v[0]+v[1]+v[2],1.0};
   double const p1[4] = {v[4],v[4]+v[5],v[4]+v[5]+v[6],1.0};
@@ -224,6 +226,11 @@ seqEvolve(PyObject*, PyObject* args)
     Py_DECREF(o);
     Py_INCREF(nn[v]);
     s[k] = nn[v];
+  }
+
+  for(int k = 0; k < 4; ++k) {
+    // remove creation reference count 
+    Py_DECREF(nn[k]);
   }
 
   Py_INCREF(seq);
@@ -256,25 +263,25 @@ seqsMinDiff(PyObject*, PyObject* args)
   unsigned int gMin = PyString_Size(PySequence_Fast_GET_ITEM(seqs1,0))+1;
   
   for(int i1 = 0; i1 < n1; ++i1) {
-     PyObject* const s1 = PySequence_Fast_GET_ITEM(seqs1, i1);
-     const char* const s1c = PyString_AS_STRING(s1);
+    PyObject* const s1 = PySequence_Fast_GET_ITEM(seqs1, i1);
+    const char* const s1c = PyString_AS_STRING(s1);
 
-     for(int i2 = 0; i2 < n2; ++i2) {
-       PyObject* const s2 = PySequence_Fast_GET_ITEM(seqs2, i2);
-       const char* s2c = PyString_AS_STRING(s2);
-       unsigned int count = 0;
+    for(int i2 = 0; i2 < n2; ++i2) {
+      PyObject* const s2 = PySequence_Fast_GET_ITEM(seqs2, i2);
+      const char* s2c = PyString_AS_STRING(s2);
+      unsigned int count = 0;
 
-       // cout << s2c << " vs. " << s1c << endl;
+      // cout << s2c << " vs. " << s1c << endl;
        
-       for(const char* s = s1c;  *s ; ++s, ++s2c ) {
-	 count += (*s != *s2c);
-       }
+      for(const char* s = s1c;  *s ; ++s, ++s2c ) {
+	count += (*s != *s2c);
+      }
        
-       //cout << count << endl;
-       if( count < gMin ) {
-	 gMin = count;
-       }
-     }
+      //cout << count << endl;
+      if( count < gMin ) {
+	gMin = count;
+      }
+    }
   }
 
   //cout << gMin << endl;
@@ -334,19 +341,19 @@ parseAttributes(const char* s, vector<PyObject*>& vals)
     if( s[nameEnd] != '=' ) {
       return -1;
     }
-    std::string name(s, nameEnd);
+    string name(s, nameEnd);
     s += nameEnd+1;
     eat += nameEnd+1;
 
-    std::string v;
+    string v;
     if( *s == '"' ) {
       int const e = _getStuff(s+1, '"');
-      v = std::string(s+1, e+1);
+      v = string(s+1, e+1);
       s += e+2;
       eat += e+2;
     } else if( *s == '{' ) {
       int const e = _getStuff(s+1, '}');
-      v = std::string(s+1, e+1);
+      v = string(s+1, e+1);
       s += e+2;
       eat += e+2;
     } else {
@@ -354,7 +361,7 @@ parseAttributes(const char* s, vector<PyObject*>& vals)
       if( e == -1 ) {
 	return -1;
       }
-      v = std::string(s, e);
+      v = string(s, e);
       s += e;
       eat += e;
     }
@@ -381,22 +388,22 @@ skipSpaces(const char* txt)
 static int
 readSubTree(const char* txt, vector<PyObject*>& nodes)
 {
-  int n = skipSpaces(txt);
-  txt += n;
+  int eat = skipSpaces(txt);
+  txt += eat;
   
   PyObject* vals = NULL;
-  PyObject* nodeData;
+  PyObject* const nodeData = PyList_New(4);
   
   if( *txt == '(' ) {
     vector<int> subs;
     while( true ) {
       int n1 = readSubTree(txt+1, nodes);
-      n += 1+n1;
+      eat += 1+n1;
       txt += 1+n1;
       subs.push_back(nodes.size()-1);
 
       n1 = skipSpaces(txt);
-      n += n1;
+      eat += n1;
       txt += n1;
       if( *txt == ',' ) {
         continue;
@@ -408,13 +415,12 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
 	  PyList_SET_ITEM(psubs, k, PyLong_FromLong(subs[k]));
 	}
 	
-	nodeData = PyList_New(4);
 	PyList_SET_ITEM(nodeData, 2, psubs);
 
 	Py_INCREF(Py_None);
 	PyList_SET_ITEM(nodeData, 0, Py_None);
 
-	n += 1;
+	eat += 1;
         txt += 1;
         break;
       }
@@ -429,20 +435,19 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
     }
     int const n1 = s - txt;
 
-    nodeData = PyList_New(4);
     PyList_SET_ITEM(nodeData, 0, PyString_FromStringAndSize(txt, n1));
 
     Py_INCREF(Py_None);
     PyList_SET_ITEM(nodeData, 2, Py_None);
 
-    n += n1;
+    eat += n1;
     txt += n1;
   }
 
   {
-    int n1 = skipSpaces(txt);
+    int const n1 = skipSpaces(txt);
     txt += n1;
-    n += n1;
+    eat += n1;
   }
   
   if( *txt && *txt == '[' && txt[1] == '&' ) {
@@ -453,12 +458,12 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
     }
     n1 += 3;
     n1 += skipSpaces(txt+n1);
-    n += n1;
+    eat += n1;
     txt += n1;
 
     if( vs.size() > 0 ) {
       vals = PyTuple_New(vs.size());
-      for(int k = 0; k < vs.size(); ++k) {
+      for(unsigned int k = 0; k < vs.size(); ++k) {
 	PyTuple_SET_ITEM(vals, k, vs[k]);
       }
     }
@@ -473,7 +478,7 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
   PyObject* branch = NULL;
   if( *txt && *txt == ':' ) {
     int n1 = skipSpaces(txt+1);
-    n += n1 + 1;
+    eat += n1 + 1;
     txt += 1+n1;
     
     char* endp;
@@ -485,7 +490,7 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
     
     branch = PyFloat_FromDouble(b);
     txt += n1;
-    n += n1;
+    eat += n1;
   } else {
     Py_INCREF(Py_None);
     branch = Py_None;
@@ -494,14 +499,13 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
   PyList_SET_ITEM(nodeData, 1, branch);
   nodes.push_back(nodeData);
 
-  return n;
+  return eat;
 }
 
 static PyObject*
 parseSubTree(PyObject*, PyObject* args)
 {
   const char* treeTxt;
-  //PyObject* nodes;
 
   if( !PyArg_ParseTuple(args, "s", &treeTxt) ) {
     PyErr_SetString(PyExc_ValueError, "wrong args.") ;
@@ -509,64 +513,25 @@ parseSubTree(PyObject*, PyObject* args)
   }
   vector<PyObject*> nodes;
   
-  // if( ! PyList_Check(nodes) && PyList_Size(nodes) == 0 ) {
-  //   PyErr_SetString(PyExc_ValueError, "wrong args: nodes should be an empty list") ;
   if( readSubTree(treeTxt, nodes) < 0 ) {
     // clean !!!
-    for(int k = 0; k < nodes.size(); ++k) {
+    for(unsigned int k = 0; k < nodes.size(); ++k) {
+      for(int i = 0; i < 4; ++i) {
+	Py_DECREF(PySequence_GetItem(nodes[k], i));
+      }
       Py_DECREF(nodes[k]);
     }
-    //Py_DECREF(nodes);
     
     PyErr_SetString(PyExc_ValueError, "failed parsing.") ;
     return 0;
   }
   
   PyObject* n = PyTuple_New(nodes.size());
-  for(int k = 0; k < nodes.size(); ++k) {
+  for(unsigned int k = 0; k < nodes.size(); ++k) {
     PyTuple_SET_ITEM(n, k, nodes[k]);
   }
   
   return n;
-}
-
-static PyObject*
-test(PyObject*, PyObject* args)
-{
-  const char* s;
-  //PyObject* nodes;
-
-  if( !PyArg_ParseTuple(args, "s", &s) ) {
-    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
-    return 0;
-  }
-
-  // causes problems
-  PyObject* nodes = PyList_New(0);
-  PyList_Append(nodes, PyString_FromString(s));
-  PyList_Append(nodes, PyString_FromString(s));
-
-  //for k in range(10000) :   a = cchelp.test('a'*1000000)
-// ---------------------------------------------------------------------------
-// SystemError                               Traceback (most recent call last)
-
-// /home/joseph/research/Projects/migration/data/case21s/04nl_b0p4_d0/m0_s0/<ipython console> in <module>()
-
-// SystemError: ../Objects/listobject.c:290: bad argument to internal function
-
-  // //  PyList_Append(nodes, PyString_FromStringAndSize(s, strlen(s)));
-  // //  PyList_Append(nodes, PyString_FromStringAndSize(s, strlen(s)));
-
-
-  // PyObject* nodes = PyTuple_New(2);
-  // PyTuple_SET_ITEM(nodes, 0, PyString_FromString(s));
-  // PyTuple_SET_ITEM(nodes, 1, PyString_FromString(s));
-
-  // PyObject* nodes = PyList_New(2);
-  // PyList_SET_ITEM(nodes, 0, PyString_FromString(s));
-  // PyList_SET_ITEM(nodes, 1, PyString_FromString(s));
-
-  return nodes;
 }
 
 static PyMethodDef cchelpMethods[] = {
@@ -580,7 +545,8 @@ static PyMethodDef cchelpMethods[] = {
    ""},
 
   {"seqevolve",  seqEvolve, METH_VARARGS,
-   ""},
+   "(P-matrix, seqeunce). Evolve sequence according to P matrix."
+   " Result changes sequence in place."},
 
   {"seqsmindiff",  seqsMinDiff, METH_VARARGS,
    "Mimimum distance between all pairs of sequences from S1 x S2." 
@@ -589,9 +555,6 @@ static PyMethodDef cchelpMethods[] = {
   {"parsetree",  parseSubTree, METH_VARARGS,
    ""},
 
-  {"test",  test, METH_VARARGS,
-   ""},
-  
   {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 

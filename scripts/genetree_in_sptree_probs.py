@@ -7,8 +7,7 @@
 from __future__ import division
 
 import optparse, sys, os.path
-parser = optparse.OptionParser(os.path.basename(sys.argv[0]) +
-                               """ [OPTIONS] species-trees-file
+parser = optparse.OptionParser("""%prog [OPTIONS] species-trees-file
 
 Compute probabilities of all possible gene trees evolving according to the
 multispecies coalescent inside species tree.
@@ -68,6 +67,7 @@ compat = None
 trees = speciesTreesGeneTrees.compatibleGeneTreesInSpeciesTree(tree, compat)
 
 for count,t in enumerate(sorted(trees, key = lambda x : x[0], reverse=True)) :
-  tlog.outTree(treeCombinatorics.toNewick(t[1]), {'W' : "%0.14f" % pt[0]})
+  tlog.outTree(treeCombinatorics.toNewick(t[1]), {'R' : None,
+                                                  'W' : "%0.14f" % pt[0]})
 
 tlog.close()

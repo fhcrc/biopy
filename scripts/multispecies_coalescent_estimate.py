@@ -13,8 +13,7 @@ from biopy.sequencesStats import ASD
 from biopy.combinatorics import allPairs
 
 
-parser = optparse.OptionParser(os.path.basename(sys.argv[0]) +
-                               """ [OPTIONS] starbeast-file.xml mutation-rate[,rate2,,...]
+parser = optparse.OptionParser("""%prog [OPTIONS] starbeast-file.xml mutation-rate[,rate2,,...]
 
   Heuristically estimate the birth rate and effective population size from a
   multispecies data in a *BEAST XML file.

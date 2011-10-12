@@ -1,3 +1,8 @@
+## This file is part of biopy.
+## Copyright (C) 2010 Joseph Heled
+## Author: Joseph Heled <jheled@gmail.com>
+## See the files gpl.txt and lgpl.txt for copying conditions.
+
 from __future__ import division
 from treeutils import TreeBuilder
 

@@ -7,8 +7,7 @@
 from __future__ import division
 
 import optparse, sys, os.path
-parser = optparse.OptionParser(os.path.basename(sys.argv[0]) +
-                               """ [OPTIONS] species-trees-file
+parser = optparse.OptionParser("""%prog [OPTIONS] species-trees-file
 
   Generate gene trees compatible with species tree. The species
   trees in the NEXUS input file should contain population size
