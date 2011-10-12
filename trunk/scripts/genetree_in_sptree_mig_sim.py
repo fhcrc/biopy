@@ -103,7 +103,7 @@ for tree in trees:
         setIMrates(tree) 
       s = GeneTreeSimulator(tree)
     gt,nim = s.simulateGeneTree()
-    tlog.outTree(gt, {'N' : str(nim)})
+    tlog.outTree(gt + '[&nim ' + str(nim) + ']')
     if slog is not None :
       # prepare demographic attributes
       revertDemographics(tree)

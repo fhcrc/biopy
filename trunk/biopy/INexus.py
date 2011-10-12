@@ -919,6 +919,7 @@ class INexus(object):
             raise NexusError,'Syntax error in tree description: (%c) %s' % (cc,options[:50])
         rooted=False
         weight=1.0
+        extra = []
         while opts.peek_nonwhitespace()=='[':
             open=opts.next_nonwhitespace()
             symbol=opts.next()
@@ -933,10 +934,18 @@ class INexus(object):
                 rooted=False
             elif special=='W':
                 weight=float(value)
-
+            ## else :
+            ##     extra.append((special,value))
         # tree=Tree(name=name,weight=weight,rooted=rooted,tree=opts.rest().strip())
         # paster "C" parsing: maybe still buggy
-        tree = parseNewick(opts.rest().strip(), weight=weight, rooted=rooted, name=name)
+
+        tree = parseNewick(opts.rest().strip(), weight=weight,
+                           rooted=rooted, name=name)
+        ## if len(extra) :
+        ##     tree.attributes = dict()
+        ##     for special,value in extra:
+        ##         tree.attributes[special] = value.strip()
+        
         # if there's an active translation table, translate
         if self.translate:
             for n in tree.get_terminals():
@@ -1609,3 +1618,17 @@ class INexus(object):
             assert length==len(sequence), 'Illegal sequence manipulation in Nexus.termial_gap_to_missing in taxon %s' % taxon
             self.matrix[taxon]=Seq(sequence,self.alphabet)
 
+def exportMatrix(f, seqs) :
+  print >> f, """#NEXUS
+
+Begin data;"""
+
+  l = len(seqs[iter(seqs).next()])
+  print >> f, "\tDimensions ntax=%d nchar=%d;" % (len(seqs), l)
+  print >> f, "\tFormat datatype=dna gap=-;"
+  print >> f, "\tMatrix"
+
+  for name,s in seqs.items() :
+    print >> f, name,"\t",s
+  print >> f, "\t;"
+  print >> f, "End;"

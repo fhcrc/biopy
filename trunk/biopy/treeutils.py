@@ -93,13 +93,15 @@ class TreeLogger(object) :
       print >> outFile, "#NEXUS"
       print >> outFile, "begin trees;"
       
-  def outTree(self, tree, treeAttributes = None) :
+  def outTree(self, tree, treeAttributes = {'R' : None}, name = None) :
     c = ""
     if treeAttributes is not None :
-      v = ",".join(["%s %s" % (k,v) for k,v in treeAttributes.items()])
-      c = "[&" + v + "] "
+      c = " ".join(["[&%s %s]" % (k,v) if v else "[&%s]" % k
+                    for k,v in treeAttributes.items()]) + " "
     if self.outName :
-      print >> self.outFile, "tree tree_%d = %s%s ;" % (self.count,c,tree)
+      if not name :
+        name = "tree_%d" % self.count
+      print >> self.outFile, "tree %s = %s%s ;" % (name,c,tree)
       self.count += 1
     else :
       print "%s%s" % (c,tree)

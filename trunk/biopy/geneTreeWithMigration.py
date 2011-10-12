@@ -403,9 +403,7 @@ class GeneTreeSimulator(object) :
 
         nIM += 1
 
-
     return (sps[0].trees[0], nIM)
-
 
 
 import randomDistributions

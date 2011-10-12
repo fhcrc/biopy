@@ -85,8 +85,7 @@ def setBranches(tr, order, intervals) :
 
 import optparse, sys, os.path
 
-prog = os.path.basename(sys.argv[0])
-parser = optparse.OptionParser(prog + """ [options] tree
+parser = optparse.OptionParser("""%prog [options] tree
 
 Sample a tree uniformly from the space of all ranked trees having the same
 unranked topology as 'tree'. Both coalescent (constant size) and pure-birth
