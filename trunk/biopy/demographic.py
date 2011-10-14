@@ -21,7 +21,22 @@ __all__ = ["ConstantPopulation", "StepFunctionPopulation",
            "ExponentialGrowthPopulation", "ScaledDemographic"]
 
 class Demographic(object) :
-  
+  @staticmethod
+  def parseDemographic(spec) :
+    tp = spec[0].upper()
+    if tp == 'C' or tp.isdigit() :
+      if tp == 'C' :
+        spec = spec[2:]
+      return ConstantPopulation(float(spec))
+    
+    spec = spec[2 if spec[1] == ',' else 1:].split(',')
+    vals = [float(x) for x in spec[::2]]
+    xvals = [float(x) for x in spec[1::2]]
+    if tp == 'S' :
+      return StepFunctionPopulation(vals, xvals)
+    if tp == 'L' :
+      return LinearPiecewisePopulation(vals, xvals)
+
   def getDT(self, N) :
     """ A suitable value of deltaT to be used as time increment when simulating"""
     return 1.0/N

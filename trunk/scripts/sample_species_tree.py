@@ -12,8 +12,8 @@ parser = optparse.OptionParser(usage = """ %prog [OPTIONS] taxa
 Draw a species tree with population sizes using birth/death and simple
 strategies for population sizes.
 
-Taxa: either a number, a comma separated list of labels, or a pair template,n
-pair.""")
+Taxa: either a number, a comma separated list of labels, or a {template,n}
+pair. The last specifies 'n' taxa given by applying 0,1,...,n-1 to template.""")
 
 parser.add_option("-n", "--ntrees", dest="ntrees",
                   help="""Number of trees to generate """
