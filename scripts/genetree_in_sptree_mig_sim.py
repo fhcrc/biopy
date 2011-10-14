@@ -9,9 +9,9 @@ from __future__ import division
 import optparse, sys, os.path
 parser = optparse.OptionParser(usage = """ %prog [OPTIONS] species-tree
 
-Generate gene trees under a multispecies with migration model. 'species-tree' is
-either a nexus file or a tree in Newick format. Population sizes are specified
-with the tree. Migration rates are either specified in the tree or generated
+Generate gene trees under a multispecies with migration. 'species-tree' is
+either a nexus file or a tree in NEWICK format. Population sizes are specified
+with the tree. Migration rates can be either specified in the tree or generated
 using a stochastic model.
 """)
 
