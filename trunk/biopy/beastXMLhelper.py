@@ -29,9 +29,10 @@ def getAlName(treeElementTag, gtreeName, root) :
 def readBeastFile(path, what) :
   """ Read portions of BEAST XML file for use in scripts.
 
-  The keys in the dictionary C{what} indicate which portions to read.
-  Currently supported are 'DNA' for the alignments, 'mcmc' for some basic chain
-  information and 'species' for individuals/species/genes mappings in a *BEAST file.
+  The keys in the dictionary C{what} indicate which portions to read.  Currently
+  supported are 'DNA' for the alignments, 'mcmc' for some basic chain
+  information, 'logging' for output file names and 'species' for
+  individuals/species/genes mappings in a *BEAST file.
 
   @param path: BEAST file name
   @type path: str
@@ -99,3 +100,19 @@ def readBeastFile(path, what) :
           genes[alName] = {'ploidy' : 1, 'tree' : gtreeName}
       
       what['species'] = { 'species' : species, 'genes' : genes }
+
+  if "logging" in what :
+    mcmc = root.find('mcmc')
+
+    treeLogs = dict()
+    for lt in mcmc.findall('logTree') :
+      t = lt[0]
+      treeLogs[lt.attrib['fileName']] = [t.attrib['idref'], t.tag]
+
+    logs = dict()
+    for l in mcmc.findall('log'):
+      if 'fileName' in l.attrib:
+        d = [e.attrib.get('idref') or e.attrib.get('id') for e in l]
+        logs[l.attrib['fileName']] = d
+      
+    what['logging']  = { 'logs' : logs, 'treelogs' : treeLogs }
