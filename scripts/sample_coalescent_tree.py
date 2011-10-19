@@ -24,6 +24,9 @@ parser.add_option("-p", "--population", dest="demospec", metavar="SPEC",
                   rest come in pairs""",
                   default = "1")
 
+parser.add_option("-b", "--basename", dest="base", metavar="NAME",
+                  help= """Tree name prefix""", default = None)
+
 parser.add_option("-o", "--nexus", dest="nexfile", metavar="FILE",
                   help="Print trees in nexus format to FILE", default = None)
 
@@ -64,6 +67,7 @@ tlog = TreeLogger(options.nexfile, argv = sys.argv, version = __version__)
 
 for nt in range(nTrees) :
   t = sampleCoalescentTree(demog, taxa)
-  tlog.outTree(toNewick(t, attributes="attributes") )
+  tlog.outTree(toNewick(t, attributes="attributes"),
+               name = options.base + ("_%d" % nt) if options.base else None)
 
 tlog.close()

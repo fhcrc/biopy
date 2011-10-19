@@ -2,16 +2,15 @@
 ## Copyright (C) 2010 Joseph Heled
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
-#
-# $Id:$ 
 
 from __future__ import division
 
 import random
+from math import log
 
 from treeutils import TreeBuilder
 
-__all__ = ["getArrivalTimes", "sampleCoalescentTree"]
+__all__ = ["getArrivalTimes", "sampleCoalescentTree", "coalLogLike"]
 
 def getArrivalTimes(demog, lineageInfo) :
   """ Get coalescent arrival times. When lineageInfo is an integer (n), get
@@ -42,19 +41,16 @@ def getArrivalTimes(demog, lineageInfo) :
 def sampleCoalescentTree(demog, labels) :
   """ Build a tree under the coalescent model using given demographic."""
   
-  if isinstance(labels[0], str) :
-    n = len(labels)
-    times= [0,]*n
-    lineageInfo = len(labels)
+  if isinstance(labels, int) :
+    labels = ["tip%03d" % k for k in range(int(labels))]
   else :
-    raise ""
-    if tipNameFunc is None :
-      tot = sum([n for n,t in lineageInfo])
-      labels = ["tip%03d" % k for k in range(tot)]
-    else :
-      labels = reduce(operator.add, [tipNameFunc(l) for l in lineageInfo])
+    assert all([isinstance(s, str) for s in labels])
+
+  n = len(labels)
+  times= [0,]*n
+  lineageInfo = len(labels)
       
-    times = reduce(operator.add,  [[t,]*n for n,t in lineageInfo])
+  # times = reduce(operator.add,  [[t,]*n for n,t in lineageInfo])
 
   #assert len(labels) == len(times)
 
@@ -81,3 +77,118 @@ def sampleCoalescentTree(demog, labels) :
 
   assert len(strees) == 1
   return tb.finalize(strees[0][0])
+
+
+def coalLogLike(demog, times, condOnTree = False) :
+  """ Log-Likelihood of coalescent times with demographic function demog.
+  times is a sorted list of (time,coal), where time goes backwards from zero
+  and coal is false for tips, true for a coalescent."""
+
+  like = 0.0
+  nl = 0
+
+  lastDemoIntegral = 0
+  for time,coal in times :
+    if coal :
+      if not nl > 1:
+        raise RuntimeError("Error in time sequence")
+      
+      f = demog.integrate(time)
+      interval = f - lastDemoIntegral
+      lastDemoIntegral = f
+
+      nl2 = (nl * (nl-1))/2
+      like -= nl2 * interval
+
+      pop = demog.population(time)
+      like += log((1 if condOnTree else nl2) / pop)
+
+      nl -= 1
+    else :
+      nl += 1
+
+  if nl != 1 :
+    raise RuntimeError("Error in time sequence")
+
+  return like
+
+
+def ologlike(times, demog) :
+  """ Log-Likelihood of coalescent times given demographic function demog.
+  When times is a list of length 2 with second element a list, it is assumed to
+  be serial data tip information."""
+
+  #verbose = 1
+  
+  like = 0.0
+  if len(times) == 2 and hasattr(times[1], '__iter__') :
+    times, lineagInfo = times
+    
+    nl = list(lineagInfo)
+    nLineages,t= nl.pop(0)
+    assert t == 0.0
+
+    # integral of 1/demog(t) between at [0,prevTime]
+    lastDemoIntegral = 0
+
+    # allow a single sample to start with
+    if nLineages == 1 :
+      n1,t = nl.pop(0)
+      nLineages += n1
+      lastDemoIntegral = demog.integrate(t)
+      
+    for time in times :
+      while len(nl) and time >= nl[0][1] :
+        n1,t = nl.pop(0)
+        # no coalescent between previous time and t
+        f = demog.integrate(t)
+        interval = f - lastDemoIntegral
+        lastDemoIntegral = f
+
+        nLineageOver2 = (nLineages * (nLineages-1))/2
+        like += -nLineageOver2 * interval
+
+        # prevtime = t
+        nLineages += n1
+        
+      assert nLineages > 1,time
+      
+      f = demog.integrate(time)
+      interval = f - lastDemoIntegral
+      lastDemoIntegral = f
+
+      #if verbose: print "nl", nLineages, "interval", interval,
+
+      nLineageOver2 = (nLineages * (nLineages-1))/2
+      like += -nLineageOver2 * interval
+
+      pop = demog.population(time)
+      like += log(1.0 / pop) ; # log(nLineageOver2 / pop)
+
+      nLineages -= 1
+      #if verbose: print "pop", pop, "like", like  
+  else :
+    nLineages = len(times)+1
+
+    lastDemoIntegral = 0
+
+    for time in times :
+      f = demog.integrate(time)
+      interval = f - lastDemoIntegral
+      lastDemoIntegral = f
+
+      #if verbose: print "nl", nLineages, "time", time, "i", time - ltime, "interval", interval,
+      #ltime = time
+
+      nLineageOver2 = (nLineages * (nLineages-1))/2
+      like += -nLineageOver2 * interval
+
+      pop = demog.population(time)
+      like += log(nLineageOver2 / pop)
+
+      nLineages -= 1
+
+      #if verbose: print "pop", pop, "like", like
+
+  assert nLineages == 1
+  return like

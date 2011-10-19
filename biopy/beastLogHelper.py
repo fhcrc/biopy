@@ -11,7 +11,7 @@ import sys, re
 
 __all__ =  ["readTraces", "setDemographics"]
 
-def readTraces(beastFile, traces) :
+def readTraces(beastFile, traces, report = False) :
   """ Read traces from a BEAST log file.
 
   Return a sequence of traces, each a pair (name, sequence-of-values).
@@ -45,7 +45,8 @@ def readTraces(beastFile, traces) :
           i = [k for k,c in enumerate(cols) if re.search(t, c) ]
           if len(i) :
             iTraces.extend(i)
-            print >> sys.stderr, "adding", " ".join([cols[k] for k in i])
+            if report:
+              print >> sys.stderr, "adding", " ".join([cols[k] for k in i])
           else :
             raise t + " not found."
       break

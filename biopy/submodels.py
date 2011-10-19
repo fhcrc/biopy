@@ -3,6 +3,19 @@
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 
+"""
+Standatd substitution models.
+
+Support the "classic" GTR model (the two special cases JC and HKY provided for
+convenience).
+
+The model provides the forward simulation of sequence data over trees and
+calculating the (log)likelihood of a set of tip sequences.
+
+"""
+
+__all__ = ["JCSubstitutionModel", "HKYSubstitutionModel", "StationaryGTR"]
+
 #
 #
 # Commenting your code is like cleaning your bathroom -- you never want to do
@@ -44,7 +57,7 @@ def pick(p, k) :
   return 3
 
 class SubstitutionModel(object) :
-  """ Base class for any General Time Reversible (GTR) substitution model """
+  """ Base class for any General Time Reversible (GTR) substitution model."""
 
   NUCS = "AGCT?"
   

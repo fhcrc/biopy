@@ -197,10 +197,10 @@ def yuleHeightsConditionalOnRoot(birthRate, rootTime, n) :
 
 
 def yuleHeightsCondRootLogLiklihood(h, birthRate, normed=True) :
-  """ Log-Likelihood for sorted node heights list 'h' under a yule process with
-  birth rate 'birthRate', conditional on root height being h[-1].
+  """ Log-Likelihood for sorted node heights list C{h} under a yule process with
+  birth rate C{birthRate}, conditional on root height being h[-1].
 
-  With not 'normed', the likelihood is unnormalized, that is up to a constant
+  With not {normed}, the likelihood is unnormalized, that is up to a constant
   multiplier.
   """
   
