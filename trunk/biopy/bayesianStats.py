@@ -41,7 +41,7 @@ def effectiveSampleSize(data, stepSize = 1) :
 
   assert len(data) > 1,"no stats for short sequences"
   
-  maxLag = min(samples/3, 1000)
+  maxLag = min(samples//3, 1000)
 
   gammaStat = [0,]*maxLag
   #varGammaStat = [0,]*maxLag

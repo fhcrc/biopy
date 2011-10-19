@@ -20,7 +20,8 @@ from Bio.Nexus import Trees, Nodes
 
 __all__ = ["TreeBuilder", "TreeLogger", "getClade", "getTreeClades",
            "getCommonAncesstor", "countNexusTrees", "toNewick", "nodeHeights",
-           "nodeHeight", "treeHeight", "setLabels", "convertDemographics"]
+           "nodeHeight", "treeHeight", "setLabels", "convertDemographics",
+           "coalLogLike"]
 
 
 class TreeBuilder(object) :
@@ -388,3 +389,12 @@ def revertDemographics(tree, dattr = "demographic",
       else :
         raise RuntimeError("unsupported")
 
+import coalescent
+
+def coalLogLike(tree, demog, condOnTree = False) :
+  nh = nodeHeights(tree, allTipsZero = False)  
+  terms = tree.get_terminals()
+  
+  times = sorted([(t,nid not in terms) for nid,t in nh.items()])
+
+  return coalescent.coalLogLike(demog, times, condOnTree)

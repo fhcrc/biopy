@@ -18,7 +18,7 @@ parser.add_option("-m", "--model", dest="model",
                   help="""Substitution model."""
                   + """(default %default)""", default = "JC,1") 
 
-parser.add_option("-a", "--annotatetree", dest="annotate",
+parser.add_option("-a", "--annotate", dest="annotate",
                   help="""Output trees annotated with sequences. Default is to
                   generate an NEXUS alignment file per tree.""",
                   action="store_true", default = False)
