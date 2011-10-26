@@ -304,10 +304,10 @@ has(char const ch, const char* any) {
 static inline int
 _getStuff(const char* s, char const sep) {
   int e = 0;
-  while( s[e] != sep || s[e-1] == '\\' ) {
+  while( s[e] && (s[e] != sep || s[e-1] == '\\') ) {
     e += 1;
   }
-  return e;
+  return s[e] ? e : -1;
 }
 
 static int
@@ -348,14 +348,22 @@ parseAttributes(const char* s, vector<PyObject*>& vals)
     string v;
     if( *s == '"' ) {
       int const e = _getStuff(s+1, '"');
-      v = string(s+1, e+1);
-      s += e+2;
-      eat += e+2;
+      if( e < 0 ) {
+	return -1;
+      } else {
+        v = string(s+1, e);
+        s += e+2;
+        eat += e+2;
+      }
     } else if( *s == '{' ) {
       int const e = _getStuff(s+1, '}');
-      v = string(s+1, e+1);
-      s += e+2;
-      eat += e+2;
+      if( e < 0 ) {
+	return -1;
+      } else {
+	v = string(s+1, e);
+	s += e+2;
+	eat += e+2;
+      }
     } else {
       int const e = findIndex(s, ',', "]");
       if( e == -1 ) {
