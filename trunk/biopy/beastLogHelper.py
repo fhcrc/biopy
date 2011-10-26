@@ -35,7 +35,7 @@ def readTraces(beastFile, traces, report = False) :
   for line in beastFile:
     if line[0] == '#' :
       continue
-    if line[:5] == 'state' :
+    if line[:5] == 'state' or line[:6] == "Sample" :
       cols = line.strip().split()
 
       for t in traces:
