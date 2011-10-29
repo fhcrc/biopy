@@ -10,7 +10,8 @@ from math import log, exp, sqrt, pi
 import random
 from scipy import special
 
-__all__ = ["Uniform", "parseDistribution"]
+__all__ = ["Uniform", "Exponential", "Gamma", "Poisson", "InvGamma",
+           "LogNormal", "Normal",  "parseDistribution"]
 
 class Uniform(object) :
   def __init__(self, l, h) :
@@ -259,7 +260,10 @@ def parseDistribution(txt) :
   elif parts[0].lower() == 'i' :
     if len(parts) == 3 :
       return InvGamma(float(parts[1]), float(parts[2]))
+  elif parts[0].lower() == 'n' :
+    if len(parts) == 3 :
+      return Normal(float(parts[1]), float(parts[2]))
   elif len(parts) == 1 :
     return Delta(float(parts[0]))
   
-  raise RuntimeError("Badly speficied distribution:" + txt)
+  raise RuntimeError("malformed distribution specification:" + txt)

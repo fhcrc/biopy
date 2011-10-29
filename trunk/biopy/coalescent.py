@@ -3,6 +3,9 @@
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 
+""" Sample from the coalescent and calculate the likelihood of a tree under the
+coalescent."""
+
 from __future__ import division
 
 import random

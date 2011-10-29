@@ -2,10 +2,11 @@
 ## Copyright (C) 2010 Joseph Heled
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
-#
-# $Id:$ 
 
-""" Small helper in building BioPython trees.
+""" Tree helpers.
+
+Build and log trees, get clades and node heights, convert to NEWICK format and
+so on. 
 
 Unless explicitly specified, any tree is assumed to be Ultrametric
 (tips are contemporaneous).
@@ -316,16 +317,19 @@ def setLabels(trees) :
 import demographic
 LPP = demographic.LinearPiecewisePopulation
 
-def _tod(xt, yt) :
+def _tod(xt, yt, b = None) :
   xt = [float(x) for x in xt.split(',') if len(x)]
   yt = [float(x) for x in yt.split(',')]
+  if b is not None and len(xt) + 2 == len(yt) :
+    xt.append(b)
+    
   return LPP(yt, xt)
 
 def _toDemog(dtxt) :
   return _tod(*dtxt.split('|'))
 
-def _toDemog1(dmt, dmv) :
-  return _tod(dmt if dmt is not None else "", dmv)
+def _toDemog1(dmt, dmv, branch) :
+  return _tod(dmt if dmt is not None else "", dmv, b = branch)
 
 def convertDemographics(tree, formatUnited = "dmf",
                         formatSeparated = ("dmv", "dmt"),
@@ -348,7 +352,8 @@ def convertDemographics(tree, formatUnited = "dmf",
         dtxt = data.attributes[dmf]
         d = _toDemog(dtxt)
       elif dmv in data.attributes:
-        d = _toDemog1(data.attributes.get(dmt), data.attributes.get(dmv))
+        d = _toDemog1(data.attributes.get(dmt), data.attributes.get(dmv),
+                      data.branchlength)
     if d is not None :
       setattr(data, dattr, d)
     else :

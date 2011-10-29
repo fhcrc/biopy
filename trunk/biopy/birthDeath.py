@@ -3,7 +3,7 @@
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 #
-# $Id:$ 
+
 """ Birth-Death process utilities.
 
   Most math is taken from Gerhard (Stadler) U{thesis,
