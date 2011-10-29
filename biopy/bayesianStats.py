@@ -4,6 +4,10 @@
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 #
 
+""" Calculate Bayesian statistics sucj as Heighst Posterior Density (HPD) and
+Effective Sample Size (Beast interpretation).
+"""
+
 from __future__ import division
 
 import numpy

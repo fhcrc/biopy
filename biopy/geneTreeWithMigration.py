@@ -406,21 +406,7 @@ class GeneTreeSimulator(object) :
     return (sps[0].trees[0], nIM)
 
 
-import randomDistributions
-
-def setIMrates(stree, pim = 0.05, spr = 0.15, bdGrowth = None,
-               restrictToTree = True) :
-  # growth rate = lambda - mu
-  # Distribution of times from split until complete separation
-  if bdGrowth is not None :
-    mm = spr*(0.5/bdGrowth)
-  else :
-    # Crude: take mean from tree 
-    mm = mean([stree.node(n).data.branchlength
-               for n in stree.all_ids() if n != stree.root])
-    
-  e1 = randomDistributions.LogNormal(mm, .25)
-
+def setIMrates(stree, mSpec, sSpec, balanced = None, restrictToTree = True) :
   nh = nodeHeights(stree)
   
   # internals, leaves to root order
@@ -429,28 +415,88 @@ def setIMrates(stree, pim = 0.05, spr = 0.15, bdGrowth = None,
 
   for x in internals :
     n = stree.node(x)
-    h = nh[x]
-    tOrig = t = e1.sample()
-    if restrictToTree:
-      # Clip migration "stop" times if they go beyond stop time of children 
-      for ch in n.succ:
-        nch = stree.node(ch)
-        if not nch.data.taxon:
-          assert nh[n.id] >= nh[nch.id]
+    pim = mSpec.sample()
+    
+    if sSpec is not None:
+      h = nh[x]
+      tOrig = t = sSpec.sample()
+      if restrictToTree:
+        # Clip migration "stop" times if they go beyond stop time of children 
+        for ch in n.succ:
+          nch = stree.node(ch)
+          if not nch.data.taxon:
+            assert nh[n.id] >= nh[nch.id]
 
-          bound = nh[ch] - nch.data.imc
-          if h - t < bound:
-            t = h - bound
+            bound = nh[ch] - nch.data.imc
+            if h - t < bound:
+              t = h - bound
 
-    if h > t :
-      d = demographic.LinearPiecewisePopulation([0, 0, pim], [h-t, h])
-      n.data.imc = t
+      if h > t :
+        d = demographic.LinearPiecewisePopulation([0, 0, pim], [h-t, h])
+        n.data.imc = t
+      else :
+        if h == t :
+          assert tOrig > h
+          t = tOrig
+
+        d = demographic.LinearPiecewisePopulation([(1 - h/t)*pim , pim], [h])
+        n.data.imc = h
+
+      n.data.ima = (d, d)
+    else: # sSpec is None
+      d = demographic.ConstantPopulation(pim)
+      if balanced :
+        n.data.ima = (d, d)
+      else :
+        d1 = demographic.ConstantPopulation(mSpec.sample())
+        n.data.ima = (d, d1)
+      
+if 0 :
+  import randomDistributions
+
+  def setIMrates(stree, pim = 0.05, spr = 0.15, bdGrowth = None,
+                 restrictToTree = True) :
+    # growth rate = lambda - mu
+    # Distribution of times from split until complete separation
+    if bdGrowth is not None :
+      mm = spr*(0.5/bdGrowth)
     else :
-      if h == t :
-        assert tOrig > h
-        t = tOrig
-        
-      d = demographic.LinearPiecewisePopulation([(1 - h/t)*pim , pim], [h])
-      n.data.imc = h
+      # Crude: take mean from tree 
+      mm = mean([stree.node(n).data.branchlength
+                 for n in stree.all_ids() if n != stree.root])
 
-    n.data.ima = (d, d)
+    e1 = randomDistributions.LogNormal(mm, .25)
+
+    nh = nodeHeights(stree)
+
+    # internals, leaves to root order
+    internals = set(stree.all_ids()) - set(stree.get_terminals())
+    internals = [z for y,z in sorted([(nh[x], x) for x in internals])]
+
+    for x in internals :
+      n = stree.node(x)
+      h = nh[x]
+      tOrig = t = e1.sample()
+      if restrictToTree:
+        # Clip migration "stop" times if they go beyond stop time of children 
+        for ch in n.succ:
+          nch = stree.node(ch)
+          if not nch.data.taxon:
+            assert nh[n.id] >= nh[nch.id]
+
+            bound = nh[ch] - nch.data.imc
+            if h - t < bound:
+              t = h - bound
+
+      if h > t :
+        d = demographic.LinearPiecewisePopulation([0, 0, pim], [h-t, h])
+        n.data.imc = t
+      else :
+        if h == t :
+          assert tOrig > h
+          t = tOrig
+
+        d = demographic.LinearPiecewisePopulation([(1 - h/t)*pim , pim], [h])
+        n.data.imc = h
+
+      n.data.ima = (d, d)

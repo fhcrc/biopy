@@ -2,8 +2,6 @@
 ## Copyright (C) 2010 Joseph Heled
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
-#
-# $Id:$ 
 
 """ Compute probabilities of gene trees under the multispecies coalescent.
 
@@ -140,7 +138,7 @@ def _simulateGeneTreeForNode(tree, nodeId, simTree, nodeHeights) :
   """ Simulate gene tree for sub-tree of species tree C{tree} rooted at father
   of C{nodeId}.
 
-  Return a list of pairs (s,h) where s is a sub-tree in NEWICK format and h is
+  Return a list of pairs (s,h) where s is a sub-tree root node and h is
   height of s.
   """
   

@@ -3,7 +3,7 @@
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 #
-# $Id:$
+
 """ Handling of BEAST log and tree files."""
 
 from __future__ import division

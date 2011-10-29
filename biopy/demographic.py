@@ -3,9 +3,8 @@
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 #
-# $Id:$ 
 
-""" Demographic functions (population size over time).
+""" Demographic functions (effective population size(s) over time).
 """
 
 from __future__ import division
@@ -185,7 +184,7 @@ class StepFunctionPopulation(Demographic) :
 
   def __init__(self, vals, xvals) :
     """ population = vals[k] over xvals[k-1],xvals[k], where xvals[-1] is implicitly 0"""
-    assert len(vals) == len(xvals) + 1
+    assert len(vals) == len(xvals) + 1, (vals,xvals)
     
     self.vals = [float(x) for x in vals]
     self.xvals = [float(x) for x in xvals]
@@ -287,7 +286,7 @@ class LinearPiecewisePopulation(Demographic) :
   # population = vals[k] at xvals[k-1] and linear between.
   # xvals[-1] is implicitly 0
   def __init__(self, vals, xvals) :
-    assert len(vals) == len(xvals) + 1
+    assert len(vals) == len(xvals) + 1, (vals,xvals)
     self.vals = [float(x) for x in vals]
     self.xvals = [float(x) for x in xvals]
 

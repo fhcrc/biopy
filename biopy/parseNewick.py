@@ -10,7 +10,9 @@ __all__ = ["parseNewick"]
 
 from cchelp import parsetree
 
-# Reference implementation in python - supposed to be the same as in C
+# Reference implementation in python - supposed to be the same as the C version
+# in cchelp.
+
 def _getStuff(s, sep) :
   e = 0
   while s[e] != sep or s[e-1] == '\\' :

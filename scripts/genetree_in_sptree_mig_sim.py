@@ -6,30 +6,36 @@
 
 from __future__ import division
 
+from biopy.treeutils import toNewick, TreeLogger, setLabels, \
+     convertDemographics, revertDemographics
+from biopy import INexus, beastLogHelper, randomDistributions, __version__
+from biopy.geneTreeWithMigration import GeneTreeSimulator, setIMrates
+
 import optparse, sys, os.path
 parser = optparse.OptionParser(usage = """ %prog [OPTIONS] species-tree
 
-Generate gene trees under a multispecies with migration. 'species-tree' is
-either a nexus file or a tree in NEWICK format. Population sizes are specified
-with the tree. Migration rates can be either specified in the tree or generated
-using a stochastic model.
-""")
+Generate gene trees under a multispecies coalescencent with
+migration. 'species-tree' is either a nexus file or a tree in NEWICK
+format. Population sizes are specified as part of the tree metadata. Migration
+rates can be either specified as part of the tree metadata or generated using a
+stochastic model.""")
 
 parser.add_option("-n", "--ntrees", dest="ngenetrees", metavar="N",
                   help="""Number of gene trees per species tree """
                   + """(default %default)""", default = "1") 
 
-parser.add_option("-m", "--migration", dest="migration",
-                  help="""migration model """
-                  + """(default %default)""", default = "1") 
+## parser.add_option("-m", "--migration", dest="migration",
+##                   help="""migration model """
+##                   + """(default %default)""", default = "1") 
 
 parser.add_option("-e", "--redraw", dest="redraw", metavar="E",
                   help="""Change model based parameters every E"""
                   + """ (default %default) trees.""", default = "1") 
 
 parser.add_option("-t", "--per-species", dest="ntips", metavar="N",
-                  help="""Number of individuals per species. Ignored if tree
-                  contains labels (default %default).""", default = "2") 
+                  help="""Number of individuals (lineages) per species.
+                  Ignored for tips with explicit labels
+                  (default %default).""", default = "2") 
 
 parser.add_option("-o", "--nexus", dest="nexfile", metavar="FILE",
                   help="Print trees in nexus format to FILE", default = None)
@@ -37,12 +43,10 @@ parser.add_option("-o", "--nexus", dest="nexfile", metavar="FILE",
 parser.add_option("-l", "--log", dest="sfile", metavar="FILE",
                   help="Log species trees in nexus format to FILE", default = None)
 
-#parser.add_option("", "--total", dest="total", metavar="N",
-#                  help="""Stop after processing N species trees.""",
-#                  default = None) 
-
-# options for M and S. more scenarios?
-
+parser.add_option("-s", "--scenario", dest="scenario",
+                  type='choice', choices=['gradual', 'constant', 'balanced'],
+                  help="FIXME", default = None)
+                  
 options, args = parser.parse_args()
 
 nGeneTrees = int(options.ngenetrees) ; assert nGeneTrees > 0
@@ -51,17 +55,29 @@ nTips = int(options.ntips)           ; assert nTips > 0
 # nTotal = int(options.total) if options.total is not None else -1           
 reDraw = int(options.redraw)
 
+balanced = None
+if options.scenario == 'gradual':
+  if len(args) != 3 :
+    print >> sys.stderr, "Error: Missing gradual separation specifications."
+    sys.exit(1)
+  mSpec = randomDistributions.parseDistribution(args[0])
+  sSpec = randomDistributions.parseDistribution(args[1])
+elif options.scenario in ['constant', 'balanced']:
+  if len(args) != 2 :
+    print >> sys.stderr, "Error: Missing constant migrations specifications."
+    sys.exit(1)
+  mSpec = randomDistributions.parseDistribution(args[0])
+  sSpec = None
+  balanced = options.scenario == 'balanced'
+else :
+  assert options.scenario == None
 
-nexusTreesFileName = args[0]
+nexusTreesFileName = args[-1]
 
-from biopy.treeutils import toNewick, TreeLogger, setLabels, \
-     convertDemographics, revertDemographics
-from biopy import INexus, beastLogHelper, __version__
-from biopy.geneTreeWithMigration import GeneTreeSimulator, setIMrates
 
 tlog = TreeLogger(options.nexfile, argv = sys.argv, version = __version__)
 if options.sfile is not None :
-  slog =  TreeLogger(options.sfile, argv = sys.argv, version = __version__)
+  slog = TreeLogger(options.sfile, argv = sys.argv, version = __version__)
 else :
   slog = None
   
@@ -80,29 +96,42 @@ tipNameTemplate = "%s_tip%d"
 
 for tree in trees:
   terms = tree.get_terminals()
-  if not setLabels([tree]) :
+  if not all(setLabels([tree])) :
     for i in terms:
       data = tree.node(i).data
       if not hasattr(data, "labels") :
-        labels = [tipNameTemplate % (data.taxon, k) for k in range(nTips)]
+        data.labels = [tipNameTemplate % (data.taxon, k) for k in range(nTips)]
 
   misPimr = convertDemographics(tree, formatUnited = None,
                                 formatSeparated = ("imrv", "imrt"),
                                 dattr = "pimr")
   hasPimr = misPimr == 1 and not hasattr(tree.node(tree.root).data, "pimr")
   if hasPimr:
-    for i in tree.all_ids() :
-      node = tree.node(i)
-      if node.succ :
-        node.data.ima = [tree.node(ch).data.pimr for ch in node.succ]
-        
+    if options.scenario is not None:
+      print >> sys.stderr, ("""** Conflict: both migration rates in tree and""" +
+                            """ scenario """ + options.scenario + """ -- rates in"""
+                            """ tree ignored.""")
+    else :
+      for i in tree.all_ids() :
+        node = tree.node(i)
+        if node.succ :
+          node.data.ima = [tree.node(ch).data.pimr for ch in node.succ]
+  elif options.scenario is None:
+    print >> sys.stderr, ("""** No migration rates data in tree and no scenario"""
+                          """ specified""")
+    sys.exit(1)
+    
   counter = 0
   for k in range(nGeneTrees) :
     if counter == 0 :
-      if not hasPimr:
-        setIMrates(tree) 
+      if options.scenario is not None:
+        if options.scenario in ['gradual', 'constant', 'balanced'] :
+          setIMrates(tree, mSpec, sSpec, balanced = balanced)
+        else :
+          raise ""
       s = GeneTreeSimulator(tree)
-    gt,nim = s.simulateGeneTree()
+    (gt,hgt),nim = s.simulateGeneTree()
+
     tlog.outTree(gt + '[&nim ' + str(nim) + ']')
     if slog is not None :
       # prepare demographic attributes
