@@ -4,6 +4,13 @@
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 #
 
+"""
+====================
+Random Distributions
+====================
+
+"""
+
 from __future__ import division
 
 from math import log, exp, sqrt, pi

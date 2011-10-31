@@ -4,17 +4,20 @@
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 
 """
-Standatd substitution models.
+===================
+Substitusion Models 
+===================
 
-Support the "classic" GTR model (the two special cases JC and HKY provided for
-convenience).
+Standard substitution models.
 
-The model provides the forward simulation of sequence data over trees and
-calculating the (log)likelihood of a set of tip sequences.
+Support the "classic" GTR model. JC, K80 and HKY are provided for convenience.
 
+The code supports the forward simulation of sequence data over trees and
+calculating the (log)likelihood of tip sequences.
 """
 
-__all__ = ["JCSubstitutionModel", "HKYSubstitutionModel", "StationaryGTR"]
+__all__ = ["JCSubstitutionModel", "HKYSubstitutionModel",
+           "Kimura2PSubstitutionModel", "StationaryGTR"]
 
 #
 #
@@ -92,14 +95,12 @@ class SubstitutionModel(object) :
     """ Change mutation rate. """
     
     self.mu = float(mu)                                  ;assert self.mu > 0.0
-    self.qInitial = self.qFromGTR()
-    self.initialTotalSubRate = self.totalSubRate()
+    self.qInitial = self._qFromGTR()
+    self.initialTotalSubRate = self._totalSubRate()
     self.qNorm = self.qInitial / self.initialTotalSubRate
     
-  def totalSubRate(self) :
-    """ Total substitution rate.
-    Typically mu is normalized so that total rate is 1. We do the same for
-    t == 0"""
+  def _totalSubRate(self) :
+    """ Total substitution rate. """
     pi = self.pi0
     
     q = self.qInitial
@@ -107,7 +108,7 @@ class SubstitutionModel(object) :
     r = -sum([pi[i] * q[i,i] for i in range(4)])
     return r
   
-  def qFromGTR(self) :
+  def _qFromGTR(self) :
     """ Build explict Q matrix from GTR parameters at time 0"""
     
     p = self.m
@@ -125,23 +126,23 @@ class SubstitutionModel(object) :
 
   def q(self) :
     """ Q (rate) matrix.
-    Constant Q normalized to substitutions and total rate is 1. """
+    Constant Q normalized to substitutions, where total rate is 1. """
     
     return self.qNorm * self.mu
   
-  def setTransitionSpeedup(self, tree) :
+  def _setTransitionSpeedup(self, tree) :
     for n in tree.all_ids() :
       node = tree.node(n)
       if n != tree.root :
-        node.data.pMatrix = self.pExact(node.data.branchlength)
+        node.data.pMatrix = self._pExact(node.data.branchlength)
 
-  def clearTransitionSpeedup(self, tree) :
+  def _clearTransitionSpeedup(self, tree) :
     for n in tree.all_ids() :
       node = tree.node(n)
       if n != tree.root :
         del node.data.pMatrix
     
-  def simulateOverInterval(self, branch, nucs, deltaT) :
+  def _simulateOverInterval(self, branch, nucs, deltaT) :
     """ Evolve sites over [t,t+branch], using steps of size deltaT."""
     
     nTimes =  ceil(branch / deltaT)
@@ -163,14 +164,14 @@ class SubstitutionModel(object) :
     p = identity(4, npfloat)
 
     for i in range(4) :
-      s = self.simulateOverInterval(branchLen, (i,)*nSites, deltaT)
+      s = self._simulateOverInterval(branchLen, (i,)*nSites, deltaT)
       p[i,] = [sum([x == k for x in s]) / float(len(s)) for k in range(4)]
 
     return matrix(p)
 
   def p(self, branch) :
-    """ P (transition probability) matrix over branch. """
-    return self.pExact(branch)
+    """ Transition probability matrix (P) over branch. """
+    return self._pExact(branch)
 
   def evolve(self, seq, pMatrix) :
     """ Evolve sequence C{seq} according to transition probabilities in
@@ -180,7 +181,7 @@ class SubstitutionModel(object) :
     #p = cumsum(pMatrix, 1)
     #return [pick(p,n) for n in seq]
     
-  def populateSubtreeSeq(self, tree, nid, seq) :
+  def _populateSubtreeSeq(self, tree, nid, seq) :
     """ Populate sub-tree with sequences evolved from ancestor C{nid} with data
     C{seq}. """
     
@@ -192,30 +193,30 @@ class SubstitutionModel(object) :
       # Do each side recursively
       for n in node.succ:
         subSeq = self.evolve(seq, tree.node(n).data.pMatrix)
-        self.populateSubtreeSeq(tree, n, subSeq)
+        self._populateSubtreeSeq(tree, n, subSeq)
       
   def populateTreeSeqBySimulation(self, tree, seqLen) :
     """ Populate tree tips, each with a sequences of length 'seqLen', evolved
     from a common ancestor drawn from the stationary probabilities."""
     
-    self.setTransitionSpeedup(tree)
+    self._setTransitionSpeedup(tree)
 
     # Draw root from stationary distribution
     p = array([cumsum(self.pi())])
     seq = [pick(p,0) for i in range(seqLen)]
     
-    self.populateSubtreeSeq(tree, tree.root, seq)
+    self._populateSubtreeSeq(tree, tree.root, seq)
     
-    self.clearTransitionSpeedup(tree)
+    self._clearTransitionSpeedup(tree)
 
-  def condProbsSubTree(self, tree, nid) :
+  def _condProbsSubTree(self, tree, nid) :
     node = tree.node(nid)
     data = node.data
     # If leaf, simply take the sequences
     if data.taxon :
       subsCond = [_siteProbs(site) for site in data.seq]
     else :
-      s = [self.condProbsSubTree(tree, n) for n in node.succ]
+      s = [self._condProbsSubTree(tree, n) for n in node.succ]
       subsCond = [[x*y for x,y in zip(l,r)] for l,r in zip(*s)]
 
     if nid != tree.root:
@@ -224,9 +225,9 @@ class SubstitutionModel(object) :
     return subsCond
 
   def logLike(self, tree) :
-    self.setTransitionSpeedup(tree)
-    subsCond = self.condProbsSubTree(tree, tree.root)
-    self.clearTransitionSpeedup(tree)
+    self._setTransitionSpeedup(tree)
+    subsCond = self._condProbsSubTree(tree, tree.root)
+    self._clearTransitionSpeedup(tree)
     pi = self.pi0
     l = sum([log(dot(pi, x)) for x in subsCond])
     return l
@@ -243,39 +244,60 @@ class SubstitutionModel(object) :
 # print sum([exp(x) for x in r])
     
 class StationaryGTR(SubstitutionModel) :
+  """
+  The General Time Reversible `substitution model <http://en.wikipedia.org/wiki/Substitution_model/>`_.
+  """
   def __init__(self, m, pi, mu, name = None) :
+    """
+    :param m:  Six transition rate parameters (upper part of Q matrix).
+    :param pi: Stationary probabilities (length 4).
+    :param mu: Mutation rate (scales time to substitutions).
+    :param name: Name for debug/development message.
+    """
+    
     if name is None:
       name = "GTR mu %g rates %s pi %s" % (mu, ",".join(["%g" % x for x in m]),
                                            ",".join(["%g" % x for x in pi]))
     SubstitutionModel.__init__(self, m = m, pi = pi, mu = mu, name = name)
     
-    if self.pExact.im_func == StationaryGTR.pExact.im_func :
+    if self._pExact.im_func == StationaryGTR._pExact.im_func :
       self.w,self.v = eig(self.q())
       self.iv = inv(self.v)
 
   def pi(self) :
+    """ Stationary probabilities."""
     return self.pi0
   
-  def QonInterval(self, branch) :
-    """ Element-wise integral of Q over [t,t+branch] """
-    assert branch >= 0
-    
-    return self.q() * branch
+#  def _QonInterval(self, branch) :
+#    """ Element-wise integral of Q over [t,t+branch] """
+#    assert branch >= 0
+#    return self.q() * branch
 
-  def pExact(self, branch) :
-    """Exact solution for P."""
+  def _pExact(self, branch) :
+    """Exact solution for P matrix exp(Q*branch)."""
     assert branch >= 0
 
     return dot(multiply(self.v, exp(self.w*branch)), self.iv)
 
 class JCSubstitutionModel(StationaryGTR) :
+  """
+  The Jukes-Cantor Substitution Model.
+
+  Equal base frequencies, all substitutions equally likely.
+  """
+  
   def __init__(self, mu = 1, name = None) :
+    """
+    :param mu: Mutation rate (scales time to substitutions).
+    :param name: Name for debug/development message.
+    """
+    
     if name is None :
       name = "JC69 mu %g" % mu
     SubstitutionModel.__init__(self, m = (1,)*6, pi = (1/4.0,)*4, mu = mu, \
                                name = name)
 
-  def pExact(self, branch) :
+  def _pExact(self, branch) :
     """Exact analytic solution for P."""
 
     nd = 0.25 - 0.25 * math.exp((-4.0/3.0) * self.mu * branch)
@@ -296,7 +318,20 @@ class Kimura2P(object) :
     return (a, b)
   
 class Kimura2PSubstitutionModel(StationaryGTR, Kimura2P) :
+  """
+  `Kimura 2-parameter (K80) <http://www.ncbi.nlm.nih.gov/pubmed/7463489/>`_
+  Substitution Model.
+
+  Equal base frequencies, one transition rate and one transversion rate.
+  """
+  
   def __init__(self, mu = 1, kappa = 1, name = None) :
+    """
+    :param mu: Mutation rate (scales time to substitutions).
+    :param kappa: transition/transversion (A<->G / C<->T) ratio.
+    :param name: Name for debug/development message.
+    """
+   
     self.kappa = kappa
     r = float(kappa)/2
     a,b = self.ab(r)
@@ -306,7 +341,7 @@ class Kimura2PSubstitutionModel(StationaryGTR, Kimura2P) :
     StationaryGTR.__init__(self, m = (a,b,b,b,b,a), pi = (1/4.0,)*4, \
                             mu = mu, name = name)
   
-  def pExact(self, branch) :
+  def _pExact(self, branch) :
     """Exact analytic solution for P."""
 
     b = branch * self.mu
@@ -321,7 +356,19 @@ class Kimura2PSubstitutionModel(StationaryGTR, Kimura2P) :
     return array(identity(4) + k * K + m * M)
 
 class HKYSubstitutionModel(StationaryGTR, Kimura2P) :
+  """ `Hasegawa-Kishino-Yano (HKY)
+  <http://www.ncbi.nlm.nih.gov/pubmed/3934395/>`_  Substitution Model. 
+
+  Variable base frequencies, one transition rate and one transversion rate.
+  """
+  
   def __init__(self, mu = 1, kappa = 1, pi = [.25,]*4, name = None) :
+    """
+    :param mu: Mutation rate (scales time to substitutions).
+    :param kappa: transition/transversion (A<->G / C<->T) ratio.
+    :param pi: Stationary probabilities (length 4).
+    :param name: Name for debug/development message.
+    """    
 
     if name is None :
       name = "HKY pi (%g %g %g %g) kappa %g mu %g" \

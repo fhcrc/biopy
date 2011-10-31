@@ -32,4 +32,4 @@ setup (name = 'biopy',
        packages = ['biopy'],
        package_dir={'biopy': 'biopy'},
        ext_modules = [module1,module2],
-       scripts = glob.glob('scripts/*.py'))
+       scripts = glob.glob('scripts/*'))
