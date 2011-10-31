@@ -3,13 +3,17 @@
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 
-""" Tree helpers.
+"""
+==============
+Tree Utilities
+==============
 
 Build and log trees, get clades and node heights, convert to NEWICK format and
 so on. 
 
 Unless explicitly specified, any tree is assumed to be Ultrametric
 (tips are contemporaneous).
+
 """
 
 import operator, sys, os.path
@@ -39,6 +43,11 @@ class TreeBuilder(object) :
     self.t = Trees.Tree(weight=weight, rooted = rooted, name=name)
 
   def createLeaf(self, name) :
+    """ Create a new leaf.
+
+    :param name: taxon name
+    :returns: node"""
+    
     nd = Trees.NodeData()
     nd.taxon = name
     leaf = Nodes.Node(nd)
@@ -51,28 +60,40 @@ class TreeBuilder(object) :
     self.t.add(node, None)
     return node
   
-  def mergeNodes(self, nodes) :
-    """ nodes: a sequence of [node,height] """
+  def mergeNodes(self, subtrees) :
+    """ Join subtrees in subtrees into one sub-tree.
+
+    Each element in subtrees is a (node,branch) pair, where branch is the length
+    of the branch connecting the node to its parent. 
+
+    :param subtrees: sequence of [node,branch]
+    :returns: node"""
+    
     nd = Trees.NodeData()
     node = Nodes.Node(nd)
     self.t.add(node, None)
 
-    for n1,h1 in nodes:
+    for n1,h1 in subtrees:
       n1.set_prev(node.id)
       n1.data.branchlength = h1
 
-    node.add_succ([x.id for x,h in nodes])
+    node.add_succ([x.id for x,h in subtrees])
     return node
 
-  def finalize(self, n) :
+  def finalize(self, rootNode) :
+    """ Convert a node to a proper tree with root rootNode.
+    
+    :param rootNode: node
+    :returns: biopython tree
+    """
     t = self.t
     rr = t.node(t.root)
-    rr.set_succ(n.succ)
-    for p in n.succ :
+    rr.set_succ(rootNode.succ)
+    for p in rootNode.succ :
       t.node(p).set_prev(t.root)
-    if hasattr(n.data,"attributes") :
-      rr.data.attributes = n.data.attributes
-    t.kill(n.id)
+    if hasattr(rootNode.data,"attributes") :
+      rr.data.attributes = rootNode.data.attributes
+    t.kill(rootNode.id)
     return t
 
 class TreeLogger(object) :

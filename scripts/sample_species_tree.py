@@ -13,7 +13,8 @@ Draw a species tree with population sizes using birth/death and simple
 strategies for population sizes.
 
 Taxa: either a number, a comma separated list of labels, or a {template,n}
-pair. The last specifies 'n' taxa given by applying 0,1,...,n-1 to template.""")
+pair. The last specifies 'n' taxa given by replacing '%%' in the template by
+0,1,...,n-1.""")
 
 parser.add_option("-n", "--ntrees", dest="ntrees",
                   help="""Number of trees to generate """
@@ -27,28 +28,25 @@ parser.add_option("-d", "--death", dest="death",
 
 parser.add_option("-p", "--population-distribution", dest="popdist", metavar="DIST",
                   help=\
-"""Draw starting populations from this distribution (default constant %default).
+"""The base distribution for assigning population sizes (default constant %default).
+
+The (constant) population size of each brach is drawn from DIST.
 
 A number by itself specifies a constant. Otherwise, a comma separated list where the
-first character specifies the distribution.
-
-Supportd distributions:
- (1) u,l,h : uniform between l and h (Example 'u,2,4').
- (2) e,r   : exponential with rate r (mean 1/r) (Example 'e,2').
- (3) l,m,s : log-normal with mean m (in real space) and std s (in log space).
- (4) g,s,l : gamma with shape s and scale l.
- (5) i,a,b : inverse-gamma with shape(alpha) a and scale(beta) b.
- """,
-                  default = "1")
+first character specifies the distribution. See the documentation for supported
+distributions. """, default = "1")
 
 parser.add_option("-c", "--continuous", dest="continuous", metavar="DIST",
                   help=\
 """Population size functions are linear over branch and continuous at divergence
-points (population splits into two parts). The argument specifies a distribution
-for the rate of change in population.  The population at the start of the branch
-(i.e at divergence) is P_0 2^{-r b}, where P_0 is the population at the end of
-the branch, r is the rate and b is the branch length, as a fraction of total
-tree height.""",
+points (where a population splits into two parts).
+
+The population size at the tips is drawn using the distributions given by '-p'.
+DIST is a distribution for the rate of change in population size.  The
+population size at the start of the branch (i.e at divergence) is P 2^{-r b},
+where P is the population at the end of the branch (another divergence or a
+tip). r is the rate drawnd from DIST and b is the branch length, as a fraction
+of total tree height.""",
                   default = None)
 
 parser.add_option("-o", "--nexus", dest="nexfile", metavar="FILE",
@@ -76,7 +74,8 @@ else:
     
   t = taxTxt.split(',')
   if len(t) == 2 and t[1].isdigit() and "%" in t[0] :
-    taxa = [t[0] % k for k in range(int(t[1]))]
+    form = t[0].replace('%%', '%d')
+    taxa = [form % k for k in range(int(t[1]))]
   else :
     taxa = t
 
@@ -86,22 +85,32 @@ from biopy.treeutils import toNewick, treeHeight, TreeLogger
 from biopy.birthDeath import drawBDTree
 from biopy.randomDistributions import parseDistribution
 
-birthRate = float(options.birth)            ; assert birthRate > 0.0
-deathRate = float(options.death)            ; assert 0 <= deathRate <= birthRate
+birthRate = float(options.birth)
+deathRate = float(options.death)
+
+if not (0 <= deathRate <= birthRate) :
+  print >> sys.stderr, """**Error: invaid birth/death rates. Expecting 0 <=\
+ death <= birth, but birth %g and death %g""" % (birthRate, deathRate)
+  sys.exit(1)
 
 popStartDist = parseDistribution(options.popdist)
 
-tlog = TreeLogger(options.nexfile, argv = sys.argv, version = __version__)
+try :
+  tlog = TreeLogger(options.nexfile, argv = sys.argv, version = __version__)
+except RuntimeError,e:
+  print >> sys.stderr, "**Error:", e.message
+  sys.exit(1)
+  
 
 SetPops = namedtuple("SetPops", "pop data")
 
-def setPops(tree, nid, height, popStartDist, rateDist) :
+def _setPops(tree, nid, height, popStartDist, rateDist) :
   node = tree.node(nid)
 
   if not node.succ :
     node.data.pop0 = popStartDist.sample()
   else :
-    p = [setPops(tree, x, height, popStartDist, rateDist) for x in node.succ]
+    p = [_setPops(tree, x, height, popStartDist, rateDist) for x in node.succ]
 
     popEnd = [x.pop * 2**(-rateDist.sample() * (x.data.branchlength/height)) for x in p]
     node.data.pop0 = sum(popEnd)
@@ -125,14 +134,14 @@ for nt in range(nTrees) :
       t.node(n).data.attributes['dmv'] = popStartDist.sample()
   else :
     rate = parseDistribution(options.continuous)
-    setPops(t, t.root, treeHeight(t), popStartDist, rate)
+    _setPops(t, t.root, treeHeight(t), popStartDist, rate)
     for n in t.all_ids() :
       d = t.node(n).data
       if n != t.root :
-        d.attributes['dmv'] = "{%f,%f}" % (d.pop0,d.pope)
-        d.attributes['dmt'] = "%f" % d.branchlength
+        d.attributes['dmv'] = "{%r,%r}" % (d.pop0,d.pope)
+        d.attributes['dmt'] = "%r" % d.branchlength
       else :
-        d.attributes['dmv'] = "%f" % d.pop0
+        d.attributes['dmv'] = "%r" % d.pop0
     
   tlog.outTree(toNewick(t, attributes="attributes") )
 
