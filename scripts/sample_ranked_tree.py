@@ -85,24 +85,25 @@ def setBranches(tr, order, intervals) :
 
 import optparse, sys, os.path
 
-parser = optparse.OptionParser("""%prog [options] tree
+parser = optparse.OptionParser("""%prog [OPTIONS] tree
 
 Sample a tree uniformly from the space of all ranked trees having the same
-unranked topology as 'tree'. Both coalescent (constant size) and pure-birth
-(Yule) are supported.""")
+unranked topology as 'tree'. By default all branch lengths are 1, but both
+coalescent (constant population size) and pure-birth (Yule) are supported.""")
 
-parser.add_option("-n", "--ntrees", dest="ntrees",
-                  help="Number of samples (trees) to generate (=1)", default = "1")
+parser.add_option("-n", "--ntrees", dest="ntrees", metavar="N",
+                  help="Number of samples (trees) to generate (=%default)",
+                  default = "1")
 
-parser.add_option("", "--nexus", dest="nexfile",
-                  help="Print trees in nexus format to file", default = None)
+parser.add_option("-o", "--nexus", dest="nexfile", metavar="FILE",
+                  help="Print trees in nexus format to FILE", default = None)
 
-parser.add_option("-p", "--population", dest="popSize",
-                  help="Population size for coialscent model (constant, =1)",
-                  default = 1)
+parser.add_option("-p", "--population", dest="popSize", metavar="P",
+                  help="(constant) population size for coalescent model",
+                  default = None)
 
-parser.add_option("-b", "--birth-rate", dest="birthRate",
-                  help="Birth rate for model yule model", default = None)
+parser.add_option("-b", "--birth-rate", dest="birthRate",  metavar="BIRTH",
+                  help="Birth rate for pure birth (Yule) model", default = None)
 
 options, args = parser.parse_args()
 
@@ -121,22 +122,24 @@ nTrees = int(options.ntrees)
 if nTrees <= 0 :
   sys.exit(1)
 
+if options.birthRate is not None and  options.popSize is not None:
+  print >> sys.stderr, "*** Error: choose either coalescent or yule."
+  sys.exit(1)
+
 if options.birthRate is not None:
-  
-  if float(options.popSize) != 1.0:
-    print >> sys.stderr, "*** Error: choose exactly one between coalescent and yule"
-    sys.exit(1)
-    
   birthRate = float(options.birthRate)
   assert birthRate > 0
   def getIntervals(n) :
     return yuleTimes(birthRate, n)
 
-else :
+elif options.popSize is not None :
   pop = float(options.popSize)
   def getIntervals(n) :
     return [random.expovariate(((k*(k-1))//2)/pop) for k in range(n, 1, -1)]
-
+else :
+  def getIntervals(n) :
+    return [1]*(n-1)
+  
 tlog = TreeLogger(options.nexfile, argv = sys.argv, version = __version__)
 
 prepareTree(tree, tree.root)

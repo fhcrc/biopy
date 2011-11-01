@@ -19,12 +19,12 @@ parser = optparse.OptionParser("""%prog [OPTIONS] starbeast-file.xml mutation-ra
   multispecies data in a *BEAST XML file.
 
   The alignments are grouped by ploidy (as specified in the *BEAST file), and
-  one mutation rate is required per group. (the groups are ordered by increasing
-  ploidy size), Mutation rates which are left empty will be estimated. For
-  example 'starbeast.xml 0.1,' would use a fixed rate of 0.1 for the first
-  group, and would estimate the rate for the second group.
+  one mutation rate is required per group. The groups are ordered by increasing
+  ploidy size. Mutation rates which are left empty will be estimated. For
+  example, 'starbeast.xml 0.1,' would use a fixed rate of 0.1 for the first
+  group and would estimate the rate for the second group.
 
-  The estimate is based on Average Sequences Distance (ASD) - see
+  The estimate is based on Average Sequences Distance (ASD) formulas - see
   http://arxiv.org/abs/1104.0727 for more details.
   """)
 
