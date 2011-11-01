@@ -8,19 +8,23 @@ from __future__ import division
 
 import optparse, sys, os.path
 parser = optparse.OptionParser("""%prog [OPTIONS] trees-file-or-tree
-""")
+
+    Simulation sequences for tips of a gene tree using a standard GTR
+    substitution model.""")
 
 parser.add_option("-n", "--seqlen", dest="seqlen", metavar="N",
                   help="""Alignment length."""
                   + """(default %default)""", default = 400) 
 
 parser.add_option("-m", "--model", dest="model",
-                  help="""Substitution model."""
+                  help="""Substitution model. Comma separated list - model name
+                  and model parameters. (1) JC,mu  (2) HKY,mu,kappa,freqs (3)
+                  GTR,mu,rates,freqs """
                   + """(default %default)""", default = "JC,1") 
 
 parser.add_option("-a", "--annotate", dest="annotate",
                   help="""Output trees annotated with sequences. Default is to
-                  generate an NEXUS alignment file per tree.""",
+                  generate a NEXUS alignment file per tree.""",
                   action="store_true", default = False)
 
 parser.add_option("-o", "--nexus", dest="nexfile", metavar="FILE",
@@ -71,7 +75,7 @@ def parseFreqs(freqs) :
         raise RuntimeError("Illegal nucleotide specification: ", code)
       if f <= 0 :
         raise RuntimeError("Illegal rate: " + f)
-      qMat[3*c1 + c2-1] = f
+      qMat[2*c1 + c2-1] = f
       
   notAssigned = sum([x == 0 for x in pi])
   if notAssigned > 0 :

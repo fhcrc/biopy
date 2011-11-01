@@ -17,9 +17,9 @@ from biopy import INexus, beastLogHelper, demographic
 from biopy.treeutils import toNewick, countNexusTrees, getTreeClades
 
 parser = optparse.OptionParser(usage =
-                               """ %prog [OPTIONS] tree posterior-trees.nexus.
+                               """ %prog [OPTIONS] tree posterior-trees.nexus
 
-	Annotate tree with posterior estimate of population sizes. Prints newick
+	Annotate tree with posterior estimate of population sizes. Prints NEWICK
 	tree to standard output. On UNIX it is easy to get the tree for the
 	first argument using biopy, e.g (using bash)
         starbeast_posterior_popsizes `summary_tree.py trees.nexus` trees.nexus.""")

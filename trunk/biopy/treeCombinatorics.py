@@ -7,7 +7,7 @@
 
 Since in combinatorics we are not concerned with branch lengths, trees have a
 simple representation. A tree is either a leaf - A list of length one - or a
-list of trees. (Yes this prohibits internal nodes with only one descendant).
+list of trees. (Yes, this prohibits internal nodes with only one descendant).
 
 """
 

@@ -116,8 +116,14 @@ class TreeLogger(object) :
       print >> outFile, "#NEXUS"
       print >> outFile, "begin trees;"
       
-  def outTree(self, tree, treeAttributes = {'R' : None}, name = None) :
+  def outTree(self, tree, treeAttributes = None, name = None) :
     c = ""
+
+    # rooted attribute on by default for nexus files. If treeAttributes set by
+    # called, caller should probably set it as well.
+    if treeAttributes is None and self.outName :
+      treeAttributes = {'R' : None}
+      
     if treeAttributes is not None :
       c = " ".join(["[&%s %s]" % (k,v) if v else "[&%s]" % k
                     for k,v in treeAttributes.items()]) + " "
