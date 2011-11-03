@@ -1,0 +1,6 @@
+
+Biopy library
+=============
+
+.. automodule:: biopy
+

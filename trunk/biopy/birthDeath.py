@@ -4,10 +4,13 @@
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 #
 
-""" Birth-Death process utilities.
+"""
+=============================
+Birth-Death process utilities
+=============================
 
-  Most math is taken from Gerhard (Stadler) U{thesis,
-  http://deposit.ddb.de/cgi-bin/dokserv?idn=992078377&dok_var=d1&dok_ext=pdf&filename=992078377.pdf}.
+  The complicated math is taken from Gerhard (Stadler) `thesis
+  <http://deposit.ddb.de/cgi-bin/dokserv?idn=992078377&dok_var=d1&dok_ext=pdf&filename=992078377.pdf>`_.
 """
 
 from __future__ import division
@@ -25,7 +28,8 @@ __all__ = ["yuleTimes",
            "yuleHeightsLogLiklihood",
            "yuleHeightsCondRootLogLiklihood",
            "drawYuleTree",
-           "drawBDTree"]
+           "drawBDTree",
+           "BDexpected"]
            
 def yuleTimes(birthRate, n) :
   times = []
@@ -36,10 +40,10 @@ def yuleTimes(birthRate, n) :
   return times
     
 def yuleHeights(birthRate, n) :
-  """ Draw a sequence of node heights of a binary tree with C{n} leaves under a
-  birth process with birth rate C{birthRate}.
+  """ Draw a sequence of node heights of a binary tree with n leaves under a
+  birth process with birth rate birthRate.
 
-  The list contains C{n-1} sorted times, root height being the last.
+  The list contains n-1 sorted times, root height being the last.
   """
   
   times = yuleTimes(birthRate, n)
@@ -62,10 +66,11 @@ def _BDinternalQ(s, t, lam, mu, n) :
   return (1/h) * log((a1 - mu*a2)/(a1-lam*a2))
 
 def BDheights(lam, mu, n) :
-  """ Draw C{n} node heights from a Birth-Death process with birth rate C{lam}
-  and death rate C{mu}.
+  """ Draw n-1 node heights from a Birth-Death process with birth rate lam
+  and death rate mu.
 
-  Return sorted list of times."""
+  Return sorted list of times.
+  """
   
   assert 0 <= mu <= lam and lam > 0
   
@@ -88,11 +93,14 @@ def _f1(r,k,i) :
   return (1/(1-r)).ln() - \
          sum([(1-(1/(1-r))**j)*choose(k+i,j)*(-1)**j/j for j in range(1,k+i+1)])
 
-def BDexpected(k,n,lam,mu) :
-  """ Expected k'th speciation time for BD tree conditioned on n taxa.
-  k == 1 is root. Have serious numerical issues for small mu, so using
-  'Decimal', which unfortuanetly requires changing code :(
+def BDexpected(k, n, lam, mu) :
+  """ Expected k'th speciation time for birth/death tree conditioned on n taxa.
+  k == 1 is root.
   """
+
+  #Have serious numerical issues for small mu, so code is using
+  #'Decimal', which unfortuanetly complicates the code.
+
   if mu == 0 :
     return sum([1/i for i in range(k+1, n+1)])/lam
   if mu == lam:
@@ -107,14 +115,16 @@ def BDexpected(k,n,lam,mu) :
 from treeutils import TreeBuilder
 import random
 
-def treeFromTimes(times, order = None) :
-  """ Build a biopython tree from intra-coalescent intervals in
-  C{times}.
+def _treeFromTimes(times, order = None) :
+  """ Build a biopython tree from intra-coalescent intervals in times.
 
-  Without an order, the joining is random. With C{order}, use the given ordering
-  supplied as a sequence of pairs, each pair is two indices picked to join."""
-  
-  assert order is None or len(times) == len(order)
+  Without an order, the joining is random. With order, use the given ordering
+  supplied as a sequence of pairs, each pair is two indices picked to join.
+  """
+
+  if order is not None :
+    order = list(order)
+    assert len(times) == len(order)
 
   n = len(times) + 1
   
@@ -133,12 +143,22 @@ def treeFromTimes(times, order = None) :
   return tb.finalize(taxa[0][0])
 
 def drawYuleTree(birthRate, n, order = None) :
+  """ Draw a pure birth tree with n tips and given birth rate.
+  
+  With order, use the given ordering supplied as a sequence of pairs, each pair
+  consists of the indices of the nodes to join next. The new subtree replaces
+  the node with the smaller index. For example, with tips a,b,c,d (n=4) an
+  ordering of ((0,3),(0,1),(0,1)) results in (((a,d),b),c), while
+  ((0,1),(1,2),(0,1))) results in ((a,b),(c,d)) and height (a,b) < height (c,d).
+  """
+  
   times = yuleTimes(birthRate, n)
-  return treeFromTimes(times, order)
+  return _treeFromTimes(times, order)
 
 def drawBDTree(birthRate, deathRate, n) :
+  """ Draw a random birth-death tree with n tips and given birth/death rates."""
   times = BDtimes(birthRate, deathRate, n)
-  return treeFromTimes(times)
+  return _treeFromTimes(times)
 
 def _tanja08loglike(nodeHeights, birthRate, deathRate) :
   """ nodeHeights, internal only node heights, root is first"""
@@ -160,13 +180,13 @@ def _tanja08loglike(nodeHeights, birthRate, deathRate) :
   return p1 + p2
 
 def yuleHeightsLogLiklihood(h, birthRate) :
-  """ Log-Likelihood for sorted node heights list C{h} under a yule process with
-  birth rate C{birthRate}.
+  """ Log-Likelihood for sorted node heights list h under a yule process with
+  birth rate birthRate.
   """
   
   return _tanja08loglike(list(reversed(h)), birthRate, 0)
 
-def yuleTimesCondRoot(birthRate, tot, n, maxTries = 10000) :
+def _yuleTimesCondRoot(birthRate, tot, n, maxTries = 10000) :
   nTries = 0
   while nTries < maxTries :
     nTries += 1
@@ -184,23 +204,23 @@ def yuleTimesCondRoot(birthRate, tot, n, maxTries = 10000) :
   raise
 
 def yuleHeightsConditionalOnRoot(birthRate, rootTime, n) :
-  """ Draw a sequence of node heights of a binary tree with C{n} leaves under a
-  birth process with birth rate C{birthRate}, Conditional on root height being
-  C{rootTime}. 
+  """ Draw a sequence of node heights of a binary tree with n leaves under a
+  birth process with birth rate birthRate, Conditional on root height being
+  rootTime. 
 
-  The list contains C{n-1} sorted times, root height being the last.
+  The list contains n-1 sorted times, root height being the last.
   """
   
-  times = yuleTimesCondRoot(birthRate, rootTime, n)
+  times = _yuleTimesCondRoot(birthRate, rootTime, n)
 
   return cumsum(list(reversed(times)))
 
 
 def yuleHeightsCondRootLogLiklihood(h, birthRate, normed=True) :
-  """ Log-Likelihood for sorted node heights list C{h} under a yule process with
-  birth rate C{birthRate}, conditional on root height being h[-1].
+  """ Log-Likelihood for sorted node heights list h under a yule process with
+  birth rate birthRate, conditional on root height being h[-1].
 
-  With not {normed}, the likelihood is unnormalized, that is up to a constant
+  With not normed, the likelihood is unnormalized, that is up to a constant
   multiplier.
   """
   

@@ -4,7 +4,9 @@
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 #
 
-""" Generic combinatorial utilities.
+"""
+Generic combinatorial utilities
+===============================
 """
 
 
@@ -25,30 +27,30 @@ def _prod(x) :
   return reduce(operator.mul, x, 1L)
 
 def factorial(n) :
-  """ C{n} factorial.
+  """ n!
 
-  @rtype: long
+  :rtype: long
   """
   return _prod([long(x) for x in range(1, n+1)])
 
 def choose(n,k) :
-  """ Binomial: Number of ways to choose C{k} of C{n}.
+  """ Binomial: Number of ways to choose k of n.
 
-  @rtype: long
+  :rtype: long
   """
   return _prod(range(k+1,n+1)) // _prod(range(2,n-k+1))
 
 def lchoose(n,k) :
-  """ Log of choose(C{n},C{k}).
+  """ Log of choose(n,k). """
 
-  Via L{scipy.special.gammaln} log of the Gamma function.
-  """
+#  Uses scipy.special.gammaln, log of the Gamma function.
+
   return special.gammaln(n+1) - special.gammaln(k+1) - special.gammaln(n-k+1)
 
 def nPairs(k) :
-  """ choose(C{k},2) (Convenience).
+  """ choose(k,2) (Convenience).
 
-  @rtype: int
+  :rtype: int
   """
   return (k * (k-1)) // 2
 
@@ -80,8 +82,8 @@ def listcombinations(listoflists) :
     [2, 4, 6, 7]
     [2, 4, 6, 8]
 
-    @author: Kiran Jonnalagadda U{original
-             source<http://jace.seacrow.com/archive/2007/02/15/generating-combinations-in-python>} 
+    :author: Kiran Jonnalagadda `original
+             source <http://jace.seacrow.com/archive/2007/02/15/generating-combinations-in-python>`_
     """
   for c in _listcombinations(listoflists):
     yield c
@@ -99,23 +101,23 @@ def _listcombinations(listoflists, curlist=[], parents=[]):
         else:
             yield parents+[item]
 
-def permutations(t) :
-  """ Iterator for all permutations of sequence C{t}.
+def permutations(seq) :
+  """ Iterator for all permutations of sequence seq.
 
-  @param t: Sequence of elements to permute 
-  @type t: sequence
+  :param seq: Sequence of elements to permute
+  :type seq: sequence
   """
   
-  if len(t) <= 1 :
-    yield t
+  if len(seq) <= 1 :
+    yield seq
   else:
-    for perm in permutations(t[1:]) :
-      for i in range(len(t)) :
-        yield perm[:i] + t[0:1] + perm[i:]
+    for perm in permutations(seq[1:]) :
+      for i in range(len(seq)) :
+        yield perm[:i] + seq[0:1] + perm[i:]
 
 
 def allPairs(lst) :
-  """ An iterator over all distinct pairs of elements in C{lst}.  """
+  """ An iterator over all distinct pairs of elements in lst."""
   if len(lst) < 2:
     return
   
@@ -127,21 +129,16 @@ def allPairs(lst) :
 
 
 def lbinomial(k, n, p) :
-  """ Log of probability of having C{k} successes out of C{n} with success
-  probability C{p}.
+  """ Log of probability of obtaining k successes out of n from a process with success
+  probability p.
   """
   v = gammaln(n+1) - (gammaln(k+1) + gammaln(n-k+1))
   return v + k * math.log(p) + (n-k) * math.log(1-p)
 
 
 def uniformvec(n,k) :
-  """ Partition n to k equal sized integers (as near as possible)
-
-  @param n:
-  @type n: int
-  @param k:
-  @type k: int
-  """
+  """ Partition n to k equal sized integers (as near as possible)"""
+  
   b = n / k
   r = n - b * k
   return (b+1,)*r + (b,)*(k-r)
@@ -150,14 +147,14 @@ def uniformvec(n,k) :
 #  1.0/(len(x)-i))) for i in range(len(x)-1)])
 
 def uniformLike(x) :
-  """ The non-normalized probability of getting the I{bincont} in C{x}.
+  """ The non-normalized probability of getting the *bincont* in x.
 
-  Assuming C{x} was obtained by drawing an index uniformly from [0..n-1]
-  (C{n=len(x)}) and incrementing C{x[i]} N times (C{N=sum(x)}), what is the
-  probability of obtaining C{x}?
+  Assuming x was obtained by drawing an index uniformly from [0..n-1]
+  (n=len(x)) and incrementing x[i] N times (N=sum(x)), what is the
+  probability of obtaining x?
 
-  Useful for comparing likelihood of diffrent C{x}'s or to the "uniform"
-  vector from L{uniformvec}.
+  Useful for comparing likelihood of diffrent x's or to the uniform
+  vector from :py:func:`uniformvec`.
   """
   
   return sum([lbinomial(x[i], sum(x[i:]), 1.0/(len(x)-i)) for i in range(len(x)-1)])

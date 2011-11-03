@@ -4,6 +4,11 @@
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 #
 
+"""
+Tree posterior distance optimization
+====================================
+
+"""
 __all__ = ["minPosteriorDistanceTree"]
 
 import scipy, scipy.optimize, copy, random
@@ -79,8 +84,12 @@ def _treeBranchAssignmentExprs(tree, clades) :
 
 
 def minPosteriorDistanceTree(tree, trees, limit = scipy.inf) :
-  """ Find a branch length assignment for C{tree} which minimizes the total
-  distance to the set of C{trees}.
+  """ Find a branch length assignment for tree which minimizes the total
+  distance to the set of trees.
+
+  limit is an upper bound (presumably from a prior call here with another tree).
+  If the distance is known to be larger, the optimization for this tree can be
+  skipped.
   """
   
   treeParts = allPartitions(tree, [tree])

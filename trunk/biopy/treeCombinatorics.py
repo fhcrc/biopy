@@ -3,10 +3,12 @@
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 
-""" Combinatorial utilities for trees.
+"""
+Combinatorial utilities for trees
+=================================
 
 Since in combinatorics we are not concerned with branch lengths, trees have a
-simple representation. A tree is either a leaf - A list of length one - or a
+simple representation. A tree is either a leaf - a list of length one - or a
 list of trees. (Yes, this prohibits internal nodes with only one descendant).
 
 """
@@ -26,39 +28,39 @@ def toNewick(p) :
 # Various counting formulas on number of trees/forests under special conditions
 
 def nLabeledHistories(n, k) :
-  """ Total number of ranked histories of (labeled) C{k}-forests with total of
-  C{n} tips.""" 
+  """ Total number of ranked histories of (labeled) k-forests with total of
+  n tips.""" 
   assert n >= k
   
   return prod([long(c2(x)) for x in range(n, k, -1)])
 
 
 def nRankedHistoriesCladeOnlyRoot(n, c) :
-  """ Number of ranked histories of a labeled tree with a total of C{n+c} taxa, where
-  the common ancestor of taxa from C{c} taxa is the root.
+  """ Number of ranked histories of a labeled tree with a total of n+c taxa, where
+  the common ancestor of taxa from c taxa is the root.
   """
   
   return prod([k*(k+1)//2L for k in range(2,c)]) * \
          prod([k*(k+3)//2L for k in range(c-1,n+c-1)])
 
 def nRankedCombineWithClade(nc, no) :
-  """ Number of ranked ways C{no} taxa can be combined with a C{nc} taxa tree into a
+  """ Number of ranked ways no taxa can be combined with a nc taxa tree into a
   tree.
   """
   return prod([k*(k+nc) for k in range(2,no+1)]) // 2L**(no-1) \
          if no > 0 else 1
 
 def nForestRankedTopologies(n1, n2, k) :
-  """ Number of ranked histories of a labeled forest with C{1+k} trees, the
-  first tree on C{n1} taxa, the remaining C{k} on a total of C{n2} taxa.
+  """ Number of ranked histories of a labeled forest with 1+k trees, the
+  first tree on n1 taxa, the remaining k on a total of n2 taxa.
   """
   
   return choose(n1+n2-k-2, n1-2) * prod([long(c2(x)) for x in range(3, n1+1) + range(k+1, n2+1)])
 
 def nTreeRankedTopologies(n1, n2, k) :
-  """ Number of ranked histories of a labeled tree with C{n1+n2} taxa, which
-  contains a monophyletic clade on the first C{n1} taxa, and at the root of that
-  clade there are exactly C{k+1} surviving lineages in the tree.
+  """ Number of ranked histories of a labeled tree with n1+n2 taxa, which
+  contains a monophyletic clade on the first n1 taxa, and at the root of that
+  clade there are exactly k+1 surviving lineages in the tree.
   """
   assert k <= n2
   
@@ -68,7 +70,7 @@ def nTreeRankedTopologies(n1, n2, k) :
 
 def _LHsize(p) :
   """ Number of labeled ranked histories of trees with the same unranked
-  topology as C{p}.
+  topology as p.
 
   Result is returned indirectly as a pair (n,s), where n is the number of
   internal nodes and s is the number of ranked topologies which map to a single
@@ -93,14 +95,14 @@ def _LHsize(p) :
 
 def labeledHistoriesOfTree(p) :
   """ Number of labeled ranked histories of trees with the same unranked
-  topology as C{p}."""
+  topology as p."""
   
   n,k = _LHsize(p)
   return fac(n)//k
 
 def numberOfLabeledForests(forest) :
   """ Number of labeled ranked forests having the same unranked topology as
-  C{forest}."""
+  forest."""
 
   # number of ranked possibilities for each tree
   z = [_LHsize(x) for x in forest]
@@ -115,7 +117,7 @@ def numberOfLabeledForests(forest) :
 
 def allCompatibleLabeledTrees(forest, compat) :
   """ Iterator returning all compatible trees constructed by joining up a subset
-  of the trees in C{forest}.
+  of the trees in forest.
 
   Assumes all trees in forest are compatible.
   """
@@ -135,7 +137,7 @@ def allCompatibleLabeledTrees(forest, compat) :
   
 def allCompatibleNonTrivialWithFirstTaxaTrees(forest, compat) :
   """ Iterator returning all compatible trees containing the first
-  tree from C{forest} and a non empty subset of the remaining trees.
+  tree from forest and a non empty subset of the remaining trees.
 
   Returns a pair each time, with the tree and the remaining taxa in the list.
   
@@ -154,13 +156,13 @@ def allCompatibleNonTrivialWithFirstTaxaTrees(forest, compat) :
           yield (x,f1)
           
 def allCompatibleLabeledHistories(taxa, compat) :
-  """ Iterator returning all forests whose leaves are C{taxa}. Non-compatible
-  trees are pruned: C{compat} is a function which returns True for a compatible
+  """ Iterator returning all forests whose leaves are taxa. Non-compatible
+  trees are pruned: compat is a function which returns True for a compatible
   tree, False otherwise.
 
   Each taxon is a list of length 1.
 
-  Returns forests, each forest is a list of trees whose taxa is C{taxa}.
+  Returns forests, each forest is a list of trees whose taxa is taxa.
   """
   
   n = len(taxa)
@@ -184,10 +186,10 @@ def allCompatibleLabeledHistories(taxa, compat) :
 
 
 def allBinarySplits(lst, empty=False) :
-  """ Iterator returning all ways to partition elements in C{lst} into two
+  """ Iterator returning all ways to partition elements in lst into two
   groups.
 
-  With C{empty}, allow an empty group, otherwise groups has to be non-empty.
+  With empty, allow an empty group, otherwise groups has to be non-empty.
   """
   
   assert len(lst) >= 2
@@ -217,7 +219,7 @@ def allTrees(taxa) :
           yield [x,y]
 
 def allLabeledPartitions(lst) :
-  """ Iterator returning all ways to partition elements in C{lst} into 1 to
+  """ Iterator returning all ways to partition elements in lst into 1 to
   len(lst) groups.
 
   Returns a list of lists each time.

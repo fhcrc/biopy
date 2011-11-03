@@ -341,16 +341,18 @@ def setLabels(trees) :
 
   return hasAll
 
-import demographic
-LPP = demographic.LinearPiecewisePopulation
+from demographic import LinearPiecewisePopulation, ConstantPopulation, StepFunctionPopulation
 
 def _tod(xt, yt, b = None) :
   xt = [float(x) for x in xt.split(',') if len(x)]
   yt = [float(x) for x in yt.split(',')]
   if b is not None and len(xt) + 2 == len(yt) :
     xt.append(b)
-    
-  return LPP(yt, xt)
+
+  if len(yt) == 1 and len(xt) == 0 :
+    return ConstantPopulation(yt[0])
+  
+  return LinearPiecewisePopulation(yt, xt)
 
 def _toDemog(dtxt) :
   return _tod(*dtxt.split('|'))
@@ -409,13 +411,13 @@ def revertDemographics(tree, dattr = "demographic",
           if l in data.attributes:
             del data.attributes[l]
             
-      if isinstance(d, demographic.ConstantPopulation) :
+      if isinstance(d, ConstantPopulation) :
         data.attributes[dmv] = d.population(0)
-      elif isinstance(d, demographic.LinearPiecewisePopulation) :
+      elif isinstance(d, LinearPiecewisePopulation) :
         data.attributes[dmv] = _toAttrText(d.vals)
         if len(d.xvals) :
           data.attributes[dmt] = _toAttrText(d.xvals)
-      elif isinstance(d, demographic.StepFunctionPopulation) :
+      elif isinstance(d, StepFunctionPopulation) :
         data.attributes[dmv] = _toAttrText(d.vals)
         data.attributes[dmt] = _toAttrText([0] + d.xvals)
       else :

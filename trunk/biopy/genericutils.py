@@ -4,17 +4,20 @@
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 #
 
-""" Generic helpers """
+"""
+Generic helpers
+===============
+"""
 
 import os.path, gzip, bz2
 
 def fileFromName(fname) :
   """A Python file object from (possibly compressed) disk file.
 
-  If file has a common suffix (.gz,.bz2) use that. If 'fname' does not exist,
-  look for a compressed file with the same stem.
+  If file has a common suffix (.gz,.bz2) use that as a guide. If fname does
+  not exist, look for a compressed file with the same stem.
   
-  @param fname: File name 
+  :param fname: file name 
   """
   
   if os.path.exists(fname) :
