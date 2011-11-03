@@ -4,8 +4,13 @@
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 #
 
-""" Calculate Bayesian statistics sucj as Heighst Posterior Density (HPD) and
-Effective Sample Size (Beast interpretation).
+"""
+===================
+Bayesian statistics
+===================
+
+Calculate Bayesian statistics such as Highest Posterior Density (HPD) and
+Effective Sample Size (BEAST interpretation).
 """
 
 from __future__ import division
@@ -15,8 +20,11 @@ import numpy
 __all__ = ["hpd", "effectiveSampleSize"]
 
 def hpd(data, level) :
-  """ The Highest Posterior Density (credible) interval of C{data} at level C{level}
-  (0 < level < 1). """ 
+  """ The Highest Posterior Density (credible) interval of data at level level.
+
+  :param data: sequence of real values
+  :param level: (0 < level < 1)
+  """ 
   
   d = list(data)
   d.sort()
@@ -40,7 +48,11 @@ def hpd(data, level) :
 
 
 def effectiveSampleSize(data, stepSize = 1) :
-  """ Effective sample size, as computed by BEAST Tracer."""
+  """ Effective sample size, as computed by BEAST Tracer.
+
+  :param data: sequence of real values
+  """
+  
   samples = len(data)
 
   assert len(data) > 1,"no stats for short sequences"

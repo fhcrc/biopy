@@ -30,22 +30,31 @@ parser.add_option("-n", "--ntrees", dest="ngenetrees", metavar="N",
 
 parser.add_option("-e", "--redraw", dest="redraw", metavar="E",
                   help="""Change model based parameters every E"""
-                  + """ (default %default) trees.""", default = "1") 
+                  + """ trees (default %default).""",
+                  default = "1") 
 
 parser.add_option("-t", "--per-species", dest="ntips", metavar="N",
-                  help="""Number of individuals (lineages) per species.
-                  Ignored for tips with explicit labels
-                  (default %default).""", default = "2") 
+                  help="""Number of individuals (lineages) per species."""
+                  + """ Ignored for tips with explicit labels"""
+                  + """ (default %default).""",
+                  default = "2") 
 
 parser.add_option("-o", "--nexus", dest="nexfile", metavar="FILE",
-                  help="Print trees in nexus format to FILE", default = None)
+                  help="Print trees in nexus format to FILE",
+                  default = None)
 
 parser.add_option("-l", "--log", dest="sfile", metavar="FILE",
-                  help="Log species trees in nexus format to FILE", default = None)
+                  help="Log species trees in nexus format to FILE",
+                  default = None)
 
 parser.add_option("-s", "--scenario", dest="scenario",
                   type='choice', choices=['gradual', 'constant', 'balanced'],
-                  help="FIXME", default = None)
+                  help="""Assign migration rates stochastically. 'constant'"""
+                  + """ assigns a constant independent rate. 'balanced' assigns a"""
+                  + """ constant rate with A->B flow equal to B->A. For gradual
+                  see documentation. constant and balanced take on distribution
+                  (M), while gradual takes two (M and S).""",
+                  default = None)
                   
 options, args = parser.parse_args()
 
@@ -74,10 +83,18 @@ else :
 
 nexusTreesFileName = args[-1]
 
+try : 
+  tlog = TreeLogger(options.nexfile, argv = sys.argv, version = __version__)
+except RuntimeError,e:
+  print >> sys.stderr, "**Error:", e.message
+  sys.exit(1)
 
-tlog = TreeLogger(options.nexfile, argv = sys.argv, version = __version__)
 if options.sfile is not None :
-  slog = TreeLogger(options.sfile, argv = sys.argv, version = __version__)
+  try : 
+    slog = TreeLogger(options.sfile, argv = sys.argv, version = __version__)
+  except RuntimeError,e:
+    print >> sys.stderr, "**Error:", e.message
+    sys.exit(1)
 else :
   slog = None
   
@@ -92,6 +109,12 @@ if not all(hasPops) :
   print >> sys.stderr, "Error: Missing demographic(s)"
   sys.exit(1)
 
+## def ppt(tree) :
+##   for i in tree.all_ids() :
+##     node = tree.node(i)
+##     if node.succ :
+##       print node.id, [str(x) for x in node.data.ima]
+  
 tipNameTemplate = "%s_tip%d"
 
 for tree in trees:
@@ -116,6 +139,8 @@ for tree in trees:
         node = tree.node(i)
         if node.succ :
           node.data.ima = [tree.node(ch).data.pimr for ch in node.succ]
+          #print node.id, [str(x) for x in node.data.ima]
+          
   elif options.scenario is None:
     print >> sys.stderr, ("""** No migration rates data in tree and no scenario"""
                           """ specified""")

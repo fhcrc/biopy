@@ -8,7 +8,6 @@
 ====================
 Random Distributions
 ====================
-
 """
 
 from __future__ import division

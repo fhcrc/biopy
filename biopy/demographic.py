@@ -4,7 +4,12 @@
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 #
 
-""" Demographic functions (effective population size(s) over time).
+"""
+Demographic functions
+=====================
+
+A demographic function is a function of the effective population size over
+time.
 """
 
 from __future__ import division
@@ -12,6 +17,8 @@ from __future__ import division
 from math import exp, log, sqrt, pi, cos
 
 import random, operator
+
+# for testing only
 from scipy.integrate import quad
 from numpy import array, arctan, tan
 
@@ -143,6 +150,7 @@ class Demographic(object) :
 class ConstantPopulation(Demographic) :
   """ Constant population size."""
   def __init__(self, N) :
+    """ population(t) = N """
     self.pop = float(N)
     
   def __str__(self) :
@@ -169,7 +177,7 @@ class ConstantPopulation(Demographic) :
 
   def timeToNextCoalescent(self, nLineages, t) :
     """ Randomly draw the time interval where any 2 lineages from the initial
-    C{nLineages} coalesce, starting from time C{t}."""
+    nLineages coalesce, starting from time t."""
     
     return random.expovariate((nLineages * (nLineages-1)) / (2.0 * self.population(t)))
 
@@ -183,7 +191,10 @@ class StepFunctionPopulation(Demographic) :
   """ Stepwise Constant population size."""
 
   def __init__(self, vals, xvals) :
-    """ population = vals[k] over xvals[k-1],xvals[k], where xvals[-1] is implicitly 0"""
+    """ population(t) = vals[k] for xvals[k-1] <= t < xvals[k]
+
+    where xvals[-1] is implicitly 0
+    """
     assert len(vals) == len(xvals) + 1, (vals,xvals)
     
     self.vals = [float(x) for x in vals]
@@ -632,7 +643,10 @@ class ExponentialGrowthPopulation(Demographic) :
 
 class ScaledDemographic(object) :
   def __init__(self, dfunc, factor) :
-    """ a Demographic function equal to dfunc * factor"""
+    """ a Demographic function equal to dfunc * factor
+
+    Supports only population size and intensity integration.
+    """
     self.demo = dfunc
     self.factor = factor
     

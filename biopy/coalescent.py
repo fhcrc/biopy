@@ -3,8 +3,14 @@
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 
-""" Sample from the coalescent and calculate the likelihood of a tree under the
-coalescent."""
+"""
+Coalescent utilities
+====================
+
+Sample from the coalescent and calculate the likelihood of a tree under the
+coalescent.
+
+"""
 
 from __future__ import division
 
@@ -84,8 +90,10 @@ def sampleCoalescentTree(demog, labels) :
 
 def coalLogLike(demog, times, condOnTree = False) :
   """ Log-Likelihood of coalescent times with demographic function demog.
+  
   times is a sorted list of (time,coal), where time goes backwards from zero
-  and coal is false for tips, true for a coalescent."""
+  and coal is false for tips, true for a coalescence event.
+  """
 
   like = 0.0
   nl = 0
@@ -116,7 +124,7 @@ def coalLogLike(demog, times, condOnTree = False) :
   return like
 
 
-def ologlike(times, demog) :
+def _ologlike(times, demog) :
   """ Log-Likelihood of coalescent times given demographic function demog.
   When times is a list of length 2 with second element a list, it is assumed to
   be serial data tip information."""

@@ -3,9 +3,11 @@
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 
-""" Tree measures.
+"""
+Tree measures
+=============
 
-  Distance between trees and related utilities.
+Distance between trees and related utilities.
 """
 
 from math import sqrt
@@ -17,10 +19,10 @@ __all__ = ["branchScoreTreeDistance", "treeScoreDistance",
 
 def _collectCladeTaxa(tree, nodeId, taxa, partitions) :
   """ Return a (reverse) mapping of taxa for each node in the sub-tree below
-  C{nodeId}.
+  nodeId.
 
   The returned mapping has the taxa as key, in the form of a set of integeres,
-  each an index into C{taxa}. The value of the mapping is the node tree id.
+  each an index into taxa. The value of the mapping is the node tree id.
   """
   
   node = tree.node(nodeId)
@@ -38,19 +40,19 @@ def _collectCladeTaxa(tree, nodeId, taxa, partitions) :
   return p
 
 def vdistance(a1, a2, order = 2) :
-  """ Vector norm M{||v||_2}"""
+  """ Vector norm {||v||_2}"""
   return numpy.linalg.norm([x-y for x,y in zip(a1,a2)], order)
 
 def branchScoreTreeDistance(tree1, tree2, distanceMetric = vdistance) :
   """ Branch score tree distance.
 
-  Distance between two rooted trees based on a "minimal edit distance", the
+  Distance between two rooted trees based on a *minimal edit distance*, the
   total sum of branch lengths changes in a sequence of moves which transform one
-  tree to the other. (U{Kuhner
-  1994<http://mbe.library.arizona.edu/data/1994/1103/13kuhn.pdf>})
+  tree to the other. (`Kuhner
+  1994 <http://mbe.library.arizona.edu/data/1994/1103/13kuhn.pdf>`_)
 
   Individual branch changes are converted to a single distance using the vector
-  norm C{distanceMetric}.
+  norm distanceMetric.
   """
   
   taxa = tree1.get_taxa()
@@ -79,12 +81,12 @@ def treeScoreDistance(tree1, tree2, norm = vdistance, consistencyCheck = True) :
   """ Tree distance when taking into account both branch length and population
   size on the branch.
 
-  Similar to L{branchScoreTreeDistance}, but taking the intensity (integral of
-  1/pop-size over the branch) instead of branch length. (with a constant
-  population size of 1, it reduces to branch score). 
+  Similar to :py:func:`branchScoreTreeDistance`, but taking the intensity
+  (integral of 1/pop-size over the branch) instead of branch length. With a
+  constant population size of 1, it reduces to branch score.
 
   Individual scores are converted to a single distance using the vector norm
-  C{norm}.
+  norm.
   """
   
   taxa = tree1.get_taxa()
@@ -156,9 +158,9 @@ def treeArea(tree) :
 def allPartitions(referenceTree, trees) :
   """ Clade information summary for a set of trees.
 
-  Summerize clades from all C{trees} in one mapping. All trees must be on the
+  Summerize clades from all trees in one mapping. All trees must be on the
   same taxa as the reference tree. Return a mapping whose key is the clade, and
-  the value is a sequence of C{(tree,node)} pairs.
+  the value is a sequence of (tree,node) pairs.
   """
   
   taxa = referenceTree.get_taxa()
