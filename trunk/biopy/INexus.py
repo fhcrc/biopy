@@ -487,7 +487,7 @@ class INexus(object):
 
     __slots__=['original_taxon_order','__dict__']
 
-    def __init__(self):
+    def __init__(self, input=None):
         self.ntax=0                     # number of taxa
         self.nchar=0                    # number of characters
         self.taxlabels=[]             # labels for taxa, ordered by their id
@@ -520,8 +520,8 @@ class INexus(object):
         # some defaults
         self.options['gapmode']='missing'
         
-        #if input:
-        #  self.read(input)
+        if input:
+          self.trees = list(self.read(input))
 
     def get_original_taxon_order(self):
         """Included for backwards compatibility."""
