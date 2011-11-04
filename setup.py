@@ -33,6 +33,8 @@ setup (name = 'biopy',
        package_dir={'biopy': 'biopy'},
        ext_modules = [module1,module2],
        scripts = glob.glob('scripts/*'),
-#       data_files=[('doc',glob.glob('html/*.html') + glob.glob('html/*.js')
-#                    + glob.glob('html/_images/*') + glob.glob('html/_static/*'))]
+       data_files=[('doc',glob.glob('html/*.*')),
+                   ('doc/_images', glob.glob('html/_images/*.*')),
+                   ('doc/_images/math', glob.glob('html/_images/math/*.*')),
+                   ('doc/_static', glob.glob('html/_static/*.*'))]
        )
