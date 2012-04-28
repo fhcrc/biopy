@@ -62,7 +62,6 @@ parser.add_option("", "--mcolors", dest="mcolors", action="append",
 parser.add_option("-i", "--interactive", dest="interactive", action="store_true",
                   help="""present plot interactively to user..""", default = False) 
 
-
 parser.add_option("-p", "--progress", dest="progress",
                   help="Print out progress messages to terminal (standard error)",
                   action="store_true", default = False)

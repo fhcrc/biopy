@@ -145,7 +145,10 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf) :
   if z0 >= limit :
     return (None, 0.0)
 
-  # Get code which transforms heights to branch lengths 
+  # Get code which transforms the heights encoding to branch lengths
+  # A descendant height is specified as a fraction in [0,1] of its ancestor
+  # height (but leading number is the root height).
+  
   ba,minRoot = _treeBranchAssignmentExprs(tree, treeParts)
 
   # Define the posterior distance function on the fly.

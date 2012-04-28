@@ -17,7 +17,7 @@ import random
 from scipy import special
 
 __all__ = ["Uniform", "Exponential", "Gamma", "Poisson", "InvGamma",
-           "LogNormal", "Normal",  "parseDistribution"]
+           "LogNormal", "Normal",  "Delta", "parseDistribution"]
 
 class Uniform(object) :
   def __init__(self, l, h) :
@@ -97,7 +97,7 @@ class Gamma(object) :
     return (self.shape-1) * log(x) - (x/self.scale) - self.denom
   
   def sample(self) :
-    return  random.gammavariate(self.shape, self.scale)
+    return random.gammavariate(self.shape, self.scale)
   
 class Poisson(object) :
   def __init__(self, lam) :
@@ -236,6 +236,9 @@ class Delta(object) :
   def __init__(self, v) :
     self.value = v
 
+  def __repr__(self) :
+    return "Delta(%g)" % self.value
+  
   def domain(self) :
     return (self.value, self.value)
     

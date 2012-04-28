@@ -155,7 +155,7 @@ def _getTreeClades_i(tree, nodeID) :
     return ([node.data.taxon], [])
 
   cl = [_getTreeClades_i(tree, ch) for ch in node.succ]
-  allt = apply(operator.add, [x[0] for x in cl])
+  allt = reduce(operator.add, [x[0] for x in cl])
   clades = [(allt,node)]
   for cl1 in [x[1] for x in cl if x[1]] :
     clades.extend(cl1)

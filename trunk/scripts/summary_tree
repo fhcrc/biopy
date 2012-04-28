@@ -189,13 +189,13 @@ for tree in candidates:
   nCandidatesTried += 1
   if limit > 0 :
     timenow = time()
-    if timenow - startTime >= limit:
-      print >> sys.stderr, "time limit reached ...,",
-      break
     if progress:
       print >> sys.stderr, \
             ("%ds/%d (%g), " % (round(timenow - startTime),
                                 nCandidatesTried,bestScore)),
+    if timenow - startTime >= limit:
+      print >> sys.stderr, "time limit reached ...,",
+      break
 if limit > 0:
   print >> sys.stderr, "examined %d topologies in %.1f seconds," \
         % (nCandidatesTried, time() - startTime),
