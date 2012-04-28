@@ -15,8 +15,6 @@ Effective Sample Size (BEAST interpretation).
 
 from __future__ import division
 
-import numpy
-
 __all__ = ["hpd", "effectiveSampleSize"]
 
 def hpd(data, level) :
@@ -46,55 +44,61 @@ def hpd(data, level) :
   
   return (d[i], d[i+nIn-1])
 
+from cchelp import effectiveSampleStep
 
-def effectiveSampleSize(data, stepSize = 1) :
-  """ Effective sample size, as computed by BEAST Tracer.
+def effectiveSampleSize(data) :
+  return len(data)/effectiveSampleStep(data)[0]
 
-  :param data: sequence of real values
-  """
+# import numpy
+
+## def effectiveSampleSize(data, stepSize = 1) :
+##   """ Effective sample size, as computed by BEAST Tracer.
+
+##   :param data: sequence of real values
+##   """
   
-  samples = len(data)
+##   samples = len(data)
 
-  assert len(data) > 1,"no stats for short sequences"
+##   assert len(data) > 1,"no stats for short sequences"
   
-  maxLag = min(samples//3, 1000)
+##   maxLag = min(samples//3, 1000)
 
-  gammaStat = [0,]*maxLag
-  #varGammaStat = [0,]*maxLag
+##   gammaStat = [0,]*maxLag
+##   #varGammaStat = [0,]*maxLag
 
-  varStat = 0.0;
+##   varStat = 0.0;
 
-  if type(data) != numpy.ndarray :
-    data = numpy.array(data)
+##   if type(data) != numpy.ndarray :
+##     data = numpy.array(data)
 
-  normalizedData = data - data.mean()
+##   normalizedData = data - data.mean()
   
-  for lag in range(maxLag) :
-    v1 = normalizedData[:samples-lag]
-    v2 = normalizedData[lag:]
-    v = v1 * v2
-    gammaStat[lag] = sum(v) / len(v)
-    #varGammaStat[lag] = sum(v*v) / len(v)
-    #varGammaStat[lag] -= gammaStat[0] ** 2
+##   for lag in range(maxLag) :
+##     v1 = normalizedData[:samples-lag]
+##     v2 = normalizedData[lag:]
+##     v = v1 * v2
+##     gammaStat[lag] = sum(v) / len(v)
+##     #varGammaStat[lag] = sum(v*v) / len(v)
+##     #varGammaStat[lag] -= gammaStat[0] ** 2
 
-    # print lag, gammaStat[lag], varGammaStat[lag]
+##     # print lag, gammaStat[lag], varGammaStat[lag]
     
-    if lag == 0 :
-      varStat = gammaStat[0]
-    elif lag % 2 == 0 :
-      s = gammaStat[lag-1] + gammaStat[lag]
-      if s > 0 :
-         varStat += 2.0*s
-      else :
-        break
+##     if lag == 0 :
+##       varStat = gammaStat[0]
+##     elif lag % 2 == 0 :
+##       s = gammaStat[lag-1] + gammaStat[lag]
+##       if s > 0 :
+##          varStat += 2.0*s
+##       else :
+##         break
       
-  # standard error of mean
-  # stdErrorOfMean = Math.sqrt(varStat/samples);
+##   # standard error of mean
+##   # stdErrorOfMean = Math.sqrt(varStat/samples);
 
-  # auto correlation time
-  act = stepSize * varStat / gammaStat[0]
+##   # auto correlation time
+##   act = stepSize * varStat / gammaStat[0]
 
-  # effective sample size
-  ess = (stepSize * samples) / act
+##   # effective sample size
+##   ess = (stepSize * samples) / act
 
-  return ess
+##   return ess

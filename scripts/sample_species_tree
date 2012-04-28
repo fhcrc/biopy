@@ -45,12 +45,15 @@ The population size at the tips is drawn using the distributions given by '-p'.
 DIST is a distribution for the rate of change in population size.  The
 population size at the start of the branch (i.e at divergence) is P 2^{-r b},
 where P is the population at the end of the branch (another divergence or a
-tip). r is the rate drawnd from DIST and b is the branch length, as a fraction
+tip). r is the rate, drawn from DIST, and b is the branch length as a fraction
 of total tree height.""",
                   default = None)
 
 parser.add_option("-o", "--nexus", dest="nexfile", metavar="FILE",
                   help="Print trees in nexus format to FILE", default = None)
+
+parser.add_option("", "--name", dest="treename", metavar="STR",
+                  help="base for tree names", default = None)
 
 options, args = parser.parse_args()
 
@@ -65,17 +68,28 @@ nTrees = int(options.ntrees)                    ; assert nTrees > 0
 if len(args) < 1 :
   errExit("No taxa?")
 
+def pformat(ns) :
+  from math import log
+  pr = int(log(ns,10)) + 1
+  pformat = "%." + str(pr) + "d"
+  return pformat
+
 taxTxt = args[0]
 if taxTxt.isdigit() :
-  taxa = ["s%d" % k for k in range(int(taxTxt))]
+  ns = int(taxTxt)
+  pf = pformat(ns)
+  taxa = ['s' + pf % k for k in range(ns)]
 else:
   if "," not in taxTxt:
     errExit("Invalid taxa spesification.")
     
   t = taxTxt.split(',')
-  if len(t) == 2 and t[1].isdigit() and "%" in t[0] :
-    form = t[0].replace('%%', '%d')
-    taxa = [form % k for k in range(int(t[1]))]
+  if len(t) == 2 and t[1].isdigit() and "%%" in t[0] :
+    ns = int(t[1])
+    pf = pformat(ns)
+    
+    form = t[0].replace('%%', pf)
+    taxa = [form % k for k in range(ns)]
   else :
     taxa = t
 
@@ -143,6 +157,6 @@ for nt in range(nTrees) :
       else :
         d.attributes['dmv'] = "%r" % d.pop0
     
-  tlog.outTree(toNewick(t, attributes="attributes") )
+  tlog.outTree(toNewick(t, attributes="attributes"), name = options.treename )
 
 tlog.close()

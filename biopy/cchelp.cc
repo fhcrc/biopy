@@ -3,8 +3,13 @@
 // Author: Joseph Heled <jheled@gmail.com>
 // See the files gpl.txt and lgpl.txt for copying conditions.
 
+
+#undef NDEBUG
+#include <cassert>
+
 #include <Python.h>
 #include <numpy/arrayobject.h>
+
 
 #include <string>
 using std::string;
@@ -542,6 +547,138 @@ parseSubTree(PyObject*, PyObject* args)
   return n;
 }
 
+
+static PyObject*
+effectiveSampleStep(PyObject*, PyObject* args)
+{
+  PyObject* data;
+
+  if( !PyArg_ParseTuple(args, "O", &data) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    return 0;
+  }
+
+  if( ! PySequence_Check(data) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args: not a sequence");
+    return 0;
+  }
+
+  int const nSamples = PySequence_Size(data);
+
+  if( nSamples <= 3 ) {
+    PyErr_SetString(PyExc_ValueError, "less that 4 samples");
+    return 0;
+  }
+  
+  int const maxLag = std::max(nSamples/3, 3);
+  
+  double* normalizedData = new double [nSamples];
+  double sm = 0.0;
+  
+  for(int k = 0; k < nSamples; ++k) {
+    PyObject* const dk = PySequence_Fast_GET_ITEM(data,k);
+    double const g = PyFloat_AsDouble(dk);
+    normalizedData[k] = g;
+    sm += g;
+  }
+
+  sm /= nSamples;
+  
+  for(int k = 0; k < nSamples; ++k) {
+    normalizedData[k] -= sm;
+  }
+
+  vector<double> gammaStats;
+  
+  double gammaStat0, gammaPrev;
+  double varStat = 0.0;
+  int lag;
+  for(lag = 0; lag < maxLag; ++lag) {
+    sm = 0.0;
+    int const n = nSamples-lag;
+    for(int k = 0; k < n; ++k) {
+      sm += normalizedData[k] * normalizedData[k+lag];
+    }
+    double const gammaStat = sm / n;
+    gammaStats.push_back(gammaStat);
+      
+    if( lag == 0 ) {
+      gammaStat0 = gammaStat;
+      varStat = gammaStat;
+    } else {
+      if( (lag & 0x1) == 0 ) {
+	double const s = gammaPrev + gammaStat;
+	if( s > 0 ) {
+	  varStat += 2*s;
+	} else {
+	  break;
+	}
+      }
+      gammaPrev = gammaStat;
+    }
+  }
+  
+  double const act = varStat / gammaStat0;
+
+  // effective sample size
+  double const ess = nSamples / act;
+
+  lag -= 1;
+
+  //double const ess2 = lag > 0 ? nSamples/double(lag) : nSamples;
+  double const act2 = lag > 0 ? lag : 1;
+
+  double act1;
+
+  double cvarStat = varStat + gammaStats[lag];
+  // ppp = False
+  // if ppp : print "clag", clag, cvarStat
+  
+  double const back = cvarStat * 0.05;
+  //if ppp : print "back", back
+  double totBack = 0;
+  int const nn = gammaStats.size();
+  
+  assert(nn >= 3);
+  while( lag > 0 ) {
+    totBack += gammaStats[lag] + gammaStats[lag-1];
+    //if ppp : print "totBack", totBack, clag
+    
+    lag -= 1;
+    if( totBack >= back ) {
+      break;
+    }
+  }
+  
+  if (lag == 0 ) {
+    act1 = 1;
+  } else {
+    double cutBack = totBack - back;
+    assert(lag+1 < nn);
+    //double tot = gammaStats[lag] + gammaStats[lag+1];
+    //assert cutBack <= tot, (cutBack, tot)
+    //if ppp : print clag, cutBack, tot
+
+    double const dif = (gammaStats[lag]-gammaStats[lag+1]);
+    double const d2 = gammaStats[lag]*gammaStats[lag] - dif * cutBack;
+    assert(d2 >= 0);
+    double const sol = (gammaStats[lag] - sqrt(d2)) / dif;
+
+    act1 = lag + sol;
+  }
+  
+  delete [] normalizedData;
+
+  PyObject* t = PyTuple_New(3);
+  PyTuple_SET_ITEM(t, 0, PyFloat_FromDouble(act));
+  PyTuple_SET_ITEM(t, 1, PyFloat_FromDouble(act1));
+  PyTuple_SET_ITEM(t, 2, PyFloat_FromDouble(act2));
+  
+  return t;
+
+  //  return PyFloat_FromDouble(ess);
+}
+
 static PyMethodDef cchelpMethods[] = {
   {"nonEmptyIntersection",  nonEmptyIntersection, METH_VARARGS,
    ""},
@@ -561,6 +698,9 @@ static PyMethodDef cchelpMethods[] = {
    " Distance is total sum of mismatched characters."},
 
   {"parsetree",  parseSubTree, METH_VARARGS,
+   ""},
+
+  {"effectiveSampleStep",  effectiveSampleStep, METH_VARARGS,
    ""},
 
   {NULL, NULL, 0, NULL}        /* Sentinel */
