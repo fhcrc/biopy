@@ -82,8 +82,9 @@ def _treeBranchAssignmentExprs(tree, clades) :
       sr.append("b%d=(h%d - h%d) # %d" % (r, p, n, n))
   return sr, mh[tree.root]
 
+ver = False
 
-def minPosteriorDistanceTree(tree, trees, limit = scipy.inf) :
+def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True) :
   """ Find a branch length assignment for tree which minimizes the total
   distance to the set of trees.
 
@@ -96,6 +97,11 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf) :
 
   posteriorParts = allPartitions(tree, trees)
 
+  # For numerical stability sake in computing gradients, scale trees
+  # so that mean root height is 1 
+  fctr = len(trees)/ sum([treeHeight(x) for x in trees]) if norm else 1
+  if ver: print fctr
+  
   # Text of expression to compute the total distance. The variables are the
   # branch lengths. 
   ee = ""
@@ -108,7 +114,7 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf) :
       # A tree clade which appears in some posterior trees
 
       # All branch lengths from posterior for this clade
-      br = [t.node(n).data.branchlength for t,n in posteriorParts[k]]
+      br = [t.node(n).data.branchlength * fctr for t,n in posteriorParts[k]]
       
       # Number of posterior trees without the clade 
       a1 = (len(trees) - len(posteriorParts[k]))
@@ -130,12 +136,12 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf) :
       ee += "+(%d * b%d**2)" % (len(trees), r)
 
   # Total distance of branches terminating at a clade which is missing in tree.
-  # This is (not necessarily a good) lower bound on the total distance.
+  # This is (not necessarily good) lower bound on the total distance.
   z0 = 0
   
   for k in posteriorParts :
     if k not in treeParts:
-      a0 = sum([(t.node(n).data.branchlength-0)**2 for t,n in posteriorParts[k]])
+      a0 = sum([(t.node(n).data.branchlength * fctr - 0)**2 for t,n in posteriorParts[k]])
       c0 += a0
       z0 += a0
 
@@ -152,36 +158,57 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf) :
   ba,minRoot = _treeBranchAssignmentExprs(tree, treeParts)
 
   # Define the posterior distance function on the fly.
-  exec "def f(x):\n  " + "\n  ".join(ba) + "\n  return " + ee
-
+  cod = "def f(x):\n  " + "\n  ".join(ba) + "\n  return " + ee
+  exec cod
+  
   # Number of variables (heights)
   nx = len(tree.get_terminals())-1
+  
+  if ver :
+    print "@@",nx, minRoot, treeHeight(tree) * fctr
+    print cod
   
   ## zz = scipy.optimize.fmin_tnc(f, [tree.height()] + [0.5]*(nx-1),
   ##                              approx_grad=1, bounds = [[0,None]] +
   ##                              [[0,1]]*(nx-1), xtol= 1e-14)
 
   maxfun = 15000
-  zz = scipy.optimize.fmin_l_bfgs_b(f,
-                                    [treeHeight(tree)] + [random.random() for k
-                                                      in range(nx-1)],
+  if 1 :
+    zz = scipy.optimize.fmin_l_bfgs_b(f,
+                                    [1 if norm else treeHeight(tree)] +
+                                    [random.random() for k in range(nx-1)],
+                                    #[.7 for k in range(nx-1)],
                                     approx_grad=1,
                                     bounds = [[minRoot,None]] + [[0,1]]*(nx-1),
                                     iprint=-1, maxfun=maxfun)
-  if zz[2]['warnflag'] != 0 :
-    print "WARNING:", zz[2]['task']
+    if zz[2]['warnflag'] != 0 :
+      print "WARNING:", zz[2]['task']
+    #print zz[0]
+    
+  if 0:
+    zz = scipy.optimize.fmin_tnc(f,
+                                 [treeHeight(tree)*fctr] +
+                                 [random.random() for k in range(nx-1)],
+                                 # [.7 for k in range(nx-1)],
+                                 approx_grad=1,
+                                 bounds = [[minRoot,None]] + [[0,1]]*(nx-1),
+                                 maxfun=maxfun,
+                                 messages=0)
+    assert zz[2] == 1
 
   # Function to get the branch lengths from optimized heights
-  exec "def b(x):\n  " + "\n  ".join(ba) + "\n  " + \
+  cod = "def b(x):\n  " + "\n  ".join(ba) + "\n  " + \
        "return (" + ",".join(['b%d' % k for k in range(len(treeParts))]) + ")" 
-
+  exec cod
+  if ver: print cod
+  
   # Do not change tree passed as argument. Copy tree and set branch lengths of
   # copy.
   ss = copy.deepcopy(tree)
 
   brs = b(zz[0])
   for r,k in enumerate(treeParts) :
-    ss.node(treeParts[k][0][1]).data.branchlength = brs[r]
+    ss.node(treeParts[k][0][1]).data.branchlength = brs[r]/fctr
 
   return (ss, f(zz[0]))
 
