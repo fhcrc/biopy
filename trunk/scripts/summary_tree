@@ -95,8 +95,16 @@ nexusReader = INexus.INexus()
 if progress:
   print >> sys.stderr, "reading %d trees ...," % int((nTrees * (1-burnIn) / every)),
 
-trees = list(nexusReader.read(nexFile, slice(int(burnIn*nTrees), -1, every)))
+try :
+  trees = list(nexusReader.read(nexFile, slice(int(burnIn*nTrees), -1, every)))
+except Exception,e:
+  print >> sys.stderr, "**Problem reading trees file:", e.message
+  sys.exit(1)
 
+if len(trees) == 0 :
+  print >> sys.stderr, "**Error: No trees"
+  sys.exit(1)
+  
 if 1:
   if progress:
     print >> sys.stderr, "collect topologies and sort ...,",
@@ -177,11 +185,15 @@ for tree in candidates:
     postTrees = topology[k]
     print >> sys.stderr, "Using %d posterior trees (out of %d) for %s" \
           % (len(postTrees), len(trees), k) 
-      
-  tr, score = minPosteriorDistanceTree(tree, postTrees)
 
+  norm = True
+  tr, score = minPosteriorDistanceTree(tree, postTrees, norm = norm)
+  
   # normalize score
   score = (score / len(postTrees)) ** 0.5
+
+  #print 
+  #print score,toNewick(tr)
 
   if score < bestScore:
     bestScore = score
