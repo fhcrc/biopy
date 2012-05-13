@@ -29,7 +29,7 @@ def _findIndex(s, ch, stopAt) :
     if e >= len(s) :
       return -1
   return e
-  
+    
 def _parseAttributes(s) :
   vals = []
   eat = 0
@@ -107,30 +107,46 @@ def _readSubTree(txt, nodesList) :
   n1 = _skipSpaces(txt)
   txt = txt[n1:]
   n += n1
-  
-  if len(txt) and txt[0] == '[' and txt[1] == '&':
-      n1, vals = _parseAttributes(txt[2:])
-      n1 += 3
-      n1 += _skipSpaces(txt[n1:])
-      n += n1
-      txt = txt[n1:]
-      nodesList[-1][3] = vals
-       
-  if len(txt) and txt[0] == ':' :
-      n += 1
-      n1 = _skipSpaces(txt[1:])
-      n += n1
-      txt = txt[1+n1:]
-      n1 = 0
-      while n1 < len(txt) and txt[n1] in ".0123456789+-Ee" :
-        n1 += 1
-      b = float(txt[:n1])
-      txt = txt[n1:]
-      n += n1
-      nodesList[-1][1] = b
-      
-  return n
 
+  nodeTxt = ""
+  while len(txt):
+    # we will break when done
+    if txt[0] == '[':
+      if txt[1] == '&':
+        n1, vals = _parseAttributes(txt[2:])
+        n1 += 3
+        n1 += _skipSpaces(txt[n1:])
+        n += n1
+        txt = txt[n1:]
+        if nodesList[-1][3] is None:
+          nodesList[-1][3] = tuple(vals)
+        else :
+          nodesList[-1][3] = nodesList[-1][3] + tuple(vals)
+      else :
+        # skip over comment, a ']' in comment need escaping
+        e = _getStuff(txt[1:], ']')
+        txt = txt[e+2:]
+        n += e+2
+    elif txt[0].isspace() or txt[0] in ":.0123456789+-Ee":
+      nodeTxt = nodeTxt + txt[0]
+      txt = txt[1:]
+      n += 1
+    else :
+      break
+
+  nodeTxt = nodeTxt[_skipSpaces(nodeTxt):]
+  if len(nodeTxt) and nodeTxt[0] == ':' :
+    n1 = _skipSpaces(nodeTxt[1:])
+    nodeTxt = nodeTxt[1+n1:]
+    n1 = 0
+    while n1 < len(nodeTxt) and nodeTxt[n1] in ".0123456789+-Ee" :
+      n1 += 1
+    b = float(nodeTxt[:n1])
+    nodeTxt = nodeTxt[n1:]
+    nodesList[-1][1] = b
+    # for now, ignore anything but the branch length (number after first ':')
+    
+  return n
 
 
 def _build(nodes, weight=1.0, rooted=True, name='') :
@@ -146,9 +162,9 @@ def _build(nodes, weight=1.0, rooted=True, name='') :
   return tb.finalize(t[-1])
 
 def parseNewick(txt, weight=1.0, rooted=True, name='') :
-#  if 0 :
-#    nodes = []
-#    _readSubTree(txt, nodes)
-#  else :
+##  if 0 :
+##    nodes = []
+##    _readSubTree(txt, nodes)
+##  else :
   nodes = parsetree(txt)
   return _build(nodes, weight=weight, rooted = rooted, name=name)
