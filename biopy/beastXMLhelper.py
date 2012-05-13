@@ -27,7 +27,7 @@ def getAlName(treeElementTag, gtreeName, root) :
   return alName
 
 def readBeastFile(path, what) :
-  """ Read portions of BEAST XML file for use in scripts.
+  """ Read portions of BEAST(1) XML file for use in scripts.
 
   The keys in the dictionary C{what} indicate which portions to read.  Currently
   supported are 'DNA' for the alignments, 'mcmc' for some basic chain
@@ -51,6 +51,8 @@ def readBeastFile(path, what) :
         taxon = s.find('taxon')
 
         n = s[0].tail.strip()
+        # Remove (non intetional?) spaces in sequence
+        n = "".join([c for c in n if not c.isspace()])        
         assert len(n)
         assert all([c in "AGCT-MRWSYKVHDBXN?" for c in n.upper()])
         seqs[taxon.get('idref')] = n

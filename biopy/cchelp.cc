@@ -4,10 +4,10 @@
 // See the files gpl.txt and lgpl.txt for copying conditions.
 
 
+#include <Python.h>
 #undef NDEBUG
 #include <cassert>
 
-#include <Python.h>
 #include <numpy/arrayobject.h>
 
 
@@ -242,9 +242,9 @@ seqEvolve(PyObject*, PyObject* args)
   return seq;
 }
 
-//#include <iostream>
-//using std::cout;
-//using std::endl;
+// #include <iostream>
+// using std::cout;
+// using std::endl;
 
 static PyObject*
 seqsMinDiff(PyObject*, PyObject* args)
@@ -332,6 +332,29 @@ findIndex(const char* s, char const ch, const char* stopAt)
   return s - s0;
 }
 
+static inline int
+skipSpaces(const char* txt)
+{
+  const char* s = txt;
+  while( *s && isspace(*s) ) {
+    ++s;
+  }
+  return s - txt;
+}
+
+// trim spaces from both ends of string, return python string
+static inline PyObject*
+trimString(string const& s)
+{
+  const char* txt = s.c_str();
+  int const n0 = skipSpaces(txt);
+  int n1 = s.length()-1;
+  while( n1 >= 0 && isspace(txt[n1]) ) {
+    --n1;
+  }
+  return PyString_FromStringAndSize(txt + n0, n1+1-n0);
+}
+
 static int
 parseAttributes(const char* s, vector<PyObject*>& vals)
 {
@@ -380,23 +403,13 @@ parseAttributes(const char* s, vector<PyObject*>& vals)
     }
 
     PyObject* o = PyTuple_New(2);
-    PyTuple_SET_ITEM(o, 0, PyString_FromString(name.c_str()));
-    PyTuple_SET_ITEM(o, 1, PyString_FromString(v.c_str()));
+    PyTuple_SET_ITEM(o, 0, trimString(name));
+    PyTuple_SET_ITEM(o, 1, trimString(v));
     vals.push_back(o);
   }
   return eat;
 }
 
-
-static inline int
-skipSpaces(const char* txt)
-{
-  const char* s = txt;
-  while( *s && isspace(*s) ) {
-    ++s;
-  }
-  return s - txt;
-}
 
 static int
 readSubTree(const char* txt, vector<PyObject*>& nodes)
@@ -462,7 +475,90 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
     txt += n1;
     eat += n1;
   }
+
+  string nodeTxt;
+  while( *txt ) {
+    if( *txt == '[' ) {
+      if( txt[1] == '&' ) {
+	vector<PyObject*> vs;
+	int n1 = parseAttributes(txt+2, vs);
+	if( n1 < 0 ) {
+	  return -1;
+	}
+	n1 += 3;
+	n1 += skipSpaces(txt+n1);
+	eat += n1;
+	txt += n1;
+
+	if( vs.size() > 0 ) {
+	  int b;
+	  if( vals == NULL ) {
+	    vals = PyTuple_New(vs.size());
+	    b = 0;
+	  } else {
+	    b = PyTuple_Size(vals);
+	    _PyTuple_Resize(&vals, b + vs.size());
+	  }
+	  for(unsigned int k = 0; k < vs.size(); ++k) {
+	    PyTuple_SET_ITEM(vals, b+k, vs[k]);
+	  }
+	}
+      } else {
+	// skip comment
+	int const e = _getStuff(txt+1, ']');
+	if( e < 0 ) {
+	  return -1;
+	} else {
+	  txt += e+2;
+	  eat += e+2;
+	}
+      }
+    } else {
+      if( isspace(*txt) || isdigit(*txt) || has(*txt, ":.+-Ee") ) {
+	nodeTxt.append(txt, 1);
+	txt += 1;
+	eat += 1;
+      } else {
+	break;
+      }
+    }
+  }
+
+  if( ! vals ) {
+    Py_INCREF(Py_None);
+    vals = Py_None;
+  }
+  PyList_SET_ITEM(nodeData, 3, vals);
+
+  PyObject* branch = NULL;
+
+  //std::cout << nodeTxt << std::endl;  
+  const char* nTxt = nodeTxt.c_str();
+  nTxt += skipSpaces(nTxt);
+  if( *nTxt && *nTxt == ':' ) {
+    int n1 = skipSpaces(nTxt+1);
+    nTxt += 1+n1;
+    
+    //std::cout << nTxt << std::endl;  
+    char* endp;
+    double b = strtod(nTxt, &endp);
+    n1 = endp - nTxt;
+    if( n1 == 0 ) {
+      return -1;
+    }
+    
+    branch = PyFloat_FromDouble(b);
+  } else {
+    Py_INCREF(Py_None);
+    branch = Py_None;
+  }
+
+  PyList_SET_ITEM(nodeData, 1, branch);
+  nodes.push_back(nodeData);
+
+  return eat;
   
+#if 0
   if( *txt && *txt == '[' && txt[1] == '&' ) {
     vector<PyObject*> vs;
     int n1 = parseAttributes(txt+2, vs);
@@ -513,6 +609,7 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
   nodes.push_back(nodeData);
 
   return eat;
+#endif
 }
 
 static PyObject*
@@ -621,7 +718,7 @@ effectiveSampleStep(PyObject*, PyObject* args)
   double const act = varStat / gammaStat0;
 
   // effective sample size
-  double const ess = nSamples / act;
+  // double const ess = nSamples / act;
 
   lag -= 1;
 
