@@ -11,10 +11,11 @@ import optparse, sys, os.path
 from time import time
 
 from biopy.genericutils import fileFromName
-from biopy.treeutils import toNewick, countNexusTrees
+from biopy.treeutils import toNewick, countNexusTrees, nodeHeights, getCommonAncesstor
+
 from biopy.treesPosterior import minPosteriorDistanceTree
 from biopy import INexus
-
+from biopy import beastXMLhelper
 
 parser = optparse.OptionParser(usage =  """ %prog [OPTIONS] posterior-trees.nexus 
 
@@ -52,6 +53,16 @@ parser.add_option("", "--matching", dest="matching",
                   """identical topology to the target.""",
                   action="store_true", default = False)
 
+parser.add_option("", "--compatible", dest="compatible", metavar="TREE",
+                  help="Insure gene tree is compatible with species TREE",
+                  default = None)
+
+parser.add_option("", "--species-mapping", dest="spmap", metavar="FILE",
+                  help=("A file contatining the mapping of gene lineages to" + 
+                        " species for the --compatible option (currently " + 
+                        "only BEAST(1) XML file supported)"),
+                  default = None)
+
 parser.add_option("-p", "--progress", dest="progress",
                   help="Print out progress messages to terminal (standard error)",
                   action="store_true", default = False)
@@ -67,7 +78,12 @@ except Exception,e:
   sys.exit(1)
 
 progress = options.progress
-burnIn =  float(options.burnin)/100.0
+burnIn = float(options.burnin)
+if 0 < burnIn < 1 :
+  print >> sys.stderr, ("*** Warning ***: tiny value for burning (which is" + 
+                        " in the 0-100 range")
+burnIn /= 100.0
+
 every = int(options.every)
 ntops = int(options.ntops)
 limit = int(options.limit)
@@ -83,6 +99,75 @@ else :
   if useOnlyMatchingTopologies:
     print >> sys.stderr, """Using --matching without --topology is\
  dubious. procceding anyway..."""
+
+if options.compatible is not None :
+  if os.path.isfile(options.compatible) :
+    spTree = INexus.INexus(options.compatible).trees[0]
+  else :
+    try :
+      spTree = INexus.Tree(options.compatible)
+    except Exception,e:
+      print >> sys.stderr, "*** Error: failed to parse tree: ",\
+            e.message,"[",options.compatible,"]"
+      sys.exit(1)
+
+  if options.spmap is None :
+    print >> sys.stderr, ("*** Error: must specify a mapping" +
+                          " (--species-mapping) with --compatible")
+    sys.exit(1)
+
+  bd = {'species':None}
+  bsps = beastXMLhelper.readBeastFile(options.spmap, bd)
+  speciesMapping = bd['species']['species']
+
+  def _setSPS(tr, nid, sps) :
+    """ Store the set of species spanned by the subtree in each node.
+
+    At the end, each node of tree 'tr' contains the data.species memeber, a set
+    species names as strings.
+    """
+    n = tr.node(nid)
+
+    if not len(n.succ) :
+      # leaf
+      s = None
+      for x in sps :
+        if n.data.taxon in sps[x] :
+          s = x
+          break
+      assert s is not None
+      allsp = frozenset([s])
+    else :
+      # internal node
+      l = [_setSPS(tr, x, sps) for x in n.succ]
+      allsp = reduce(lambda x,y : x.union(y), l)
+
+    n.data.species = allsp
+    return n.data.species
+
+  def getSPlimits(gtr, spt = spTree, sps = speciesMapping) :
+    """ Establish a mapping between each internal node of the gene tree 'gtr' and
+    its minimum height according to species tree spt.
+
+    sps is a mapping from species name to the set of all gene taxa belonging to
+    the species.
+    """
+
+    nh = nodeHeights(gtr, allTipsZero = False)
+    snh = nodeHeights(spt, allTipsZero = False)
+
+    _setSPS(gtr, gtr.root, sps)
+    for i in gtr.all_ids() :
+      n = gtr.node(i)
+      if len(n.succ) :
+        if len(n.data.species) > 1 :
+          stx = [spt.search_taxon(x) for x in n.data.species]        
+          k = getCommonAncesstor(spt, stx)
+          b = snh[k]
+        else :
+          b = 0
+        nh[i] = b 
+    return nh
     
 if progress:
   print >> sys.stderr, "counting trees ...,",
@@ -186,8 +271,11 @@ for tree in candidates:
     print >> sys.stderr, "Using %d posterior trees (out of %d) for %s" \
           % (len(postTrees), len(trees), k) 
 
+  nh = getSPlimits(tree) if options.compatible is not None else None
+    
   norm = True
-  tr, score = minPosteriorDistanceTree(tree, postTrees, norm = norm)
+  tr, score = minPosteriorDistanceTree(tree, postTrees, norm = norm,
+                                       nodesMinHeight = nh)
   
   # normalize score
   score = (score / len(postTrees)) ** 0.5

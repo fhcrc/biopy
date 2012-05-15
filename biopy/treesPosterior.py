@@ -41,50 +41,116 @@ from treeutils import treeHeight, nodeHeights
 ##               (r, tree.node(n).prev, nInOrder.index(n), n))
 ##   return sr
 
+def _getNodeIDsDescendingHeight(tree, nid, includeTaxa = True) :
+  node = tree.node(nid)
+  isLeaf = len(node.succ) == 0
+  
+  r = [nid]
+  if isLeaf:
+    if not includeTaxa :
+      r = []
+  else :
+    r.extend(reduce(lambda x,y : x+y,
+                    [_getNodeIDsDescendingHeight(tree, n, includeTaxa)
+                     for n in node.succ]))
+  return r
 
-def _treeBranchAssignmentExprs(tree, clades) :
+def der(k, n, h) :
+  return ",".join((['x[%d] * d_h%d_x[%d]' % (k,h,i) for i in range(k)] +
+                   ["h%d" % h] +
+                   ["0"]*(n-k-1)))
+
+
+from numpy import array
+
+def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
+                               withDerivative = False, paranoid = False) :
+  """ nodesMinHeight: minimum height for internal nodes"""
   allid = set(tree.all_ids())
+  # taxa
   terms = set(tree.get_terminals())
+  # internal nodes
   allint = allid - terms
 
   # works for dated tips as well
   nh = nodeHeights(tree, allTipsZero = False)
-  nhInOrder = sorted([(nh[x],x) for x in allint])
-  nInOrder = [x[1] for x in reversed(nhInOrder)]
+  # node before its descendants
+  nInOrder = _getNodeIDsDescendingHeight(tree, tree.root, includeTaxa=False)
+  # reversed, child before parent
+  nhInOrder = [(nh[x],x) for x in reversed(nInOrder)]
 
-  # mapping for minimum node height
+  #nhInOrder = sorted([(nh[x],x) for x in allint])
+  #nInOrder = [x[1] for x in reversed(nhInOrder)]
+
+  # mapping (per node) of minimum height of node, which is the max among all of
+  # its descendants
   mh = dict()
   for n in terms:
     mh[n] = nh[n]
   for h,n in nhInOrder:
     mh[n] = max([mh[c] for c in tree.node(n).succ])
-  
+
+  if nodesMinHeight is not None :
+    for n in nodesMinHeight:
+      mh[n] = max(mh[n], nodesMinHeight[n])
+
+  if fctr != 1 :
+    for n in mh :
+      mh[n] = mh[n] * fctr
+    
   # x[0] is root
   
   sr = []
+  if paranoid:
+    # solver can send values out of range
+    sr.append("x = [max(x[0],%f)] + [min(max(z,0),1.0) for z in x[1:]]" % mh[tree.root])
   sr.append("h%d = x[0]" % nInOrder[0])
+  if withDerivative:
+    sr.append("d_h%d_x = [1] + [0]*%d" % (nInOrder[0],len(nInOrder)-1))
+    sr.append("nDer = %d" % len(nInOrder))
+    
   for i,k in enumerate(nInOrder[1:]):
+    h = tree.node(k).prev
     if mh[k] != 0 :
-      m = "%g" % mh[k]
-      sr.append("h%d = x[%d] * (h%d - %s) + %s" % (k, i+1, tree.node(k).prev, m, m))
+      m = "%.15g" % mh[k]
+      sr.append("h%d = x[%d] * (h%d - %s) + %s" % (k, i+1, h, m, m))
     else :
-      sr.append("h%d = x[%d] * h%d" % (k, i+1, tree.node(k).prev))
+      sr.append("h%d = x[%d] * h%d" % (k, i+1, h))
+      
+    if withDerivative:
+      sr.append("d_h%d_x = [%s]" % (k,der(i+1, len(nInOrder), h)))
+      if mh[k] != 0 :
+        sr.append("d_h%d_x[%d] -= %s" % (k,i+1,m))
+        
+    if paranoid:
+      sr.append("assert h%d >= 0" % k)
     
   for r,k in enumerate(clades) :
     n = clades[k][0][1] ; assert n != tree.root
     p = tree.node(n).prev
     if n in terms:
       if mh[n] != 0 :
-        sr.append("b%d=(h%d - %g) # %d" % (r, p, mh[n], n))
+        sr.append("b%d=(h%d - %.15g) # %d" % (r, p, mh[n], n))
       else :
         sr.append("b%d=(h%d) # %d" % (r, p, n))
+        
+      if withDerivative:
+        sr.append("d_b%d_x = d_h%d_x" % (r,p))
     else :
       sr.append("b%d=(h%d - h%d) # %d" % (r, p, n, n))
+      
+      if withDerivative:
+        sr.append("d_b%d_x = [u-v for u,v in zip(d_h%d_x, d_h%d_x)]" % (r,p,n))
+        
+    if paranoid:
+      sr.append("assert b%d >= 0, (%d,b%d,h%d,x)" % (r,r,r,p))
+    
   return sr, mh[tree.root]
 
 ver = False
 
-def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True) :
+def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True,
+                             nodesMinHeight = None, withDerivative = False) :
   """ Find a branch length assignment for tree which minimizes the total
   distance to the set of trees.
 
@@ -105,7 +171,8 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True) :
   # Text of expression to compute the total distance. The variables are the
   # branch lengths. 
   ee = ""
-
+  dee = ""
+  
   # Constant term of total distance (independent from branch lengths) 
   c0 = 0
 
@@ -127,6 +194,10 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True) :
       
       ee += "+ %.15f * b%d**2 + %.15f * b%d" % (a1 + len(br), r, -2*sum(br), r)
 
+      if withDerivative:
+        dee += ("+ %.15f * 2 * b%d * d_b%d_x[k] + %.15f * d_b%d_x[k]" %
+                (a1 + len(br), r, r, -2*sum(br), r))
+
       # The constant term contribution 
       c0 += sum([x**2 for x in br])
     else :
@@ -135,6 +206,9 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True) :
       
       ee += "+(%d * b%d**2)" % (len(trees), r)
 
+      if withDerivative:
+        dee += "+(%d * 2 * b%d * d_b%d_x[k])" % (len(trees), r, r)
+      
   # Total distance of branches terminating at a clade which is missing in tree.
   # This is (not necessarily good) lower bound on the total distance.
   z0 = 0
@@ -155,10 +229,14 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True) :
   # A descendant height is specified as a fraction in [0,1] of its ancestor
   # height (but leading number is the root height).
   
-  ba,minRoot = _treeBranchAssignmentExprs(tree, treeParts)
+  ba,minRoot = _treeBranchAssignmentExprs(tree, treeParts, fctr,
+                                          nodesMinHeight = nodesMinHeight,
+                                          withDerivative = withDerivative)
 
   # Define the posterior distance function on the fly.
-  cod = "def f(x):\n  " + "\n  ".join(ba) + "\n  return " + ee
+  cod = ("def f(x):\n  " + "\n  ".join(ba) + "\n  return " +
+         (('(' + ee + ", array([(" + dee + ") for k in range(nDer)]) )")
+          if withDerivative else ee))
   exec cod
   
   # Number of variables (heights)
@@ -178,7 +256,7 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True) :
                                     [1 if norm else treeHeight(tree)] +
                                     [random.random() for k in range(nx-1)],
                                     #[.7 for k in range(nx-1)],
-                                    approx_grad=1,
+                                    approx_grad=0 if withDerivative else 1,
                                     bounds = [[minRoot,None]] + [[0,1]]*(nx-1),
                                     iprint=-1, maxfun=maxfun)
     if zz[2]['warnflag'] != 0 :
@@ -203,7 +281,7 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True) :
   if ver: print cod
   
   # Do not change tree passed as argument. Copy tree and set branch lengths of
-  # copy.
+  # the copy.
   ss = copy.deepcopy(tree)
 
   brs = b(zz[0])
