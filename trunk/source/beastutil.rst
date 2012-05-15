@@ -17,12 +17,17 @@ starbeast_demog_log
 summary_tree
 ------------
 
-    Create a summary tree from posterior trees. BEAST tree annotator utility
-    first picks up a topology, then independently assigns heights to each
-    internal node. Sometimes this can be suboptimal - in the worst case the tree
-    contains negative branch lengths. summary_tree takes a more global approach
-    and looks for a tree which minimizes the overall distance to the whole set
-    of posterior trees, using a tree distance measure.
+    Create a summary tree from posterior trees. The BEAST tree
+    annotator picks up a topology and assign a height to each internal
+    node independently. Sometimes this can be suboptimal -- in some
+    cases the generated tree may contain negative branchs.
+    summary_tree takes a more global approach and looks for a tree
+    which minimizes the overall distance to the whole set of posterior
+    trees, using a tree distance measure.
+
+    In addition, summary_tree can insure that a generated gene tree is
+    compatibile with a given species tree. This can be useful when the
+    two are plotted together.
 
     For more details see *Posterior summary of trees* (page 68 of my
     :ref:`thesis<myThesis>`).
@@ -31,12 +36,12 @@ summary_tree
 starbeast_posterior_popsizes
 ----------------------------
 
-    Annotate a \*BEAST summary tree (such as the one from summary_tree
-    above) with posterior estimates of population sizes.
+    Annotate a summary \*BEAST species tree (such as the one from
+    summary_tree above) with posterior estimates of population sizes.
 
     On UNIX it is easy to get the tree directly on the command line, e.g
 
-| **$ starbeast_posterior_popsizes `summary_tree trees.nexus` trees.nexus**
+| **$ starbeast_posterior_popsizes $(summary_tree trees.nexus) trees.nexus**
 
 --------------
 sptree_plot
