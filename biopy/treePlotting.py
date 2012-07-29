@@ -13,14 +13,15 @@ import pylab
 
 from collections import Counter, namedtuple, defaultdict
 
-from biopy.genericutils import fileFromName
+from genericutils import fileFromName
 
 from biopy import INexus, beastLogHelper, demographic
-from biopy.treeutils import toNewick, countNexusTrees, getTreeClades, nodeHeights
+from treeutils import toNewick, countNexusTrees, getTreeClades, nodeHeights, getPostOrder
 
 
-__all__ = ['drawTree', 'getSpacing', 'getTaxaOrder' , "descendantMean",
-           "descendantWeightedMean", "descendantBetween"]
+__all__ = ['drawTree', 'getSpacing',
+           "descendantMean", "descendantWeightedMean", "descendantBetween",
+           'getTaxaOrder', 'getGTorder', ]
 
 class descendantMean(object) :
   def __init__(self, descendants) :
@@ -57,8 +58,25 @@ class descendantBetween(object) :
   def center(self) :
     return self.xcenter
 
+_Info2 = namedtuple('Info2', 'center hnode hpar xright wnode wpar clade')
+
+def _drawBranch(fill, x, y, generalPlotAttributes, splitPoints) :
+  if fill :
+    pylab.fill(x,y, **generalPlotAttributes)
+  else :
+    if splitPoints is True :
+      x = x + (x[0],) ;  y = y + (y[0],)
+      pylab.plot(x,y, **generalPlotAttributes)
+    else :
+      pylab.plot(x[1:3],y[1:3], **generalPlotAttributes)
+      pylab.plot([x[0],x[-1]],[y[0],y[-1]], **generalPlotAttributes)
+      if isinstance(splitPoints, dict) :
+        pylab.plot(x[0:2],y[0:2], **splitPoints)
+        pylab.plot(x[2:3],y[2:3], **splitPoints)
+  
 def drawTree(tree, nid, cladesDict = None, positioning = descendantMean,
-             fill = True, color="lime", alpha = 0.05) :
+             fill = True, generalPlotAttributes = dict(),
+             splitPoints = True, keepAux = False) :
   node = tree.node(nid)
   d = node.data.demographic
   if not node.succ:
@@ -66,19 +84,23 @@ def drawTree(tree, nid, cladesDict = None, positioning = descendantMean,
     br = node.data.branchlength
     p1 = d.population(br)
     center = node.data.x
-    
-    return (positioning(center), 0, br,center + p/2, p, p1, 
-            frozenset([node.data.taxon]) if cladesDict is not None else None)
+
+    aux = _Info2(positioning(center), 0, br, center + p/2, p, p1, 
+                 frozenset([node.data.taxon]) if cladesDict is not None else None)
+    if keepAux :
+      node.data.plotAux = aux
+    return aux
 
   pr = []
   for si in node.succ :
-    pr.append(drawTree(tree, si, cladesDict, positioning, fill, color, alpha))
+    pr.append(drawTree(tree, si, cladesDict, positioning, fill, generalPlotAttributes,
+                       splitPoints, keepAux))
 
-  pr = sorted(pr, key = lambda x : x[0].center()) # sort by center
-  centerc = positioning([x[0] for x in pr])
+  pr = sorted(pr, key = lambda x : x.center.center()) # sort by center
+  centerc = positioning([x.center for x in pr])
   pcenter = centerc.center()
                     
-  clade = pr[0][6] | pr[1][6] if cladesDict is not None else None
+  clade = pr[0].clade | pr[1].clade if cladesDict is not None else None
 
   if clade is None or clade in cladesDict:
     for (center,h,hpar,xright,p,p1,c),orient in zip(pr,[0,1]):
@@ -91,33 +113,30 @@ def drawTree(tree, nid, cladesDict = None, positioning = descendantMean,
         x = xright, xright - p, pcenter, pcenter + p1 
 
       y = h, h, hpar, hpar
-      if fill :
-        pylab.fill(x,y, color=color, alpha = alpha)
-      else :
-        x = x + (x[0],) ;  y = y + (y[0],)
-        pylab.plot(x,y, color=color)
 
-  p = sum([x[5] for x in pr])
+      _drawBranch(fill, x, y, generalPlotAttributes, splitPoints)      
+
+  p = sum([x.wpar for x in pr])
   p1 = d.population(d.naturalLimit())
-  h = pr[0][2]
+  h = pr[0].hpar
   hpar = h + d.naturalLimit()
-  xright = pcenter + pr[1][5]
+  xright = pcenter + pr[1].wpar
   
   if nid == tree.root and \
-     (cladesDict is None or all([x[6] in cladesDict[clade] for x in pr])):
+     (cladesDict is None or all([x.clade in cladesDict[clade] for x in pr])):
     x = xright, xright - p, pcenter - p1/2, pcenter + p1/2
     y = h, h, hpar, hpar
 
-    if fill :
-      pylab.fill(x,y, color=color, alpha=alpha)
-    else :
-      x = x + (x[0],) ;  y = y + (y[0],)
-      pylab.plot(x,y, color=color)
+    _drawBranch(fill, x, y, generalPlotAttributes, splitPoints)      
 
+  aux = _Info2(centerc, h, hpar, xright, p, p1, clade)
+  if keepAux :
+    node.data.plotAux = aux
+    
   if nid == tree.root :
     return hpar
   
-  return (centerc, h, hpar, xright, p, p1, clade)
+  return aux
 
 
 _Info = namedtuple('Info', 'width widthatend maxspace')
@@ -133,10 +152,10 @@ def treeMinSpace(tree, nid = -1) :
   l,r = [treeMinSpace(tree, x) for x in node.succ]
   spc = 2*max(l.widthatend - l.width, r.widthatend - r.width, 0)
 
-  spc = max(spc, l.maxspace,r.maxspace)
+  spc = max(spc, l.maxspace, r.maxspace)
   if nid == tree.root:
     return spc
-  return _Info(spc +  l.width + r.width, d.population(d.naturalLimit()),spc)
+  return _Info(spc +  l.width + r.width, d.population(d.naturalLimit()), spc)
 
 def getSpacing(trees, additional = 0) :
   wd = max([mean(sorted([tree.node(x).data.demographic.population(0) for x in
@@ -264,12 +283,111 @@ def getTaxaOrder(trees, refTree = None, reportTopologies = False,
   
   return (overallMaximizingOrder, mtree)
 
+def getGTorder(gtree, stree) :
+  """ get genes order to plot inside a species tree.
 
-#_Info1 = namedtuple('Info1', 'left right lleft lright rleft rright lchild')
+  preliminary version.
+  """
+  gtax = []
+  gtx = defaultdict(lambda : [])
+  for n in gtree.get_terminals() :
+    gn = gtree.node(n)
+    gtx[gn.data.snode.id].append(gn)
+    gtax.append(gn)
+
+  nh = nodeHeights(gtree)
+  for x in gtree.all_ids() :
+    gtree.node(x).data.ht = nh[x]
+    
+  ms, mp = getGTorderFixedStree(gtree, stree, gtax, gtx)
+  sint = [stree.node(n) for n in stree.all_ids() if stree.node(n).succ]
+  for nk in range(3) :
+    cont = True
+    while cont :
+      random.shuffle(sint)
+      cont = False
+      for n in sint :
+        sc = n.succ
+        for ll in range(3) :
+          n.succ = list(reversed(sc))
+          tms, tmp = getGTorderFixedStree(gtree, stree, gtax, gtx)
+          if tms < ms :
+            ms, mp = tms, tmp
+            cont = True
+          else :
+            n.succ = sc
+  for g,o in zip(gtax,mp) :
+    g.data.o = o
+  return ms, mp, gtx
+
+def getGTorderFixedStree(gtree, stree, gtax, gtx) :
+  allsn = getPostOrder(stree, stree.root)
+  # taxa in layout order
+  stax = filter(lambda n : not n.succ, allsn)
+
+  # all terminals contain data.snode 
+  no = 0
+  for i,n in enumerate(stax):
+    for gn in gtx[n.id] :
+      gn.data.grp = [i,i]
+      gn.data.grpnds = [[gn],[gn]]
+      gn.data.o = no
+      no += 1
+      gn.data.sz = 1
+
+  gtpost = getPostOrder(gtree, gtree.root)
+  for n in gtpost :
+    if n.succ :
+      sns = [gtree.node(x) for x in n.succ]
+      l,r = zip(*[x.data.grp for x in sns])
+      n.data.grp = min(l),max(r)
+      lg,rg = zip(*[x.data.grpnds for x in sns])
+      n.data.grpnds = reduce(lambda x,y : x+y, \
+                             [y for x,y in zip(l,lg) if n.data.grp[0] == x]),\
+                       reduce(lambda x,y : x+y, \
+                              [y for x,y in zip(r,rg) if n.data.grp[1] == x])
+      n.data.sz = sum([x.data.sz for x in sns])
+
+  nint = filter(lambda n : len(n.succ), gtpost)
+  def score(nint) :
+    htot, tot = 0.0, 0
+    for x in nint :
+      l,r = [[z.data.o for z in u] for u in x.data.grpnds]
+      dd = ((max(r) - min(l) + 1) - x.data.sz)
+      if dd > 0 :
+        tot += dd
+        htot += dd * x.data.ht
+    return tot, -htot
+
+  # randomize order
+  for kk in gtx:
+    a = [n.data.o for n in gtx[kk]]
+    random.shuffle(a)
+    for n,i in zip(gtx[kk], a):
+      n.data.o = i
+
+  ms = score(nint)
+  mp = [x.data.o for x in gtax]
+  msLast = (sys.maxint, 0)
+  while ms < msLast:
+    msLast = ms
+    for kk in gtx:
+      gtxkk = gtx[kk]
+      a = [n.data.o for n in gtxkk]
+      for i0,i1 in allPairs(range(len(gtxkk))) :
+        sw = [gtxkk[x].data.o for x in (i0,i1)]
+        gtxkk[i1].data.o, gtxkk[i0].data.o = sw
+        s = score(nint)
+        if s < ms :
+          ms = s
+          mp = [x.data.o for x in gtax]
+        else :
+          gtxkk[i0].data.o, gtxkk[i1].data.o = sw
+  return ms,mp
 
 # left right: x-position of leftest and rightest tips in clade
-# lmid rmid:  x-position of left and right descentands to aim for
-# lh rh:      y-position of left and right descentands to aim for
+# lmid rmid:  x-position of left/right descentands to aim for
+# lh rh:      y-position of left/ right descentands to aim for
 # lchild:     node id of the left child
 
 _Info1 = namedtuple('Info1', 'left right lmid rmid lh rh lchild')
@@ -296,16 +414,72 @@ def _setLeftRight(tree, nid, nh) :
                                  (chil.lh + chil.rh)/2,
                                  (chir.lh + chir.rh)/2,
                                  node.succ[ilchild])
-    ## node.data.cladeInfo = _Info1(l, r,
-    ##                              (chil.left + chil.right)/2,
-    ##                              (chir.left + chir.right)/2,
-    ##                              max(chil.lh , chil.rh),
-    ##                              max(chir.lh , chir.rh),
-    ##                              node.succ[ilchild])
 
   return node.data.cladeInfo
 
-def _drawTreeOnly(tree, nid, xnode, nh, color, alpha, keepPositions) :
+# snode,x set in all gene taxa nodes
+_Info3 = namedtuple('Info3', 'left right lmid rmid lh rh lchild snode')
+
+def _tr1(v, snaux, nparaux, isLeft) :
+  assert snaux.xright >= v
+  a = (snaux.xright - v) / snaux.wnode
+  assert 0 <= a <= 1
+  # we are left  child:  nparaux.right - nparaux.wnode + (1-a)*snaux.wpar
+  # correction of snaux.wpar - nparaux.wnode
+  return nparaux.xright - a * snaux.wpar + \
+         (snaux.wpar - nparaux.wnode if isLeft else 0)
+  
+def _embSetLeftRight(gtree, nid, nh, stree, snh) :
+  gnode = gtree.node(nid)
+  if not gnode.succ:
+    x = gnode.data.x
+    h = nh[nid]
+    gnode.data.cladeInfo = _Info3(x, x, x, x, h, h, None, gnode.data.snode)
+  else :
+    chi = [_embSetLeftRight(gtree, si, nh, stree, snh) for si in gnode.succ]
+    myh = nh[nid]
+    gnode.data.intermidiate = [[], []]
+    for ns,x in enumerate(chi) :
+      while x.snode.prev is not None and myh >= snh[x.snode.prev] :
+        # need to move x info past species split
+        sn = x.snode
+        snaux = sn.data.plotAux
+        npar = stree.node(sn.prev)
+        nparaux = npar.data.plotAux
+        isLeft = npar.succ[0] == sn.id
+        u = [_tr1(v, snaux, nparaux, isLeft) for v in (x.left, x.right, x.lmid, x.rmid)]
+        h = snh[x.snode.prev]
+        u = u + [h,h,None,npar]
+        u = _Info3(*u)
+        im = gnode.data.intermidiate[ns]
+        if len(im) == 0 :
+          im.append(((x.left+x.right)/2, (x.lh + x.rh)/2))
+          
+        # they will come out in reverse order
+        gnode.data.intermidiate[ns].insert(0,((u.left+u.right)/2, h))
+        x = u
+      chi[ns] = x
+    
+    r = max([x.right for x in chi])
+    l = min([x.left for x in chi])
+    m = [x.left + x.right for x in chi]
+
+    ilchild = 0 if m[0] < m[1] else 1
+    
+    chil = chi[ilchild]
+    chir = chi[1-ilchild]
+    assert chil.snode == chir.snode
+    gnode.data.cladeInfo = _Info3(l, r,
+                                 (chil.left + chil.right)/2,
+                                 (chir.left + chir.right)/2,
+                                 (chil.lh + chil.rh)/2,
+                                 (chir.lh + chir.rh)/2,
+                                 gnode.succ[ilchild],
+                                 chil.snode)
+
+  return gnode.data.cladeInfo
+
+def _drawTreeOnly(tree, nid, xnode, nh, plotLinesAttr, keepPositions) :
   node = tree.node(nid)
   if not node.succ:
     return
@@ -326,124 +500,89 @@ def _drawTreeOnly(tree, nid, xnode, nh, color, alpha, keepPositions) :
     # print node.id, xnode, si, si == cInfo.lchild, xchild, myh, chh, cInfo
     if keepPositions :
       node.data.x = xnode
-    pylab.plot([xnode, xchild], [myh, chh], color = color, alpha = alpha) 
-    _drawTreeOnly(tree, si, xchild, nh, color, alpha, keepPositions)
+    pylab.plot([xnode, xchild], [myh, chh], **plotLinesAttr)
+
+    pylab.text(xnode, myh, str(nid), fontsize = 11, va='top', ha='center')
+    
+    _drawTreeOnly(tree, si, xchild, nh, plotLinesAttr, keepPositions)
+
+def _embDrawTreeOnly(tree, nid, xnodeOrig, nh, plotLinesAttr, keepPositions, txt) :
+  node = tree.node(nid)
+
+  if txt:
+    pylab.text(xnodeOrig,  nh[node.id], str(nid), fontsize = 11, va='top', ha='center')
+  
+  if not node.succ:
+    return
+  data = node.data
+  cInfo = data.cladeInfo
+  myhOrig = nh[node.id]
+
+  assert cInfo.lchild in node.succ
+  
+  for si,bp in zip(node.succ,data.intermidiate) :
+    xnode = xnodeOrig
+    myh = myhOrig
+    chh = nh[si]
+    if si == cInfo.lchild :
+      x,h = cInfo.lmid, cInfo.lh
+      if len( bp ) :
+        for ci in bp[:-1] :
+          pylab.plot([xnode, ci[0]], [myh, ci[1]], **plotLinesAttr)
+          xnode,myh = ci
+        x,h = bp[-1]
+        
+      a = (xnode - x) / (myh - h)
+      dx = a * (myh - chh)
+      xchild = xnode - dx
+
+    else :
+      x,h = cInfo.rmid, cInfo.rh
+      if len( bp ) :
+        for ci in bp[:-1] :
+          pylab.plot([xnode, ci[0]], [myh, ci[1]], **plotLinesAttr)
+          xnode,myh = ci
+        x,h = bp[-1]
+      
+      a = (x - xnode) / (myh - h)
+      dx = a * (myh - chh)
+      xchild = xnode + dx
+      
+    # print node.id, xnode, si, si == cInfo.lchild, xchild, myh, chh, cInfo
+    if keepPositions :
+      data.x = xnode
+    pylab.plot([xnode, xchild], [myh, chh], **plotLinesAttr)
+    _embDrawTreeOnly(tree, si, xchild, nh, plotLinesAttr, keepPositions, txt)
 
 
-def drawTreeOnly(tree, color="green", alpha = 0.05, allTipsZero = True, xroot =
-                 None, keepPositions = False) :
+def drawTreeOnly(tree, stree = None,
+                 plotLinesAttr = None, # {'color' : "green", 'alpha' : 0.05},
+                 allTipsZero = True, xroot = None, keepPositions = False,
+                 txt = False) :
+  assert not stree or allTipsZero
   # A mapping from node id to (positive) node height ( with !allTipsZero, tips
   # may have > 0 height, at least one tip has 0 height). 
   nh = nodeHeights(tree, allTipsZero = allTipsZero)
+  if stree is not None :
+    snh = nodeHeights(stree)
+    rl = _embSetLeftRight(tree, tree.root, nh, stree, snh)
+    # position root in the middle
+    if xroot is None :
+      xroot = stree.node(stree.root).data.plotAux.center.center()
 
-  # set auxiliary info per node
-  rl = _setLeftRight(tree, tree.root, nh)
-
-  # position root in the middle
-  if xroot is None :
-    xroot = (rl.right + rl.left)/2
+    _embDrawTreeOnly(tree, tree.root, xroot, nh, plotLinesAttr = plotLinesAttr,
+                     keepPositions = keepPositions, txt = txt)
+      
+  else :
+    # set auxiliary info per node
+    rl = _setLeftRight(tree, tree.root, nh)
   
-  _drawTreeOnly(tree, tree.root, xroot, nh, color= color, alpha = alpha,
-                keepPositions = keepPositions)
+    # position root in the middle
+    if xroot is None :
+      xroot = (rl.right + rl.left)/2
+  
+      _drawTreeOnly(tree, tree.root, xroot, nh,
+                    plotLinesAttr = plotLinesAttr, keepPositions = keepPositions)
   
   for i in tree.all_ids() :
     del tree.node(i).data.cladeInfo
-
-
-## def getTaxa(tree, nid, rand = False) :
-##   node = tree.node(nid)
-##   if not node.succ:
-##     return [node.data.taxon]
-##   else:
-##     l,r = [getTaxa(tree, x, rand) for x in node.succ]
-##     if rand :
-##       if random.random() < .5:
-##         l,r = r,l
-##     return l + r
-## def getCRold(oo, dis) :
-##   x,y = [],[]
-##   for k in dis:
-##     tx1,tx2 = k
-##     x.append(abs(oo.index(tx1) - oo.index(tx2)))
-##     y.append(dis[k])
-
-##   cr = corrcoef(x,y)[0,1]
-##   return cr
-
-## def getTaxaOrderOld(trees, refTree = None, reportTopologies = False, nSample = 1) :
-##   print >> sys.stderr, "getting tops...",
-##   tops = [toNewick(tree, topologyOnly=1) for tree in trees]
-##   dtops = dict([(x,0) for x in tops])
-##   for t in tops :
-##     dtops[t] += 1
-##   dis = dict()
-
-##   print >> sys.stderr, ("taxa distance matrix (%d tops)..." % len(dtops)),
-  
-##   for tx in dtops:
-##     tree = INexus.Tree(tx)
-##     d = dict()
-##     taxaDistance(tree, tree.root, d)
-##     for k in d:
-##       if k not in dis:
-##         dis[k] = 0.0
-##       dis[k] += d[k] * dtops[tx]/len(trees)
-    
-##   if refTree is None:
-##     sdtops = sorted(dtops, key = lambda x : dtops[x])
-##     refTrees = [INexus.Tree(t) for t in sdtops[-nSample:]]
-##   else :
-##     refTrees = [refTree]
-
-##   mmcr = -1
-  
-##   for tree in refTrees :
-##     moo = getTaxa(tree, tree.root)
-##     mcr = getCRold(moo, dis)
-
-##     print >> sys.stderr, "optimizing...",mcr,
-##     nt = 0
-
-##     while True:
-##       nt += 1
-##       mnode = None
-
-##       for nid in tree.all_ids() :
-##         node = tree.node(nid)
-##         if node.succ:
-##           node.succ = [node.succ[1], node.succ[0]]
-##           oo = getTaxa(tree, tree.root)
-##           cr = getCRold(oo, dis)
-
-##           if cr > mcr:
-##             mcr = cr
-##             moo = oo
-##             mnode = node
-##           node.succ = [node.succ[1], node.succ[0]]
-##       print >> sys.stderr, mcr,
-
-##       if mnode is not None:
-##         mnode.succ = [mnode.succ[1], mnode.succ[0]]
-##       else :
-##         break
-
-##     if mcr > mmcr :
-##       mmcr = mcr
-##       mmoo = moo
-##       mtree = tree
-      
-##     print >> sys.stderr, ("%d tries" % nt)
-
-##   print >> sys.stderr, "done"
-
-##   if reportTopologies :
-##     for top in dtops:
-##       dtops[top] = []
-##     for k,top in enumerate(tops):
-##       dtops[top].append(k)
-      
-##     return (mmoo, mtree, dtops)
-  
-##   return (mmoo, mtree)
-
-

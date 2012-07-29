@@ -67,6 +67,10 @@ parser.add_option("-p", "--progress", dest="progress",
                   help="Print out progress messages to terminal (standard error)",
                   action="store_true", default = False)
 
+parser.add_option("", "--derivative", dest="derivative",
+                  help="Use analytic derivative in optimization function (experimental)",
+                  action="store_true", default = False)
+
 options, args = parser.parse_args()
 
 nexusTreesFileName = args[0]
@@ -177,11 +181,13 @@ nTrees = countNexusTrees(nexusTreesFileName)
 
 nexusReader = INexus.INexus()
 
+nBurninTrees = int(burnIn*nTrees)
+
 if progress:
-  print >> sys.stderr, "reading %d trees ...," % int((nTrees * (1-burnIn) / every)),
+  print >> sys.stderr, "reading %d trees ...," % (nTrees - nBurninTrees),
 
 try :
-  trees = list(nexusReader.read(nexFile, slice(int(burnIn*nTrees), -1, every)))
+  trees = list(nexusReader.read(nexFile, slice(nBurninTrees, -1, every)))
 except Exception,e:
   print >> sys.stderr, "**Problem reading trees file:", e.message
   sys.exit(1)
@@ -189,7 +195,15 @@ except Exception,e:
 if len(trees) == 0 :
   print >> sys.stderr, "**Error: No trees"
   sys.exit(1)
-  
+
+if 1 :
+  # Save some memory when trees contains attributes, small speed penalty
+  for tree in trees :
+    for nid in tree.all_ids() :
+      data = tree.node(nid).data
+      if hasattr(data, "attributes") :
+        del data.attributes
+   
 if 1:
   if progress:
     print >> sys.stderr, "collect topologies and sort ...,",
@@ -255,7 +269,7 @@ if progress:
 
 nCandidatesTried = 0
 
-if limit > 0 :
+if limit > 0 or progress :
   startTime = time()
 
 postTrees = trees
@@ -275,7 +289,8 @@ for tree in candidates:
     
   norm = True
   tr, score = minPosteriorDistanceTree(tree, postTrees, norm = norm,
-                                       nodesMinHeight = nh)
+                                       nodesMinHeight = nh,
+                                       withDerivative = options.derivative)
   
   # normalize score
   score = (score / len(postTrees)) ** 0.5
@@ -287,13 +302,13 @@ for tree in candidates:
     bestScore = score
     bestTree = tr
   nCandidatesTried += 1
-  if limit > 0 :
+  if limit > 0 or progress :
     timenow = time()
     if progress:
       print >> sys.stderr, \
             ("%ds/%d (%g), " % (round(timenow - startTime),
                                 nCandidatesTried,bestScore)),
-    if timenow - startTime >= limit:
+    if timenow - startTime >= limit > 0 :
       print >> sys.stderr, "time limit reached ...,",
       break
 if limit > 0:
