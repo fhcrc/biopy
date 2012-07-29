@@ -163,7 +163,7 @@ if colorTops :
       for x in tree.get_terminals() :
         tree.node(x).data.x = xs[tree.node(x).data.taxon]
       h = treePlotting.drawTree(tree, tree.root, cd, positioning = positioning,
-                                color=col, alpha = alpha)
+                                plotLinesAttr = {'color' : col, 'alpha' : alpha})
       pheights.append(h)
       heights.append(treeHeight(tree))
     c0 = (c0 + topPercent) % 1
@@ -176,7 +176,7 @@ else :
     for x in tree.get_terminals() :
        tree.node(x).data.x = xs[tree.node(x).data.taxon]
     h = treePlotting.drawTree(tree, tree.root, cd, positioning = positioning,
-                              color="lime", alpha = alpha)
+                              plotLinesAttr = {'color' : "lime", 'alpha' : alpha})
     pheights.append(h)
     heights.append(treeHeight(tree))
 
@@ -204,7 +204,8 @@ if len(mainTree) :
     for x in tree.get_terminals() :
        tree.node(x).data.x = xs[tree.node(x).data.taxon]
     h = treePlotting.drawTree(tree, tree.root, None,
-                              positioning = positioning, fill=False, color=col)
+                              positioning = positioning, fill=False,
+                              plotLinesAttr = {'color' : col})
     hmin = max(h, hmin)
 
 labels = []

@@ -26,7 +26,7 @@ from Bio.Nexus import Trees, Nodes
 __all__ = ["TreeBuilder", "TreeLogger", "getClade", "getTreeClades",
            "getCommonAncesstor", "countNexusTrees", "toNewick", "nodeHeights",
            "nodeHeight", "treeHeight", "setLabels", "convertDemographics",
-           "coalLogLike"]
+           "coalLogLike", "getPostOrder"]
 
 
 class TreeBuilder(object) :
@@ -176,6 +176,14 @@ def getTreeClades(tree, trivialClades = False):
     
   return c
 
+def getPostOrder(tree, nodeId = None) :
+  if nodeId is None:
+    nodeId = tree.root
+  node = tree.node(nodeId)
+  p = [node]
+  if  node.succ :
+    p = reduce(lambda x,y : x+y, [getPostOrder(tree, x) for x in node.succ] + [p])
+  return p
 
 def countNexusTrees(nexFileName) :
   """ Number of trees in a nexus file."""

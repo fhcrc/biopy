@@ -16,31 +16,6 @@ import scipy, scipy.optimize, copy, random
 from treeMeasure import allPartitions
 from treeutils import treeHeight, nodeHeights
 
-## def _treeBranchAssignmentExprs(tree, clades) :
-##   allid = set(tree.all_ids())
-##   terms = set(tree.get_terminals())
-##   allint = allid - terms
-##   # works for dated tips as well - but rest of code does not support that
-##   nh = nodeHeights(tree, allTipsZero = False)
-##   nhInOrder = sorted([(nh[x],x) for x in allint])
-##   nInOrder = [x[1] for x in reversed(nhInOrder)]
-
-##   # x[0] is root
-  
-##   sr = []
-##   sr.append("h%d = x[0]" % nInOrder[0])
-##   for k in nInOrder[1:]:
-##     sr.append("h%d = x[%d] * h%d" % (k, nInOrder.index(k), tree.node(k).prev))
-    
-##   for r,k in enumerate(clades) :
-##     n = clades[k][0][1] ; assert n != tree.root
-##     if n in terms:
-##       sr.append("b%d=(h%d) # %d" % (r, tree.node(n).prev, n))
-##     else :
-##       sr.append("b%d=(h%d * (1-x[%d])) # %d" %
-##               (r, tree.node(n).prev, nInOrder.index(n), n))
-##   return sr
-
 def _getNodeIDsDescendingHeight(tree, nid, includeTaxa = True) :
   node = tree.node(nid)
   isLeaf = len(node.succ) == 0
@@ -288,5 +263,13 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True,
   for r,k in enumerate(treeParts) :
     ss.node(treeParts[k][0][1]).data.branchlength = brs[r]/fctr
 
-  return (ss, f(zz[0]))
+  val = f(zz[0])
+  if withDerivative :
+    val = val[0]
+  return (ss, val)
 
+
+
+
+def annotateTree(tree, postTrees) :
+  pass
