@@ -42,8 +42,11 @@ def readBeastFile(path, what) :
   doc = etree.parse(path)
   root = doc.getroot()
 
-  data = dict()
+  if root.attrib.get('version').strip()[:2] == "2." :
+    return readBeast2File(root, what)
+  
   if "DNA" in what :
+    data = dict()
     for a in root.findall("alignment") :
       aName = a.get('id')
       seqs = dict()
@@ -118,3 +121,85 @@ def readBeastFile(path, what) :
         logs[l.attrib['fileName']] = d
       
     what['logging']  = { 'logs' : logs, 'treelogs' : treeLogs }
+
+
+def readBeast2File(root, what) :
+  if "DNA" in what :
+    data = dict()
+    for a in root.findall("data") :
+      if a.attrib.get('dataType') == "nucleotide" :
+        aName = a.get('id')
+        seqs = dict()
+        for s in a.findall("sequence") :
+          taxon = s.attrib['taxon']
+          n = s.attrib['value']
+          n = "".join([c for c in n if not c.isspace()])        
+          assert len(n)
+          assert all([c in "AGCT-MRWSYKVHDBXN?" for c in n.upper()])
+          seqs[taxon] = n
+
+      l = len(seqs[iter(seqs).next()])
+      for s in seqs :
+        assert len(seqs[s]) == l
+
+      data[aName] = seqs
+
+    what['DNA'] = data
+
+  if "mcmc" in what :
+    raise "not yet"
+    m = root.find("mcmc")
+    cl = int(m.get('chainLength'))
+    for l in m.findall('log') :
+      if l.get('id') == 'fileLog' :
+        le = int(l.get('logEvery'))
+        break
+  
+    what['mcmc'] = {'chainLength' : cl, 'logEvery' : le}
+
+  if "species" in what :
+    raise "not yet"
+    xspecies = root.find('species')
+    if xspecies is not None :
+      species = dict()
+
+      for sp in xspecies.findall('sp') :
+        spName = sp.attrib['id']
+        species[spName] = [tx.attrib['idref'] for tx in sp.findall('taxon')]
+
+      genes = dict()
+      gts = xspecies.find('geneTrees')
+
+      for gt in gts.findall('gtree') :
+        ploidy = gt.attrib.get('ploidy')
+        ploidy = float(ploidy) if ploidy else None
+        gtreeName = gt[0].attrib['idref']
+        treeElementName = gt[0].tag
+        alName = getAlName(treeElementName, gtreeName, root) 
+        if alName:    
+          genes[alName] = {'ploidy' : ploidy, 'tree' : gtreeName}
+      for gt in gts.findall('treeModel') :
+        gtreeName = gt.attrib['idref']
+        alName = getAlName(gt.tag, gtreeName, root) 
+        if alName:    
+          genes[alName] = {'ploidy' : 1, 'tree' : gtreeName}
+      
+      what['species'] = { 'species' : species, 'genes' : genes }
+
+  if "logging" in what :
+    raise "not yet"
+    mcmc = root.find('mcmc')
+
+    treeLogs = dict()
+    for lt in mcmc.findall('logTree') :
+      t = lt[0]
+      treeLogs[lt.attrib['fileName']] = [t.attrib['idref'], t.tag]
+
+    logs = dict()
+    for l in mcmc.findall('log'):
+      if 'fileName' in l.attrib:
+        d = [e.attrib.get('idref') or e.attrib.get('id') for e in l]
+        logs[l.attrib['fileName']] = d
+      
+    what['logging']  = { 'logs' : logs, 'treelogs' : treeLogs }
+
