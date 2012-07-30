@@ -67,9 +67,9 @@ parser.add_option("-p", "--progress", dest="progress",
                   help="Print out progress messages to terminal (standard error)",
                   action="store_true", default = False)
 
-parser.add_option("", "--derivative", dest="derivative",
+parser.add_option("", "--no-derivative", dest="derivative",
                   help="Use analytic derivative in optimization function (experimental)",
-                  action="store_true", default = False)
+                  action="store_false", default = True)
 
 options, args = parser.parse_args()
 
@@ -84,8 +84,8 @@ except Exception,e:
 progress = options.progress
 burnIn = float(options.burnin)
 if 0 < burnIn < 1 :
-  print >> sys.stderr, ("*** Warning ***: tiny value for burning (which is" + 
-                        " in the 0-100 range")
+  print >> sys.stderr, ("*** Warning ***: tiny value for burn-in. Burn-in is"
+                        " given as a percent, betwee 0 and 100.")
 burnIn /= 100.0
 
 every = int(options.every)

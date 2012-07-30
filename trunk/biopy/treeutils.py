@@ -26,7 +26,7 @@ from Bio.Nexus import Trees, Nodes
 __all__ = ["TreeBuilder", "TreeLogger", "getClade", "getTreeClades",
            "getCommonAncesstor", "countNexusTrees", "toNewick", "nodeHeights",
            "nodeHeight", "treeHeight", "setLabels", "convertDemographics",
-           "coalLogLike", "getPostOrder"]
+           "coalLogLike", "getPostOrder", "setSpeciesSimple"]
 
 
 class TreeBuilder(object) :
@@ -348,6 +348,36 @@ def setLabels(trees) :
     hasAll.append(has)
 
   return hasAll
+
+def setSpeciesSimple(gtree, stree, sep = None) :
+  """ Set a species for taxa in 'gtree'.
+
+  if 'sep' is given, the gene taxon is split with respect to 'sep', where one
+  and only one of the parts should match only one of the species names.
+  Otherwise, the gene taxon should contain one and only one of the species
+  names.
+  
+  data.snode is set to the taxon node in stree.
+  """
+  tx = stree.get_terminals()
+  spNames = [stree.node(x).data.taxon for x in tx]
+  for n in gtree.get_terminals() :
+    sid = None
+    gn = gtree.node(n)
+    if sep is not None:
+      s = gn.data.taxon.split(sep)[1]
+      b = [x in s for x in spNames]
+      if sum(b) == 1 :
+        sid = b.index(True)
+    else :
+      b = [s in x for x in spNames]
+      if sum(b) == 1 :
+        sid = b.index(True)
+    # species tree node
+
+    if sid is None :
+      raise RuntimeError("problem with " +  gn.data.taxon)
+    gn.data.snode = stree.node(tx[sid])
 
 from demographic import LinearPiecewisePopulation, ConstantPopulation, StepFunctionPopulation
 

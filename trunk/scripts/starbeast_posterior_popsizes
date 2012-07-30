@@ -45,7 +45,7 @@ options, args = parser.parse_args()
 
 progress = options.progress
 every = int(options.every)
-burnIn =  float(options.burnin)/100.0
+burnIn = float(options.burnin)/100.0
 
 if len(args) != 2 :
   parser.print_help(sys.stderr)

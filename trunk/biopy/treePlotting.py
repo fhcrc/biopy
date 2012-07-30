@@ -6,7 +6,7 @@
 
 from __future__ import division
 
-import sys
+import sys, random
        
 from numpy import mean, median, corrcoef
 import pylab
@@ -17,7 +17,7 @@ from genericutils import fileFromName
 
 from biopy import INexus, beastLogHelper, demographic
 from treeutils import toNewick, countNexusTrees, getTreeClades, nodeHeights, getPostOrder
-
+from combinatorics import allPairs
 
 __all__ = ['drawTree', 'getSpacing',
            "descendantMean", "descendantWeightedMean", "descendantBetween",
@@ -73,7 +73,13 @@ def _drawBranch(fill, x, y, generalPlotAttributes, splitPoints) :
       if isinstance(splitPoints, dict) :
         pylab.plot(x[0:2],y[0:2], **splitPoints)
         pylab.plot(x[2:3],y[2:3], **splitPoints)
-  
+
+def _brt(demo, node) :
+  t = demo.naturalLimit()
+  if t is None :
+    t = node.data.branchlength
+  return t
+    
 def drawTree(tree, nid, cladesDict = None, positioning = descendantMean,
              fill = True, generalPlotAttributes = dict(),
              splitPoints = True, keepAux = False) :
@@ -116,17 +122,31 @@ def drawTree(tree, nid, cladesDict = None, positioning = descendantMean,
 
       _drawBranch(fill, x, y, generalPlotAttributes, splitPoints)      
 
-  p = sum([x.wpar for x in pr])
-  p1 = d.population(d.naturalLimit())
+  pConst = d.naturalLimit() is None
+  if pConst :
+    p = d.population(0)
+  else :
+    p = sum([x.wpar for x in pr])
+  br = _brt(d, node)
+  p1 = d.population(br)
   h = pr[0].hpar
-  hpar = h + d.naturalLimit()
-  xright = pcenter + pr[1].wpar
+  hpar = h + br
+  if pConst :
+    #xright = pcenter + p/2  # + (pr[1].wnode - pr[0].wnode)/2 + p/2
+    xright = pcenter + (p * pr[1].wnode)/(pr[1].wnode + pr[0].wnode)
+  else :
+    xright = pcenter + pr[1].wpar
   
   if nid == tree.root and \
      (cladesDict is None or all([x.clade in cladesDict[clade] for x in pr])):
+    if pConst :
+      if h == hpar :
+        hpar = 1.1 * h
+      pcenter = xright - p/2
+
     x = xright, xright - p, pcenter - p1/2, pcenter + p1/2
     y = h, h, hpar, hpar
-
+    
     _drawBranch(fill, x, y, generalPlotAttributes, splitPoints)      
 
   aux = _Info2(centerc, h, hpar, xright, p, p1, clade)
@@ -283,7 +303,7 @@ def getTaxaOrder(trees, refTree = None, reportTopologies = False,
   
   return (overallMaximizingOrder, mtree)
 
-def getGTorder(gtree, stree) :
+def getGTorder(gtree, stree, nTries = 3, perTreeTries = 3) :
   """ get genes order to plot inside a species tree.
 
   preliminary version.
@@ -301,14 +321,14 @@ def getGTorder(gtree, stree) :
     
   ms, mp = getGTorderFixedStree(gtree, stree, gtax, gtx)
   sint = [stree.node(n) for n in stree.all_ids() if stree.node(n).succ]
-  for nk in range(3) :
+  for nk in range(nTries) :
     cont = True
     while cont :
       random.shuffle(sint)
       cont = False
       for n in sint :
         sc = n.succ
-        for ll in range(3) :
+        for ll in range(perTreeTries) :
           n.succ = list(reversed(sc))
           tms, tmp = getGTorderFixedStree(gtree, stree, gtax, gtx)
           if tms < ms :
@@ -420,14 +440,26 @@ def _setLeftRight(tree, nid, nh) :
 # snode,x set in all gene taxa nodes
 _Info3 = namedtuple('Info3', 'left right lmid rmid lh rh lchild snode')
 
+# works for const(pop) and non const trees
 def _tr1(v, snaux, nparaux, isLeft) :
-  assert snaux.xright >= v
+  assert v <= snaux.xright
+  c = nparaux.center.center()
   a = (snaux.xright - v) / snaux.wnode
   assert 0 <= a <= 1
-  # we are left  child:  nparaux.right - nparaux.wnode + (1-a)*snaux.wpar
-  # correction of snaux.wpar - nparaux.wnode
-  return nparaux.xright - a * snaux.wpar + \
-         (snaux.wpar - nparaux.wnode if isLeft else 0)
+  if isLeft :
+    vt = c - (c - (nparaux.xright - nparaux.wnode)) * a
+  else :
+    vt = c + (nparaux.xright - c) * (1-a)
+  return vt
+
+## def _tr1(v, snaux, nparaux, isLeft) :
+##   assert snaux.xright >= v
+##   a = (snaux.xright - v) / snaux.wnode
+##   assert 0 <= a <= 1
+##   # for left child:  nparaux.right - nparaux.wnode + (1-a)*snaux.wpar
+##   # correction of snaux.wpar - nparaux.wnode
+##   return nparaux.xright - a * snaux.wpar + \
+##          (snaux.wpar - nparaux.wnode if isLeft else 0)
   
 def _embSetLeftRight(gtree, nid, nh, stree, snh) :
   gnode = gtree.node(nid)
@@ -479,8 +511,12 @@ def _embSetLeftRight(gtree, nid, nh, stree, snh) :
 
   return gnode.data.cladeInfo
 
-def _drawTreeOnly(tree, nid, xnode, nh, plotLinesAttr, keepPositions) :
+def _drawTreeOnly(tree, nid, xnode, nh, plotLinesAttr, keepPositions, txt) :
   node = tree.node(nid)
+
+  if txt:
+    pylab.text(xnode, nh[node.id], str(nid), fontsize = 11, va='top', ha='center')
+  
   if not node.succ:
     return
   cInfo = node.data.cladeInfo
@@ -502,15 +538,15 @@ def _drawTreeOnly(tree, nid, xnode, nh, plotLinesAttr, keepPositions) :
       node.data.x = xnode
     pylab.plot([xnode, xchild], [myh, chh], **plotLinesAttr)
 
-    pylab.text(xnode, myh, str(nid), fontsize = 11, va='top', ha='center')
+    #pylab.text(xnode, myh, str(nid), fontsize = 11, va='top', ha='center')
     
-    _drawTreeOnly(tree, si, xchild, nh, plotLinesAttr, keepPositions)
+    _drawTreeOnly(tree, si, xchild, nh, plotLinesAttr, keepPositions, txt)
 
 def _embDrawTreeOnly(tree, nid, xnodeOrig, nh, plotLinesAttr, keepPositions, txt) :
   node = tree.node(nid)
 
   if txt:
-    pylab.text(xnodeOrig,  nh[node.id], str(nid), fontsize = 11, va='top', ha='center')
+    pylab.text(xnodeOrig, nh[node.id], str(nid), fontsize = 11, va='top', ha='center')
   
   if not node.succ:
     return
@@ -526,7 +562,7 @@ def _embDrawTreeOnly(tree, nid, xnodeOrig, nh, plotLinesAttr, keepPositions, txt
     chh = nh[si]
     if si == cInfo.lchild :
       x,h = cInfo.lmid, cInfo.lh
-      if len( bp ) :
+      if len(bp) :
         for ci in bp[:-1] :
           pylab.plot([xnode, ci[0]], [myh, ci[1]], **plotLinesAttr)
           xnode,myh = ci
@@ -538,7 +574,7 @@ def _embDrawTreeOnly(tree, nid, xnodeOrig, nh, plotLinesAttr, keepPositions, txt
 
     else :
       x,h = cInfo.rmid, cInfo.rh
-      if len( bp ) :
+      if len(bp) :
         for ci in bp[:-1] :
           pylab.plot([xnode, ci[0]], [myh, ci[1]], **plotLinesAttr)
           xnode,myh = ci
@@ -582,7 +618,9 @@ def drawTreeOnly(tree, stree = None,
       xroot = (rl.right + rl.left)/2
   
       _drawTreeOnly(tree, tree.root, xroot, nh,
-                    plotLinesAttr = plotLinesAttr, keepPositions = keepPositions)
+                    plotLinesAttr = plotLinesAttr, keepPositions =
+                    keepPositions,
+                    txt = txt)
   
   for i in tree.all_ids() :
     del tree.node(i).data.cladeInfo

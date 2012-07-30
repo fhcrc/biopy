@@ -111,13 +111,14 @@ nTrees = countNexusTrees(nexusTreesFileName)
 
 nexusReader = INexus.INexus()
 
+nBurninTrees = int(burnIn*nTrees)
+
 if progress:
-  print >> sys.stderr, "reading %d trees ...," % int((nTrees * (1-burnIn) / every)),
+  print >> sys.stderr, "reading %d trees ...," % (nTrees - nBurninTrees),
 
 trees = []
-for tree in nexusReader.read(nexFile, slice(int(burnIn*nTrees), -1, every)):
-  has = beastLogHelper.setDemographics([tree])
-  assert has[0]
+for tree in nexusReader.read(nexFile, slice(nBurninTrees, -1, every)) :
+  has = beastLogHelper.setDemographics([tree])     ; assert has[0]
   trees.append(tree)
   
 if progress:
