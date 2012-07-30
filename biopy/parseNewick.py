@@ -40,7 +40,7 @@ def _parseAttributes(s) :
 
     nameEnd = _findIndex(s, '=', ",]\"{}")
     if s[nameEnd] != '=' :
-      raise "error"
+      raise RuntimeError("error")
     name = s[:nameEnd]
     s = s[nameEnd+1:]
     eat += nameEnd+1
@@ -58,7 +58,7 @@ def _parseAttributes(s) :
     else :
         e = _findIndex(s, ',', "]")
         if e == -1 :
-          raise "error"
+          raise RuntimeError("error")
         v = s[:e]
         s = s[e:]
         eat += e
@@ -94,7 +94,7 @@ def _readSubTree(txt, nodesList) :
         n += 1
         txt = txt[1:]
         break
-      raise "error"
+      raise RuntimeError("error")
   else :
     # a terminal
     n1 = 0

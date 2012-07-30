@@ -42,7 +42,8 @@ def readBeastFile(path, what) :
   doc = etree.parse(path)
   root = doc.getroot()
 
-  if root.attrib.get('version').strip()[:2] == "2." :
+  ver = root.attrib.get('version') or doc.docinfo.xml_version
+  if ver is not None and ver.strip()[:2] == "2." :
     return readBeast2File(root, what)
   
   if "DNA" in what :
@@ -54,7 +55,7 @@ def readBeastFile(path, what) :
         taxon = s.find('taxon')
 
         n = s[0].tail.strip()
-        # Remove (non intetional?) spaces in sequence
+        # Remove (presumably non intetional) spaces in sequence
         n = "".join([c for c in n if not c.isspace()])        
         assert len(n)
         assert all([c in "AGCT-MRWSYKVHDBXN?" for c in n.upper()])
@@ -147,7 +148,7 @@ def readBeast2File(root, what) :
     what['DNA'] = data
 
   if "mcmc" in what :
-    raise "not yet"
+    raise RuntimeError("not yet")
     m = root.find("mcmc")
     cl = int(m.get('chainLength'))
     for l in m.findall('log') :
@@ -158,7 +159,7 @@ def readBeast2File(root, what) :
     what['mcmc'] = {'chainLength' : cl, 'logEvery' : le}
 
   if "species" in what :
-    raise "not yet"
+    raise RuntimeError("not yet")
     xspecies = root.find('species')
     if xspecies is not None :
       species = dict()
@@ -187,7 +188,7 @@ def readBeast2File(root, what) :
       what['species'] = { 'species' : species, 'genes' : genes }
 
   if "logging" in what :
-    raise "not yet"
+    raise RuntimeError("not yet")
     mcmc = root.find('mcmc')
 
     treeLogs = dict()

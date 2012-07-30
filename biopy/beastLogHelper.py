@@ -48,11 +48,11 @@ def readTraces(beastFile, traces, report = False) :
             if report:
               print >> sys.stderr, "adding", " ".join([cols[k] for k in i])
           else :
-            raise t + " not found."
+            raise RuntimeError(t + " not found.")
       break
 
   if not len(iTraces) :
-    raise "columns not found",",".join(traces)
+    raise RuntimeError("columns not found",",".join(traces))
   
   for line in beastFile:  
     l = line.strip().split()
