@@ -39,6 +39,28 @@ def _collectCladeTaxa(tree, nodeId, taxa, partitions) :
   partitions[frozenset(p)] = nodeId
   return p
 
+def _collectCladeTaxa(tree, nodeId, taxa, partitions) :
+  """ Return a (reverse) mapping of taxa for each node in the sub-tree below
+  nodeId.
+
+  The returned mapping has the taxa as key, in the form of a set of integeres,
+  each an index into taxa. The value of the mapping is the node tree id.
+  """
+  
+  node = tree.node(nodeId)
+  if node.data.taxon :
+    p = [taxa.index(node.data.taxon),]
+  else :
+    p = []
+    for ch in node.succ:
+      p.extend(_collectCladeTaxa(tree, ch, taxa, partitions))
+
+  if nodeId == tree.root :
+    return
+  
+  partitions[frozenset(p)] = nodeId
+  return p
+
 def vdistance(a1, a2, order = 2) :
   """ Vector norm {||v||_2}"""
   return numpy.linalg.norm([x-y for x,y in zip(a1,a2)], order)
@@ -155,22 +177,28 @@ def treeArea(tree) :
   """
   return sum([_nodeBranchPop(tree, x) for x in tree.all_ids() if x != tree.root])
 
-def allPartitions(referenceTree, trees) :
+def allPartitions(referenceTree, trees, func = None) :
   """ Clade information summary for a set of trees.
 
   Summerize clades from all trees in one mapping. All trees must be on the
   same taxa as the reference tree. Return a mapping whose key is the clade, and
-  the value is a sequence of (tree,node) pairs.
+  the value is a sequence of (tree,node) pairs. If func is given, the values are
+  the results of applying func to the (tree,node) pair.
   """
   
   taxa = referenceTree.get_taxa()
   p = dict()
-  for tree in trees: 
+  for tree in trees:
     p1 = dict()
     _collectCladeTaxa(tree, tree.root, taxa, p1)
-    for k in p1 :
-      if k not in p:
-        p[k] = []
-      p[k].append((tree,p1[k]))
+    for k,nd in p1.iteritems() :
+      pk = p.get(k)
+      v = (tree, nd)
+      if func :
+        v = func(*v)
+      if pk is None :
+        p[k] = [v]
+      else :
+        pk.append(v)
 
   return p

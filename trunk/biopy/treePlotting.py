@@ -8,7 +8,7 @@ from __future__ import division
 
 import sys, random
        
-from numpy import mean, median, corrcoef
+from numpy import mean, median, corrcoef, cumsum
 import pylab
 
 from collections import Counter, namedtuple, defaultdict
@@ -20,50 +20,96 @@ from treeutils import toNewick, countNexusTrees, getTreeClades, nodeHeights, get
 from combinatorics import allPairs
 
 __all__ = ['drawTree', 'getSpacing',
-           "descendantMean", "descendantWeightedMean", "descendantBetween",
-           'getTaxaOrder', 'getGTorder', ]
+           "DescendantMean", "DescendantWeightedMean",
+           "DescendantBetween", "DescendantBalanced", 
+           'getTaxaOrder', 'getGTorder', "setSTspacing"]
 
-class descendantMean(object) :
-  def __init__(self, descendants) :
-    if isinstance(descendants, (float,int,long)) :
-      self.xcenter = descendants
-    else :
+class DescendantMean(object) :
+  def __init__(self, node, descendants) :
+    if descendants is not None :
+      assert len(descendants) == 2
       self.xcenter = mean([x.xcenter for x in descendants])
-
+    else :
+      self.xcenter = node.data.x
+    
   def center(self) :
     return self.xcenter
+
+  def setOffset(self, offset) :
+    self.xcenter += offset
+    
+  def widenBy(self, offset) :
+    return self.xcenter + offset/2
   
-class descendantWeightedMean(object) :
-  def __init__(self, descendants) :
-    if isinstance(descendants, (float,int,long)) :
-      self.xcenter = descendants
-      self.count = 1
-    else :
+class DescendantWeightedMean(object) :
+  def __init__(self, node, descendants) :
+    if descendants is not None :
       self.count = sum([x.count for x in descendants])
       self.xcenter = sum([x.xcenter * x.count for x in descendants])/self.count
-
+      self.rcount = descendants[-1].count
+    else :
+      self.xcenter = node.data.x
+      self.count = 1
+      self.rcount = 0
+      
   def center(self) :
     return self.xcenter
 
-class descendantBetween(object) :
-  def __init__(self, descendants) :
-    if isinstance(descendants, (float,int,long)) :
-      self.xcenter = descendants
-      self.right = self.left = self.xcenter
-    else :
+  def widenBy(self, extra) :
+    return self.xcenter + extra*self.rcount/self.count
+
+  def setOffset(self, offset) :
+    self.xcenter += offset
+    
+class DescendantBetween(object) :
+  def __init__(self, node, descendants) :
+    if descendants is not None :
       self.left = min([x.left for x in descendants])
       self.right = max([x.right for x in descendants])
       self.xcenter = (descendants[0].right + descendants[1].left) / 2
+      assert len(descendants) == 2
+    else :
+      self.xcenter = node.data.x
+      self.right = self.left = self.xcenter
 
   def center(self) :
     return self.xcenter
 
+  def widenBy(self, offset) :
+    return self.xcenter + offset/2
+
+  def setOffset(self, offset) :
+    self.xcenter += offset
+
+class DescendantBalanced(object) :
+  def __init__(self, node, descendants) :
+    if descendants is not None :
+      assert len(descendants) == 2
+      self.xcenter = (2*(descendants[0].xcenter + descendants[1].xcenter) +
+                      descendants[0].p[1] - descendants[1].p[1])/4.0
+      #print descendants[0].xcenter, descendants[0].p[1],  descendants[1].xcenter,  descendants[1].p[1]
+    else :
+      self.xcenter = node.data.x
+      
+    self.p = [node.data.demographic.population(z)
+              for z in (0,node.data.branchlength)]
+
+  def center(self) :
+    return self.xcenter
+
+  def widenBy(self, offset) :
+    return self.xcenter + offset/2
+
+  def setOffset(self, offset) :
+    self.xcenter += offset
+
 _Info2 = namedtuple('Info2', 'center hnode hpar xright wnode wpar clade')
 
-def _drawBranch(fill, x, y, generalPlotAttributes, splitPoints) :
-  if fill :
-    pylab.fill(x,y, **generalPlotAttributes)
-  else :
+def _drawBranch(x, y, fill, generalPlotAttributes, splitPoints) :
+  if fill is not None:
+    pylab.fill(x,y, **fill)
+    
+  if generalPlotAttributes is not None:
     if splitPoints is True :
       x = x + (x[0],) ;  y = y + (y[0],)
       pylab.plot(x,y, **generalPlotAttributes)
@@ -74,15 +120,8 @@ def _drawBranch(fill, x, y, generalPlotAttributes, splitPoints) :
         pylab.plot(x[0:2],y[0:2], **splitPoints)
         pylab.plot(x[2:3],y[2:3], **splitPoints)
 
-def _brt(demo, node) :
-  t = demo.naturalLimit()
-  if t is None :
-    t = node.data.branchlength
-  return t
-    
-def drawTree(tree, nid, cladesDict = None, positioning = descendantMean,
-             fill = True, generalPlotAttributes = dict(),
-             splitPoints = True, keepAux = False) :
+def _drawTree(tree, nid, cladesDict, positioning, fill, generalPlotAttributes,
+              splitPoints, keepAux) :
   node = tree.node(nid)
   d = node.data.demographic
   if not node.succ:
@@ -91,19 +130,17 @@ def drawTree(tree, nid, cladesDict = None, positioning = descendantMean,
     p1 = d.population(br)
     center = node.data.x
 
-    aux = _Info2(positioning(center), 0, br, center + p/2, p, p1, 
+    aux = _Info2(positioning(node, None), 0, br, center + p/2, p, p1, 
                  frozenset([node.data.taxon]) if cladesDict is not None else None)
     if keepAux :
       node.data.plotAux = aux
     return aux
 
-  pr = []
-  for si in node.succ :
-    pr.append(drawTree(tree, si, cladesDict, positioning, fill, generalPlotAttributes,
-                       splitPoints, keepAux))
+  pr = [_drawTree(tree, si, cladesDict, positioning, fill, generalPlotAttributes,
+                  splitPoints, keepAux)for si in node.succ]
 
   pr = sorted(pr, key = lambda x : x.center.center()) # sort by center
-  centerc = positioning([x.center for x in pr])
+  centerc = positioning(node, [x.center for x in pr])
   pcenter = centerc.center()
                     
   clade = pr[0].clade | pr[1].clade if cladesDict is not None else None
@@ -120,14 +157,16 @@ def drawTree(tree, nid, cladesDict = None, positioning = descendantMean,
 
       y = h, h, hpar, hpar
 
-      _drawBranch(fill, x, y, generalPlotAttributes, splitPoints)      
+      _drawBranch(x, y, fill, generalPlotAttributes, splitPoints)      
 
   pConst = d.naturalLimit() is None
   if pConst :
     p = d.population(0)
   else :
     p = sum([x.wpar for x in pr])
-  br = _brt(d, node)
+
+  br = d.naturalLimit() or node.data.branchlength
+
   p1 = d.population(br)
   h = pr[0].hpar
   hpar = h + br
@@ -147,7 +186,7 @@ def drawTree(tree, nid, cladesDict = None, positioning = descendantMean,
     x = xright, xright - p, pcenter - p1/2, pcenter + p1/2
     y = h, h, hpar, hpar
     
-    _drawBranch(fill, x, y, generalPlotAttributes, splitPoints)      
+    _drawBranch(x, y, fill, generalPlotAttributes, splitPoints)      
 
   aux = _Info2(centerc, h, hpar, xright, p, p1, clade)
   if keepAux :
@@ -158,6 +197,24 @@ def drawTree(tree, nid, cladesDict = None, positioning = descendantMean,
   
   return aux
 
+def drawTree(tree, nid = None, cladesDict = None, positioning = DescendantMean,
+             fill = None, generalPlotAttributes = None, splitPoints = False,
+             keepAux = False) :
+
+  if fill is None and generalPlotAttributes is None :
+    generalPlotAttributes = dict()
+
+  if fill is not None and 'ec' not in fill :
+    fill['ec'] = 'none'
+    
+  if generalPlotAttributes is not None and 'color' not in generalPlotAttributes :
+    generalPlotAttributes['color'] = 'blue'
+    
+  if nid is None :
+    nid = tree.root
+
+  return _drawTree(tree, nid, cladesDict, positioning,
+             fill, generalPlotAttributes, splitPoints, keepAux) 
 
 _Info = namedtuple('Info', 'width widthatend maxspace')
 
@@ -327,9 +384,9 @@ def getGTorder(gtree, stree, nTries = 3, perTreeTries = 3) :
       random.shuffle(sint)
       cont = False
       for n in sint :
-        sc = n.succ
         for ll in range(perTreeTries) :
-          n.succ = list(reversed(sc))
+          sc = n.succ
+          n.succ = [sc[1],sc[0]]
           tms, tmp = getGTorderFixedStree(gtree, stree, gtax, gtx)
           if tms < ms :
             ms, mp = tms, tmp
@@ -445,21 +502,12 @@ def _tr1(v, snaux, nparaux, isLeft) :
   assert v <= snaux.xright
   c = nparaux.center.center()
   a = (snaux.xright - v) / snaux.wnode
-  assert 0 <= a <= 1
+  assert (0-1e-12) <= a <= (1+1e-12)
   if isLeft :
     vt = c - (c - (nparaux.xright - nparaux.wnode)) * a
   else :
     vt = c + (nparaux.xright - c) * (1-a)
   return vt
-
-## def _tr1(v, snaux, nparaux, isLeft) :
-##   assert snaux.xright >= v
-##   a = (snaux.xright - v) / snaux.wnode
-##   assert 0 <= a <= 1
-##   # for left child:  nparaux.right - nparaux.wnode + (1-a)*snaux.wpar
-##   # correction of snaux.wpar - nparaux.wnode
-##   return nparaux.xright - a * snaux.wpar + \
-##          (snaux.wpar - nparaux.wnode if isLeft else 0)
   
 def _embSetLeftRight(gtree, nid, nh, stree, snh) :
   gnode = gtree.node(nid)
@@ -542,11 +590,14 @@ def _drawTreeOnly(tree, nid, xnode, nh, plotLinesAttr, keepPositions, txt) :
     
     _drawTreeOnly(tree, si, xchild, nh, plotLinesAttr, keepPositions, txt)
 
-def _embDrawTreeOnly(tree, nid, xnodeOrig, nh, plotLinesAttr, keepPositions, txt) :
+def _embDrawTreeOnly(tree, nid, xnodeOrig, nh, plotLinesAttr, keepPositions, coalAttr, txt) :
   node = tree.node(nid)
 
   if txt:
     pylab.text(xnodeOrig, nh[node.id], str(nid), fontsize = 11, va='top', ha='center')
+
+  if coalAttr:
+    pylab.plot([xnodeOrig], [nh[node.id]], '.', **coalAttr)
   
   if not node.succ:
     return
@@ -588,14 +639,14 @@ def _embDrawTreeOnly(tree, nid, xnodeOrig, nh, plotLinesAttr, keepPositions, txt
     if keepPositions :
       data.x = xnode
     pylab.plot([xnode, xchild], [myh, chh], **plotLinesAttr)
-    _embDrawTreeOnly(tree, si, xchild, nh, plotLinesAttr, keepPositions, txt)
+    _embDrawTreeOnly(tree, si, xchild, nh, plotLinesAttr, keepPositions, coalAttr, txt)
 
 
-def drawTreeOnly(tree, stree = None,
-                 plotLinesAttr = None, # {'color' : "green", 'alpha' : 0.05},
+def drawTreeOnly(tree, stree = None, plotLinesAttr = None, 
                  allTipsZero = True, xroot = None, keepPositions = False,
-                 txt = False) :
+                 coalAttr = None, txt = False) :
   assert not stree or allTipsZero
+
   # A mapping from node id to (positive) node height ( with !allTipsZero, tips
   # may have > 0 height, at least one tip has 0 height). 
   nh = nodeHeights(tree, allTipsZero = allTipsZero)
@@ -606,8 +657,8 @@ def drawTreeOnly(tree, stree = None,
     if xroot is None :
       xroot = stree.node(stree.root).data.plotAux.center.center()
 
-    _embDrawTreeOnly(tree, tree.root, xroot, nh, plotLinesAttr = plotLinesAttr,
-                     keepPositions = keepPositions, txt = txt)
+    _embDrawTreeOnly(tree, tree.root, xroot, nh, plotLinesAttr,
+                    keepPositions, coalAttr, txt)
       
   else :
     # set auxiliary info per node
@@ -617,10 +668,94 @@ def drawTreeOnly(tree, stree = None,
     if xroot is None :
       xroot = (rl.right + rl.left)/2
   
-      _drawTreeOnly(tree, tree.root, xroot, nh,
-                    plotLinesAttr = plotLinesAttr, keepPositions =
-                    keepPositions,
-                    txt = txt)
+      _drawTreeOnly(tree, tree.root, xroot, nh, plotLinesAttr, keepPositions, txt)
   
   for i in tree.all_ids() :
     del tree.node(i).data.cladeInfo
+
+
+_Info5 = namedtuple('Info5', 'spacing extermaLeft extermaRight center height width')
+
+def _detemineSpacing(tree, nid, epsi, po) :
+  node = tree.node(nid)
+  demo = node.data.demographic
+  p0 = demo.population(0)
+  br = node.data.branchlength
+
+  if not node.succ :
+    node.data.x = 0
+    return _Info5((), [(0 - p0/2,0)], [(0 + p0/2,0)], po(node, None), br, demo.population(br))
+
+  ch = [_detemineSpacing(tree, si, epsi, po) for si in node.succ]
+  
+  # get exterma points as function of spacing between the two clades
+
+  # left - right wall of left son
+  # left - left wall of right son
+  exl,exr = ch[0].extermaRight, ch[1].extermaLeft
+  hr = [h for x,h in exr]
+  hl = [h for x,h in exl]
+  myh = ch[0].height
+  extermaHeights = sorted(set(hr + hl)) #  + [ch[0].height]))
+  # center as a function of spacing
+  S0 = sum(ch[0].spacing)
+  ch[1].center.setOffset(S0)
+  center = po(node, [x.center for x in ch])
+  
+  ihr = ihl = 0
+  sval = 0
+  for h in extermaHeights :
+    while ihl+1 < len(hl) and not (hl[ihl] <= h < hl[ihl+1]) :
+      ihl += 1
+      
+    if ihl+1 == len(hl) :
+      # above last wall point. Line goes from last exterma point
+      # to center + width
+      x0,h0 = exl[-1]
+      fl = lambda s,x0=x0,h0=h0 : x0 + (center.widenBy(s)-x0) * ((h-h0)/(myh-h0))
+    else :
+      a = (h - hl[ihl])/(hl[ihl+1]-hl[ihl])
+      xl = exl[ihl][0] * (1-a) + exl[ihl+1][0] * a
+      fl = lambda s,xl=xl : xl
+
+    while ihr+1 < len(hr) and not (hr[ihr] <= h < hr[ihr+1]) :
+      ihr += 1
+      
+    if ihr+1 == len(hr) :
+      # above last wall point. Line goes from last exterma point
+      # to center + width
+      x0,h0 = exr[-1]
+      fr = lambda s,x0=x0,h0=h0 : s + S0 + x0 + (center.widenBy(s)-(x0+S0+s)) * ((h-h0)/(myh-h0))
+    else :
+      a = (h - hr[ihr])/(hr[ihr+1]-hr[ihr])
+      xr = exr[ihr][0] * (1-a) + exr[ihr+1][0] * a
+      fr = lambda s,xr=xr : s + S0 + xr
+
+    dx = lambda s : fr(s) - fl(s)
+    dx0 = dx(0)
+    u = dx(1) - dx0
+    sval = max(sval,(epsi - dx0)/u)
+
+  ch[1].center.setOffset(sval+S0)
+  center = po(node, [x.center for x in ch])
+  br = node.data.branchlength
+  p1 = demo.population(br)
+  return _Info5(ch[0].spacing + (sval,) + ch[1].spacing,
+                ch[0].extermaLeft + [(center.center()-ch[0].width,myh)],
+                [(x+S0+sval,y) for x,y in ch[1].extermaRight] +
+                [(center.center()+ch[1].width,myh)],
+                center, br+myh, p1)
+    
+def setSTspacing(tree, epsi, po) :
+  """ Set species tree taxa positions (node.data.x) for plotting.
+
+  The horizontal distance between extrama points (of branches) is at least epsi.
+  
+  """
+  rs = _detemineSpacing(tree, tree.root, epsi, po)
+
+  xs = cumsum((0,)+rs.spacing)
+    
+  for n,x in zip(filter(lambda n : not n.succ, getPostOrder(tree)), xs) :
+    n.data.x = x
+ 

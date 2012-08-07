@@ -17,18 +17,18 @@ parser.add_option("-n", "--seqlen", dest="seqlen", metavar="N",
                   + """(default %default)""", default = 400) 
 
 parser.add_option("-m", "--model", dest="model",
-                  help="""Substitution model. Comma separated list - model name
-                  and model parameters. (1) JC,mu  (2) HKY,mu,kappa,freqs (3)
-                  GTR,mu,rates,freqs """
-                  + """(default %default)""", default = "JC,1") 
+                  help="Substitution model. Comma separated list - model name" + 
+                  " and model parameters. (1) JC,mu  (2) HKY,mu,kappa,freqs (3)" +
+                  " GTR,mu,rates,freqs" + 
+                  " (default %default)", default = "JC,1") 
 
 parser.add_option("-a", "--annotate", dest="annotate",
-                  help="""Output trees annotated with sequences. Default is to
-                  generate a NEXUS alignment file per tree.""",
+                  help="Output trees annotated with sequences. Default is to" + 
+                  " generate a NEXUS alignment file per tree.",
                   action="store_true", default = False)
 
 parser.add_option("-o", "--nexus", dest="nexfile", metavar="FILE",
-                  help="Export trees in nexus format to file", default = None)
+                  help="Name of annotated trees file.", default = None)
 
 
 from biopy import INexus, submodels, __version__
@@ -36,6 +36,15 @@ from biopy.treeutils import toNewick, TreeLogger
 
 options, args = parser.parse_args()
 
+if len(args) == 0 :
+  parser.print_help(sys.stderr)
+  sys.exit(1)
+
+if not options.annotate and options.nexfile :
+  print >> sys.stderr, "A file name without an '-a' ?"
+  parser.print_help(sys.stderr)
+  sys.exit(1)
+  
 if os.path.isfile(args[0]) :
   trees = INexus.INexus().read(file(args[0]))
 else :

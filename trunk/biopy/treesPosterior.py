@@ -125,7 +125,8 @@ def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
 ver = False
 
 def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True,
-                             nodesMinHeight = None, withDerivative = False) :
+                             nodesMinHeight = None, withDerivative = False,
+                             factr=10000000.0) :
   """ Find a branch length assignment for tree which minimizes the total
   distance to the set of trees.
 
@@ -136,7 +137,7 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True,
   
   treeParts = allPartitions(tree, [tree])
 
-  posteriorParts = allPartitions(tree, trees)
+  posteriorParts = allPartitions(tree, trees, lambda t,n : t.node(n).data.branchlength)
 
   # For numerical stability sake in computing gradients, scale trees
   # so that mean root height is 1 
@@ -156,7 +157,8 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True,
       # A tree clade which appears in some posterior trees
 
       # All branch lengths from posterior for this clade
-      br = [t.node(n).data.branchlength * fctr for t,n in posteriorParts[k]]
+      #br = [t.node(n).data.branchlength * fctr for t,n in posteriorParts[k]]
+      br = [b * fctr for b in posteriorParts[k]]
       
       # Number of posterior trees without the clade 
       a1 = (len(trees) - len(posteriorParts[k]))
@@ -190,10 +192,14 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True,
   
   for k in posteriorParts :
     if k not in treeParts:
-      a0 = sum([(t.node(n).data.branchlength * fctr - 0)**2 for t,n in posteriorParts[k]])
+      #a0 = sum([(t.node(n).data.branchlength * fctr - 0)**2 for t,n in
+      #posteriorParts[k]])
+      a0 = sum([(b * fctr - 0)**2 for b in posteriorParts[k]])      
       c0 += a0
       z0 += a0
 
+  del posteriorParts
+  
   # Tuck in the constant
   ee = ("%.15g " % c0) + ee
 
@@ -228,12 +234,13 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True,
   maxfun = 15000
   if 1 :
     zz = scipy.optimize.fmin_l_bfgs_b(f,
-                                    [1 if norm else treeHeight(tree)] +
-                                    [random.random() for k in range(nx-1)],
-                                    #[.7 for k in range(nx-1)],
-                                    approx_grad=0 if withDerivative else 1,
-                                    bounds = [[minRoot,None]] + [[0,1]]*(nx-1),
-                                    iprint=-1, maxfun=maxfun)
+                                      [1 if norm else treeHeight(tree)] +
+                                      [random.random() for k in range(nx-1)],
+                                      #[.7 for k in range(nx-1)],
+                                      approx_grad=0 if withDerivative else 1,
+                                      bounds = [[minRoot,None]] + [[0,1]]*(nx-1),
+                                      factr = factr,
+                                      iprint=-1, maxfun=maxfun)
     if zz[2]['warnflag'] != 0 :
       print "WARNING:", zz[2]['task']
     #print zz[0]
@@ -241,8 +248,8 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True,
   if 0:
     zz = scipy.optimize.fmin_tnc(f,
                                  [treeHeight(tree)*fctr] +
-                                 [random.random() for k in range(nx-1)],
-                                 # [.7 for k in range(nx-1)],
+                                 [random.uniform(.8,.9) for k in range(nx-1)],
+                                 #[.8 for k in range(nx-1)],
                                  approx_grad=1,
                                  bounds = [[minRoot,None]] + [[0,1]]*(nx-1),
                                  maxfun=maxfun,
@@ -267,9 +274,3 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True,
   if withDerivative :
     val = val[0]
   return (ss, val)
-
-
-
-
-def annotateTree(tree, postTrees) :
-  pass
