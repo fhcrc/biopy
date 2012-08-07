@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+y#! /usr/bin/env python
 ## This file is part of biopy.
 ## Copyright (C) 2010 Joseph Heled
 ## Author: Joseph Heled <jheled@gmail.com>
@@ -75,11 +75,11 @@ colorTops = options.color
 alphaFactor = float(options.afactor)
 
 if options.positioning == 'mean' :
-  positioning = treePlotting.descendantMean
+  positioning = treePlotting.DescendantMean
 elif options.positioning == 'taxonmean':
-   positioning = treePlotting.descendantWeightedMean
+   positioning = treePlotting.DescendantWeightedMean
 elif options.positioning == 'between':
-   positioning = treePlotting.descendantBetween
+   positioning = treePlotting.DescendantBetween
 else:
   raise
 

@@ -370,7 +370,7 @@ def setSpeciesSimple(gtree, stree, sep = None) :
       if sum(b) == 1 :
         sid = b.index(True)
     else :
-      b = [s in x for x in spNames]
+      b = [s in gn.data.taxon for s in spNames]
       if sum(b) == 1 :
         sid = b.index(True)
     # species tree node

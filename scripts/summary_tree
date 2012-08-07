@@ -54,13 +54,15 @@ parser.add_option("", "--matching", dest="matching",
                   action="store_true", default = False)
 
 parser.add_option("", "--compatible", dest="compatible", metavar="TREE",
-                  help="Insure gene tree is compatible with species TREE",
+                  help="Insure gene tree is compatible with species TREE.",
                   default = None)
 
 parser.add_option("", "--species-mapping", dest="spmap", metavar="FILE",
                   help=("A file contatining the mapping of gene lineages to" + 
                         " species for the --compatible option (currently " + 
-                        "only BEAST(1) XML file supported)"),
+                        "only BEAST(1) XML file supported). Otherwise, a simple" +
+                        " scheme of looking for the species name inside the gene" +
+                        " name is used."),
                   default = None)
 
 parser.add_option("-p", "--progress", dest="progress",
@@ -115,16 +117,35 @@ if options.compatible is not None :
             e.message,"[",options.compatible,"]"
       sys.exit(1)
 
-  if options.spmap is None :
-    print >> sys.stderr, ("*** Error: must specify a mapping" +
-                          " (--species-mapping) with --compatible")
-    sys.exit(1)
+  if options.spmap is not None :
+    bd = {'species':None}
+    bsps = beastXMLhelper.readBeastFile(options.spmap, bd)
+    speciesMapping = bd['species']['species']
 
-  bd = {'species':None}
-  bsps = beastXMLhelper.readBeastFile(options.spmap, bd)
-  speciesMapping = bd['species']['species']
+    def getSpeciesOf(name) :
+      for x in speciesMapping :
+        if name in speciesMapping[x] :
+          return x
+      return None
+    
+  else :
 
-  def _setSPS(tr, nid, sps) :
+    spTerms = spTree.get_terminals()
+    spNames = [spTree.node(x).data.taxon for x in spTerms]
+
+    def getSpeciesOf(name) :
+      b = [x in name for x in spNames]
+      if sum(b) == 1 :
+        sid = b.index(True)
+        return spNames[sid]
+      return None
+    
+    #print >> sys.stderr, ("*** Error: must specify a mapping" +
+    #                      " (--species-mapping) with --compatible")
+    #sys.exit(1)
+
+    
+  def _setSPS(tr, nid) :
     """ Store the set of species spanned by the subtree in each node.
 
     At the end, each node of tree 'tr' contains the data.species memeber, a set
@@ -134,33 +155,26 @@ if options.compatible is not None :
 
     if not len(n.succ) :
       # leaf
-      s = None
-      for x in sps :
-        if n.data.taxon in sps[x] :
-          s = x
-          break
-      assert s is not None
+      s = getSpeciesOf(n.data.taxon)
+      assert s is not None, n.data.taxon
       allsp = frozenset([s])
     else :
       # internal node
-      l = [_setSPS(tr, x, sps) for x in n.succ]
+      l = [_setSPS(tr, x) for x in n.succ]
       allsp = reduce(lambda x,y : x.union(y), l)
 
     n.data.species = allsp
     return n.data.species
 
-  def getSPlimits(gtr, spt = spTree, sps = speciesMapping) :
+  def getSPlimits(gtr, spt = spTree) :
     """ Establish a mapping between each internal node of the gene tree 'gtr' and
     its minimum height according to species tree spt.
-
-    sps is a mapping from species name to the set of all gene taxa belonging to
-    the species.
     """
 
     nh = nodeHeights(gtr, allTipsZero = False)
     snh = nodeHeights(spt, allTipsZero = False)
 
-    _setSPS(gtr, gtr.root, sps)
+    _setSPS(gtr, gtr.root)
     for i in gtr.all_ids() :
       n = gtr.node(i)
       if len(n.succ) :
