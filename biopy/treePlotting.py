@@ -103,14 +103,29 @@ class DescendantBalanced(object) :
   def setOffset(self, offset) :
     self.xcenter += offset
 
-_Info2 = namedtuple('Info2', 'center hnode hpar xright wnode wpar clade')
+_Info2 = namedtuple('Info2', 'center hnode hpar xright wnode wpar clade pconst')
+
+_Info2.__doc = """Return value of _drawBranch: values associated with a node.
+The 'branch' associated with the node is the one connecting it with its parent.
+Branch is directed from the tips towards the root: the 'start' is at the node,
+the 'end' is at the parent.
+
+center: Center position of branch start. One of the centering classes.
+hnode:  Node height
+hpar:   Parent height
+xright: X coordinate of the right end at branch start
+wnode:  Starting branch width
+wpar:   Ending branch width
+clade:  Taxa in clade if requested (as a dict())
+pconst: True if branch has constant width
+"""
 
 def _drawBranch(x, y, fill, generalPlotAttributes, splitPoints) :
   if fill is not None:
     pylab.fill(x,y, **fill)
     
   if generalPlotAttributes is not None:
-    if splitPoints is True :
+    if bool(splitPoints) is True :
       x = x + (x[0],) ;  y = y + (y[0],)
       pylab.plot(x,y, **generalPlotAttributes)
     else :
@@ -124,14 +139,17 @@ def _drawTree(tree, nid, cladesDict, positioning, fill, generalPlotAttributes,
               splitPoints, keepAux) :
   node = tree.node(nid)
   d = node.data.demographic
+  pConst = d.naturalLimit() is None
+
   if not node.succ:
     p = d.population(0)
     br = node.data.branchlength
-    p1 = d.population(br)
+    p1 = p if pConst else d.population(br)
     center = node.data.x
 
     aux = _Info2(positioning(node, None), 0, br, center + p/2, p, p1, 
-                 frozenset([node.data.taxon]) if cladesDict is not None else None)
+                 frozenset([node.data.taxon]) if cladesDict is not None else None,
+                 pConst)
     if keepAux :
       node.data.plotAux = aux
     return aux
@@ -146,7 +164,7 @@ def _drawTree(tree, nid, cladesDict, positioning, fill, generalPlotAttributes,
   clade = pr[0].clade | pr[1].clade if cladesDict is not None else None
 
   if clade is None or clade in cladesDict:
-    for (center,h,hpar,xright,p,p1,c),orient in zip(pr,[0,1]):
+    for (center,h,hpar,xright,p,p1,c,pc),orient in zip(pr,[0,1]):
       if c is not None and c not in cladesDict[clade]:
         continue
 
@@ -159,7 +177,6 @@ def _drawTree(tree, nid, cladesDict, positioning, fill, generalPlotAttributes,
 
       _drawBranch(x, y, fill, generalPlotAttributes, splitPoints)      
 
-  pConst = d.naturalLimit() is None
   if pConst :
     p = d.population(0)
   else :
@@ -180,6 +197,8 @@ def _drawTree(tree, nid, cladesDict, positioning, fill, generalPlotAttributes,
      (cladesDict is None or all([x.clade in cladesDict[clade] for x in pr])):
     if pConst :
       if h == hpar :
+        # default: 10% root, embedded gene trees should set root branch
+        # as appropriate
         hpar = 1.1 * h
       pcenter = xright - p/2
 
@@ -188,7 +207,7 @@ def _drawTree(tree, nid, cladesDict, positioning, fill, generalPlotAttributes,
     
     _drawBranch(x, y, fill, generalPlotAttributes, splitPoints)      
 
-  aux = _Info2(centerc, h, hpar, xright, p, p1, clade)
+  aux = _Info2(centerc, h, hpar, xright, p, p1, clade, pConst)
   if keepAux :
     node.data.plotAux = aux
     
@@ -360,7 +379,7 @@ def getTaxaOrder(trees, refTree = None, reportTopologies = False,
   
   return (overallMaximizingOrder, mtree)
 
-def getGTorder(gtree, stree, nTries = 3, perTreeTries = 3) :
+def getGTorder(gtree, stree, nTries = 3, perTreeTries = 3, tryPairs=True) :
   """ get genes order to plot inside a species tree.
 
   preliminary version.
@@ -376,7 +395,7 @@ def getGTorder(gtree, stree, nTries = 3, perTreeTries = 3) :
   for x in gtree.all_ids() :
     gtree.node(x).data.ht = nh[x]
     
-  ms, mp = getGTorderFixedStree(gtree, stree, gtax, gtx)
+  ms, mp = getGTorderFixedStree(gtree, stree, gtax, gtx, tryPairs)
   sint = [stree.node(n) for n in stree.all_ids() if stree.node(n).succ]
   for nk in range(nTries) :
     cont = True
@@ -387,7 +406,7 @@ def getGTorder(gtree, stree, nTries = 3, perTreeTries = 3) :
         for ll in range(perTreeTries) :
           sc = n.succ
           n.succ = [sc[1],sc[0]]
-          tms, tmp = getGTorderFixedStree(gtree, stree, gtax, gtx)
+          tms, tmp = getGTorderFixedStree(gtree, stree, gtax, gtx, tryPairs)
           if tms < ms :
             ms, mp = tms, tmp
             cont = True
@@ -397,34 +416,78 @@ def getGTorder(gtree, stree, nTries = 3, perTreeTries = 3) :
     g.data.o = o
   return ms, mp, gtx
 
-def getGTorderFixedStree(gtree, stree, gtax, gtx) :
-  allsn = getPostOrder(stree, stree.root)
-  # taxa in layout order
-  stax = filter(lambda n : not n.succ, allsn)
+def _getRandPostOrder(tree, nodeId = None) :
+  if nodeId is None:
+    nodeId = tree.root
+  node = tree.node(nodeId)
+  p = [node]
+  if node.succ :
+    if random.random() > 0.5:
+      succ = [node.succ[1],node.succ[0]]
+    else :
+      succ = node.succ
+    p = reduce(lambda x,y : x+y, [_getRandPostOrder(tree, x) for x in succ] + [p])
+  return p
 
+_plus = lambda x,y : x+y
+
+
+def getGTorderFixedStree(gtree, stree, gtax, gtx, tryPairs) :
+
+  allsn = getPostOrder(stree, stree.root)
+  # Species taxa in layout order, that is the order they are plotted
+  stax = filter(lambda n : not n.succ, allsn)
+  
+  # For each gene tree node set
+  # data.grp: the leftmost/rightmost species of taxa in clade (as indices of
+  # plot positions)
+  # data.grpnds: gene taxa nodes of in the leftmost/rightmost species (per
+  # above). Those are the only ones that can make a diffrence for the node
+  # score. The rest are always in.
+  #
+  # for terminal nodes set
+  # data.o: Ordinal number in sequence
+  
   # all terminals contain data.snode 
   no = 0
   for i,n in enumerate(stax):
     for gn in gtx[n.id] :
       gn.data.grp = [i,i]
       gn.data.grpnds = [[gn],[gn]]
+      gn.data.allo = [[] if k != n else [gn] for k in stax]
       gn.data.o = no
       no += 1
       gn.data.sz = 1
 
-  gtpost = getPostOrder(gtree, gtree.root)
+  gtpost = _getRandPostOrder(gtree, gtree.root)
+  swaps = []
   for n in gtpost :
     if n.succ :
       sns = [gtree.node(x) for x in n.succ]
       l,r = zip(*[x.data.grp for x in sns])
       n.data.grp = min(l),max(r)
       lg,rg = zip(*[x.data.grpnds for x in sns])
-      n.data.grpnds = reduce(lambda x,y : x+y, \
-                             [y for x,y in zip(l,lg) if n.data.grp[0] == x]),\
-                       reduce(lambda x,y : x+y, \
-                              [y for x,y in zip(r,rg) if n.data.grp[1] == x])
+      n.data.grpnds = reduce(_plus, [y for x,y in zip(l,lg) if n.data.grp[0] == x]),\
+                       reduce(_plus, [y for x,y in zip(r,rg) if n.data.grp[1] == x])
       n.data.sz = sum([x.data.sz for x in sns])
+      aa = zip(*[x.data.allo for x in sns])
+      n.data.allo = [l+r for l,r in aa]
 
+      sw = [(l,r) for l,r in aa if len(r) and len(l)]
+      
+      if len(sw) :
+        s = sum([1 for l,r in aa if len(r) or len(l)])
+        if s > 1:
+          swaps.append((n, sw, s))
+
+  ## def ook(swaps) :
+  ##   return [all([all([max([x.data.o for x in u])-min([x.data.o for x in u])+1 == len(u)
+  ##                     , max([x.data.o for x in v])-min([x.data.o for x in v])+1 == len(v) ,
+  ##                     max([x.data.o for x in u])+1 == min([x.data.o for x in v]) or
+  ##                     max([x.data.o for x in v])+1 == min([x.data.o for x in u])]) for
+  ##                u,v in sw[1]])
+  ##           for sw in swaps]
+    
   nint = filter(lambda n : len(n.succ), gtpost)
   def score(nint) :
     htot, tot = 0.0, 0
@@ -436,38 +499,88 @@ def getGTorderFixedStree(gtree, stree, gtax, gtx) :
         htot += dd * x.data.ht
     return tot, -htot
 
-  # randomize order
-  for kk in gtx:
-    a = [n.data.o for n in gtx[kk]]
-    random.shuffle(a)
-    for n,i in zip(gtx[kk], a):
-      n.data.o = i
-
   ms = score(nint)
   mp = [x.data.o for x in gtax]
   msLast = (sys.maxint, 0)
+
   while ms < msLast:
     msLast = ms
-    for kk in gtx:
-      gtxkk = gtx[kk]
-      a = [n.data.o for n in gtxkk]
-      for i0,i1 in allPairs(range(len(gtxkk))) :
-        sw = [gtxkk[x].data.o for x in (i0,i1)]
-        gtxkk[i1].data.o, gtxkk[i0].data.o = sw
-        s = score(nint)
-        if s < ms :
-          ms = s
-          mp = [x.data.o for x in gtax]
+    random.shuffle(swaps)
+
+    for swap in swaps :
+      sv = []
+      for l,r in swap[1] :
+        lo,ro = [x.data.o for x in l],  [x.data.o for x in r]
+        
+        mlo, mro = min(lo),min(ro)
+        ll, lr = len(l),len(r)
+        
+        # assert 1 + max(lo+ro) - min(lo+ro) == ll+lr and max(lo)-mlo+1 == ll and max(ro)-mro+1 == lr
+
+        #if swap[2] > 1 and verbose:
+        #  print [x.id for x in l],  [x.id for x in r], mlo,mlo+ll,mro,mro+lr,
+        
+        sv.extend([(n.data.o,n) for n in l+r])
+
+        if mlo < mro :
+          ls = mlo + lr
+          rs = mlo
         else :
-          gtxkk[i0].data.o, gtxkk[i1].data.o = sw
+          ls = mro
+          rs = mro + ll
+
+        for k,n in zip([x - mlo for x in lo], l):
+          n.data.o = ls + k
+        for k,n in zip([x - mro for x in ro], r):
+          n.data.o = rs + k
+
+        # assert all(ook(swaps))
+        
+      s = score(nint)
+
+      if s < ms :
+        #if not swap[2] > 1:
+        #  pdb.set_trace()
+        #assert swap[2] > 1
+        #if verbose: print "*",ms, "to" ,s
+
+        ms = s
+        mp = [x.data.o for x in gtax]
+      else :
+        for k,n in sv :
+          n.data.o = k
+        #assert score(nint) == ms
+
+  if tryPairs:
+    msLast = (sys.maxint, 0)
+    while ms < msLast:
+      msLast = ms
+      for kk in gtx:
+        gtxkk = gtx[kk]
+        a = [n.data.o for n in gtxkk]
+        for i0,i1 in allPairs(range(len(gtxkk))) :
+          sw = [gtxkk[x].data.o for x in (i0,i1)]
+          gtxkk[i1].data.o, gtxkk[i0].data.o = sw
+          s = score(nint)
+          if s < ms :
+            ms = s
+            mp = [x.data.o for x in gtax]
+          else :
+            gtxkk[i0].data.o, gtxkk[i1].data.o = sw
+
   return ms,mp
 
-# left right: x-position of leftest and rightest tips in clade
-# lmid rmid:  x-position of left/right descentands to aim for
-# lh rh:      y-position of left/ right descentands to aim for
-# lchild:     node id of the left child
+
 
 _Info1 = namedtuple('Info1', 'left right lmid rmid lh rh lchild')
+
+_Info1.__doc = """Return value of _setLeftRight: values associated with a node.
+
+left,right: x-positions of leftest and rightest tips in clade
+lmid rmid:  x-position of left/right descentands to aim for
+lh rh:      y-position of left/ right descentands to aim for
+lchild:     node id of the left child
+"""
 
 def _setLeftRight(tree, nid, nh) :
   node = tree.node(nid)
@@ -495,18 +608,39 @@ def _setLeftRight(tree, nid, nh) :
   return node.data.cladeInfo
 
 # snode,x set in all gene taxa nodes
+# left - position of leftmost lineage 
 _Info3 = namedtuple('Info3', 'left right lmid rmid lh rh lchild snode')
 
-# works for const(pop) and non const trees
+_Info1.__doc = """Return value of _embSetLeftRight: values associated with a node.
+
+left:   
+right:
+lmid
+rmid
+lh
+rh
+lchild
+snode
+"""
+
 def _tr1(v, snaux, nparaux, isLeft) :
   assert v <= snaux.xright
+  assert nparaux.pconst == snaux.pconst
+
   c = nparaux.center.center()
   a = (snaux.xright - v) / snaux.wnode
   assert (0-1e-12) <= a <= (1+1e-12)
+
+  widr = nparaux.xright - c
   if isLeft :
-    vt = c - (c - (nparaux.xright - nparaux.wnode)) * a
+    widl = nparaux.wnode - widr
+    if nparaux.pconst :
+      widl = min(snaux.wnode, widl)
+    vt = c - widl * a
   else :
-    vt = c + (nparaux.xright - c) * (1-a)
+    if nparaux.pconst :
+      widr = min(snaux.wnode, widr)
+    vt = c + widr * (1-a)
   return vt
   
 def _embSetLeftRight(gtree, nid, nh, stree, snh) :
@@ -601,6 +735,7 @@ def _embDrawTreeOnly(tree, nid, xnodeOrig, nh, plotLinesAttr, keepPositions, coa
   
   if not node.succ:
     return
+  
   data = node.data
   cInfo = data.cladeInfo
   myhOrig = nh[node.id]
@@ -736,22 +871,33 @@ def _detemineSpacing(tree, nid, epsi, po) :
     u = dx(1) - dx0
     sval = max(sval,(epsi - dx0)/u)
 
-  ch[1].center.setOffset(sval+S0)
+  # S0 already added
+  ch[1].center.setOffset(sval)
   center = po(node, [x.center for x in ch])
   br = node.data.branchlength
-  p1 = demo.population(br)
+  
+  pConst = demo.naturalLimit() is None
+  if pConst:
+    p1 = p0
+    offl = max(ch[0].width,p1/2)
+    offr = max(ch[1].width, p1/2)
+  else :
+    p1 = demo.population(br)
+    offl = ch[0].width
+    offr = ch[1].width
+    
   return _Info5(ch[0].spacing + (sval,) + ch[1].spacing,
-                ch[0].extermaLeft + [(center.center()-ch[0].width,myh)],
+                ch[0].extermaLeft + [(center.center()-offl,myh)],
                 [(x+S0+sval,y) for x,y in ch[1].extermaRight] +
-                [(center.center()+ch[1].width,myh)],
+                [(center.center()+offr,myh)],
                 center, br+myh, p1)
     
 def setSTspacing(tree, epsi, po) :
   """ Set species tree taxa positions (node.data.x) for plotting.
 
-  The horizontal distance between extrama points (of branches) is at least epsi.
-  
+  The horizontal distance between extrama points (of branches) is at least epsi.  
   """
+  
   rs = _detemineSpacing(tree, tree.root, epsi, po)
 
   xs = cumsum((0,)+rs.spacing)

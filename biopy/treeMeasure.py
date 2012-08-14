@@ -14,32 +14,11 @@ from math import sqrt
 import numpy, numpy.linalg
 
 __all__ = ["branchScoreTreeDistance", "treeScoreDistance",
+           "heightsScoreTreeDistance"
            "allPartitions", "treeLength", "treeLengthNormed",
            "treeArea", "vdistance"]
 
-def _collectCladeTaxa(tree, nodeId, taxa, partitions) :
-  """ Return a (reverse) mapping of taxa for each node in the sub-tree below
-  nodeId.
-
-  The returned mapping has the taxa as key, in the form of a set of integeres,
-  each an index into taxa. The value of the mapping is the node tree id.
-  """
-  
-  node = tree.node(nodeId)
-  if node.data.taxon :
-    p = set([taxa.index(node.data.taxon)])
-  else :
-    p = set()
-    for ch in node.succ:
-      p.update(_collectCladeTaxa(tree, ch, taxa, partitions))
-
-  if nodeId == tree.root :
-    return
-  
-  partitions[frozenset(p)] = nodeId
-  return p
-
-def _collectCladeTaxa(tree, nodeId, taxa, partitions) :
+def _collectCladeTaxa(tree, nodeId, taxa, partitions, withHeights) :
   """ Return a (reverse) mapping of taxa for each node in the sub-tree below
   nodeId.
 
@@ -50,16 +29,30 @@ def _collectCladeTaxa(tree, nodeId, taxa, partitions) :
   node = tree.node(nodeId)
   if node.data.taxon :
     p = [taxa.index(node.data.taxon),]
+    h = 0
   else :
+    ch = [_collectCladeTaxa(tree, ch, taxa, partitions, withHeights)
+          for ch in node.succ]
     p = []
-    for ch in node.succ:
-      p.extend(_collectCladeTaxa(tree, ch, taxa, partitions))
+    if withHeights:
+      for c,h in ch:
+        p.extend(c)
+      # leaves h set
+    else :
+      for c in ch:
+        p.extend(c)
 
   if nodeId == tree.root :
+    if withHeights :
+      return h
     return
-  
-  partitions[frozenset(p)] = nodeId
-  return p
+
+  if withHeights :
+    partitions[frozenset(p)] = (nodeId, h)
+    return (p, h + node.data.branchlength) 
+  else :
+    partitions[frozenset(p)] = nodeId
+    return p
 
 def vdistance(a1, a2, order = 2) :
   """ Vector norm {||v||_2}"""
@@ -79,8 +72,8 @@ def branchScoreTreeDistance(tree1, tree2, distanceMetric = vdistance) :
   
   taxa = tree1.get_taxa()
   p1, p2 = dict(), dict()
-  _collectCladeTaxa(tree1, tree1.root, taxa, p1)
-  _collectCladeTaxa(tree2, tree2.root, taxa, p2)
+  _collectCladeTaxa(tree1, tree1.root, taxa, p1, False)
+  _collectCladeTaxa(tree2, tree2.root, taxa, p2, False)
 
   d1,d2 = [], []
   
@@ -99,6 +92,32 @@ def branchScoreTreeDistance(tree1, tree2, distanceMetric = vdistance) :
 
   return distanceMetric(d1,d2)
 
+def heightsScoreTreeDistance(tree1, tree2) :
+  """ Hybrid Heights/Branch score tree distance.
+
+  Distance between two rooted trees. Sum all branch lengths of clades present in
+  only one tree, add diffrence in clade heights for shared clades.
+  """
+  
+  taxa = tree1.get_taxa()
+  p1, p2 = dict(), dict()
+  h1 = _collectCladeTaxa(tree1, tree1.root, taxa, p1, True)
+  h2 = _collectCladeTaxa(tree2, tree2.root, taxa, p2, True)
+
+  sd = abs(h1 - h2)
+  
+  for p in p1 :
+    if p in p2 :
+      sd += abs(p1[p][1] - p2[p][1])
+      del p2[p]
+    else :
+      sd += tree1.node(p1[p][0]).data.branchlength
+
+  for n,h in p2.itervalues() :
+    sd += tree2.node(n).data.branchlength
+
+  return sd
+
 def treeScoreDistance(tree1, tree2, norm = vdistance, consistencyCheck = True) :
   """ Tree distance when taking into account both branch length and population
   size on the branch.
@@ -113,8 +132,8 @@ def treeScoreDistance(tree1, tree2, norm = vdistance, consistencyCheck = True) :
   
   taxa = tree1.get_taxa()
   p1, p2 = dict(), dict()
-  _collectCladeTaxa(tree1, tree1.root, taxa, p1)
-  _collectCladeTaxa(tree2, tree2.root, taxa, p2)
+  _collectCladeTaxa(tree1, tree1.root, taxa, p1, False)
+  _collectCladeTaxa(tree2, tree2.root, taxa, p2. False)
 
   d1,d2 = [], []
   
@@ -190,7 +209,7 @@ def allPartitions(referenceTree, trees, func = None) :
   p = dict()
   for tree in trees:
     p1 = dict()
-    _collectCladeTaxa(tree, tree.root, taxa, p1)
+    _collectCladeTaxa(tree, tree.root, taxa, p1, False)
     for k,nd in p1.iteritems() :
       pk = p.get(k)
       v = (tree, nd)

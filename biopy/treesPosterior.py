@@ -39,7 +39,8 @@ def der(k, n, h) :
 from numpy import array
 
 def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
-                               withDerivative = False, paranoid = False) :
+                               withDerivative = False, withInit = False,
+                               paranoid = False) :
   """ nodesMinHeight: minimum height for internal nodes"""
   allid = set(tree.all_ids())
   # taxa
@@ -53,9 +54,6 @@ def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
   nInOrder = _getNodeIDsDescendingHeight(tree, tree.root, includeTaxa=False)
   # reversed, child before parent
   nhInOrder = [(nh[x],x) for x in reversed(nInOrder)]
-
-  #nhInOrder = sorted([(nh[x],x) for x in allint])
-  #nInOrder = [x[1] for x in reversed(nhInOrder)]
 
   # mapping (per node) of minimum height of node, which is the max among all of
   # its descendants
@@ -74,12 +72,17 @@ def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
       mh[n] = mh[n] * fctr
     
   # x[0] is root
+  if withInit :
+    htox = []
   
   sr = []
   if paranoid:
     # solver can send values out of range
     sr.append("x = [max(x[0],%f)] + [min(max(z,0),1.0) for z in x[1:]]" % mh[tree.root])
   sr.append("h%d = x[0]" % nInOrder[0])
+  if withInit:
+    htox.append("x[0] = %f" % nh[nInOrder[0]])
+  
   if withDerivative:
     sr.append("d_h%d_x = [1] + [0]*%d" % (nInOrder[0],len(nInOrder)-1))
     sr.append("nDer = %d" % len(nInOrder))
@@ -89,8 +92,12 @@ def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
     if mh[k] != 0 :
       m = "%.15g" % mh[k]
       sr.append("h%d = x[%d] * (h%d - %s) + %s" % (k, i+1, h, m, m))
+      if withInit:
+        htox.append("x[%d] = %f" % (i+1, min(max((nh[k] - mh[k])/(nh[h] - mh[k]), 0), 1)))
     else :
       sr.append("h%d = x[%d] * h%d" % (k, i+1, h))
+      if withInit:
+        htox.append("x[%d] = %f" % (i+1, min(max(nh[k] / nh[h], 0),1)))
       
     if withDerivative:
       sr.append("d_h%d_x = [%s]" % (k,der(i+1, len(nInOrder), h)))
@@ -119,7 +126,9 @@ def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
         
     if paranoid:
       sr.append("assert b%d >= 0, (%d,b%d,h%d,x)" % (r,r,r,p))
-    
+
+  if withInit:
+    return sr, mh[tree.root], htox
   return sr, mh[tree.root]
 
 ver = False
@@ -212,16 +221,23 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True,
   
   ba,minRoot = _treeBranchAssignmentExprs(tree, treeParts, fctr,
                                           nodesMinHeight = nodesMinHeight,
-                                          withDerivative = withDerivative)
-
+                                          withDerivative = withDerivative,
+                                          withInit = False)
+  # ba,minRoot,htox
+  
   # Define the posterior distance function on the fly.
   cod = ("def f(x):\n  " + "\n  ".join(ba) + "\n  return " +
          (('(' + ee + ", array([(" + dee + ") for k in range(nDer)]) )")
           if withDerivative else ee))
   exec cod
-  
+
   # Number of variables (heights)
   nx = len(tree.get_terminals())-1
+
+
+#    xcod = "def htox():\n  x = [0]*%d\n  " % nx + "\n  ".join(htox) \
+#         + "\n  return x"
+#    exec xcod
   
   if ver :
     print "@@",nx, minRoot, treeHeight(tree) * fctr
@@ -233,10 +249,19 @@ def minPosteriorDistanceTree(tree, trees, limit = scipy.inf, norm = True,
 
   maxfun = 15000
   if 1 :
-    zz = scipy.optimize.fmin_l_bfgs_b(f,
-                                      [1 if norm else treeHeight(tree)] +
-                                      [random.random() for k in range(nx-1)],
-                                      #[.7 for k in range(nx-1)],
+    x0 = [1 if norm else treeHeight(tree)] + [random.random() for k in
+                                              range(nx-1)]
+    #[.7 for k in range(nx-1)],
+    
+    #print f(x0)[0], 
+    if 0 :
+      x0 = htox()
+      if norm:
+        x0[0] = 1
+      #print f(x0)[0]
+
+    assert x0[0] >= minRoot
+    zz = scipy.optimize.fmin_l_bfgs_b(f, x0,
                                       approx_grad=0 if withDerivative else 1,
                                       bounds = [[minRoot,None]] + [[0,1]]*(nx-1),
                                       factr = factr,
