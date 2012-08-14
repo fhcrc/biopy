@@ -181,7 +181,7 @@ def getPostOrder(tree, nodeId = None) :
     nodeId = tree.root
   node = tree.node(nodeId)
   p = [node]
-  if  node.succ :
+  if node.succ :
     p = reduce(lambda x,y : x+y, [getPostOrder(tree, x) for x in node.succ] + [p])
   return p
 
