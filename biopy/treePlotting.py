@@ -87,7 +87,6 @@ class DescendantBalanced(object) :
       assert len(descendants) == 2
       self.xcenter = (2*(descendants[0].xcenter + descendants[1].xcenter) +
                       descendants[0].p[1] - descendants[1].p[1])/4.0
-      #print descendants[0].xcenter, descendants[0].p[1],  descendants[1].xcenter,  descendants[1].p[1]
     else :
       self.xcenter = node.data.x
       
@@ -395,7 +394,7 @@ def getGTorder(gtree, stree, nTries = 3, perTreeTries = 3, tryPairs=True) :
   for x in gtree.all_ids() :
     gtree.node(x).data.ht = nh[x]
     
-  ms, mp = getGTorderFixedStree(gtree, stree, gtax, gtx, tryPairs)
+  ms, mp = _getGTorderFixedStree(gtree, stree, gtax, gtx, tryPairs)
   sint = [stree.node(n) for n in stree.all_ids() if stree.node(n).succ]
   for nk in range(nTries) :
     cont = True
@@ -406,7 +405,7 @@ def getGTorder(gtree, stree, nTries = 3, perTreeTries = 3, tryPairs=True) :
         for ll in range(perTreeTries) :
           sc = n.succ
           n.succ = [sc[1],sc[0]]
-          tms, tmp = getGTorderFixedStree(gtree, stree, gtax, gtx, tryPairs)
+          tms, tmp = _getGTorderFixedStree(gtree, stree, gtax, gtx, tryPairs)
           if tms < ms :
             ms, mp = tms, tmp
             cont = True
@@ -432,7 +431,7 @@ def _getRandPostOrder(tree, nodeId = None) :
 _plus = lambda x,y : x+y
 
 
-def getGTorderFixedStree(gtree, stree, gtax, gtx, tryPairs) :
+def _getGTorderFixedStree(gtree, stree, gtax, gtx, tryPairs) :
 
   allsn = getPostOrder(stree, stree.root)
   # Species taxa in layout order, that is the order they are plotted
@@ -777,7 +776,7 @@ def _embDrawTreeOnly(tree, nid, xnodeOrig, nh, plotLinesAttr, keepPositions, coa
     _embDrawTreeOnly(tree, si, xchild, nh, plotLinesAttr, keepPositions, coalAttr, txt)
 
 
-def drawTreeOnly(tree, stree = None, plotLinesAttr = None, 
+def drawTreeOnly(tree, plotLinesAttr, stree = None, 
                  allTipsZero = True, xroot = None, keepPositions = False,
                  coalAttr = None, txt = False) :
   assert not stree or allTipsZero

@@ -15,9 +15,12 @@ Maddison, Swofford, Maddison. 1997. Syst. Biol. 46(4):590-621
 
 import os,sys, math, random, copy
 
-from Bio.Alphabet import IUPAC
-from Bio.Data import IUPACData
-from Bio.Seq import Seq
+try :
+  from Bio.Alphabet import IUPAC
+  from Bio.Data import IUPACData
+  from Bio.Seq import Seq
+except :
+  pass
 
 from ITrees import Tree,NodeData
 #from Bio.Nexus.Trees import Tree,NodeData

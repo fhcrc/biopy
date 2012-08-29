@@ -8,6 +8,9 @@ module1 = Extension('cchelp',
 module2 = Extension('cnexus',
                     sources = ['biopy/cnexus.c'])
 
+module3 = Extension('ctree',
+                    sources = ['biopy/ctree.cc'])
+
 classifiers=[
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
@@ -19,8 +22,10 @@ classifiers=[
   "Topic :: Scientific/Engineering :: Bio-Informatics"
   ]
 
+from biopy import __version__
+
 setup (name = 'biopy',
-       version = '0.1.8',
+       version = __version__,
        description = 'Bioinformatics Python utilities',
        long_description = 'Bioinformatics Python utilities',
        author = 'Joseph Heled',
@@ -31,7 +36,7 @@ setup (name = 'biopy',
        platforms = ["Linux", "Mac OS-X"],
        packages = ['biopy'],
        package_dir={'biopy': 'biopy'},
-       ext_modules = [module1,module2],
+       ext_modules = [module1,module2,module3],
        scripts = glob.glob('scripts/*'),
        data_files=[('doc',glob.glob('html/*.*')),
                    ('doc/_images', glob.glob('html/_images/*.*')),

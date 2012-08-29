@@ -21,8 +21,8 @@ parser.add_option("-n", "--ntrees", dest="ntrees",
 
 parser.add_option("-p", "--population", dest="demospec", metavar="SPEC",
                   help= "The population function. A comma separated list: the" + 
-                  " first element is the population size at time zero (now), the"
-                  " rest comes in pairs." + " (default %default)",
+                  " first element is the population size at time zero (now)," +
+                  " the rest comes in pairs." + " (default %default)",
                   default = "1")
 
 parser.add_option("-b", "--basename", dest="base", metavar="NAME",
