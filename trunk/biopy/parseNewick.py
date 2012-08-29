@@ -161,10 +161,13 @@ def _build(nodes, weight=1.0, rooted=True, name='') :
       t[k].data.attributes = dict(x[3])
   return tb.finalize(t[-1])
 
+def _parseNewickPython(txt, weight=1.0, rooted=True, name='') :
+  nodes = []
+  nr = _readSubTree(txt, nodes)
+  if nr != len(txt) and not txt[nr:].isspace() :
+    raise RuntimeError("extraneous characters at tree end: '" + txt[nr:] + "'")
+  return _build(nodes, weight=weight, rooted = rooted, name=name)
+
 def parseNewick(txt, weight=1.0, rooted=True, name='') :
-##  if 0 :
-##    nodes = []
-##    _readSubTree(txt, nodes)
-##  else :
   nodes = parsetree(txt)
   return _build(nodes, weight=weight, rooted = rooted, name=name)

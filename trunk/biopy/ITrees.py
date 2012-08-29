@@ -15,7 +15,8 @@
 #
 
 import sys, random
-from Bio.Nexus import Nodes
+#from Bio.Nexus import Nodes
+import Nodes
 
 PRECISION_BRANCHLENGTH=6
 PRECISION_SUPPORT=6

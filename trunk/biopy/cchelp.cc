@@ -622,18 +622,24 @@ parseSubTree(PyObject*, PyObject* args)
     return 0;
   }
   vector<PyObject*> nodes;
-  
-  if( readSubTree(treeTxt, nodes) < 0 ) {
-    // clean !!!
-    for(unsigned int k = 0; k < nodes.size(); ++k) {
-      for(int i = 0; i < 4; ++i) {
-	Py_DECREF(PySequence_GetItem(nodes[k], i));
+
+  int const nc = readSubTree(treeTxt, nodes);
+  if( nc != strlen(treeTxt) ) {
+    if( nc<0 || (nc + skipSpaces(treeTxt + nc) != strlen(treeTxt)) ) {
+      // clean !!!
+      for(unsigned int k = 0; k < nodes.size(); ++k) {
+	for(int i = 0; i < 4; ++i) {
+	  Py_DECREF(PySequence_GetItem(nodes[k], i));
+	}
+	Py_DECREF(nodes[k]);
       }
-      Py_DECREF(nodes[k]);
+      if( nc < 0) {
+	PyErr_SetString(PyExc_ValueError, "failed parsing.") ;
+      } else {
+	PyErr_SetString(PyExc_ValueError, "extraneous characters at tree end");
+      }
+      return 0;
     }
-    
-    PyErr_SetString(PyExc_ValueError, "failed parsing.") ;
-    return 0;
   }
   
   PyObject* n = PyTuple_New(nodes.size());

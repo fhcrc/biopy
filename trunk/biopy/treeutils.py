@@ -21,7 +21,8 @@ from genericutils import fileFromName
 
 # Bio.Nexus.Tree stuff
 
-from Bio.Nexus import Trees, Nodes
+from ITrees import Tree, NodeData
+import Nodes 
 
 __all__ = ["TreeBuilder", "TreeLogger", "getClade", "getTreeClades",
            "getCommonAncesstor", "countNexusTrees", "toNewick", "nodeHeights",
@@ -40,7 +41,7 @@ class TreeBuilder(object) :
   """
   
   def __init__(self, weight=1.0, rooted = True, name='') :
-    self.t = Trees.Tree(weight=weight, rooted = rooted, name=name)
+    self.t = Tree(weight=weight, rooted = rooted, name=name)
 
   def createLeaf(self, name) :
     """ Create a new leaf.
@@ -48,14 +49,14 @@ class TreeBuilder(object) :
     :param name: taxon name
     :returns: node"""
     
-    nd = Trees.NodeData()
+    nd = NodeData()
     nd.taxon = name
     leaf = Nodes.Node(nd)
     self.t.add(leaf, None)
     return leaf
 
   def newNode(self) :
-    nd = Trees.NodeData()
+    nd = NodeData()
     node = Nodes.Node(nd)
     self.t.add(node, None)
     return node
@@ -69,7 +70,7 @@ class TreeBuilder(object) :
     :param subtrees: sequence of [node,branch]
     :returns: node"""
     
-    nd = Trees.NodeData()
+    nd = NodeData()
     node = Nodes.Node(nd)
     self.t.add(node, None)
 

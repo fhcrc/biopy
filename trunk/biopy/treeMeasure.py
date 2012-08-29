@@ -9,14 +9,19 @@ Tree measures
 
 Distance between trees and related utilities.
 """
+from __future__ import division
 
-from math import sqrt
+from math import sqrt, log
 import numpy, numpy.linalg
+from collections import defaultdict
+import operator
 
 __all__ = ["branchScoreTreeDistance", "treeScoreDistance",
            "heightsScoreTreeDistance"
            "allPartitions", "treeLength", "treeLengthNormed",
-           "treeArea", "vdistance"]
+           "treeArea", "vdistance",
+           "rootedAgreementScore", "cladesInTreesSet",
+           "setTreeClades"]
 
 def _collectCladeTaxa(tree, nodeId, taxa, partitions, withHeights) :
   """ Return a (reverse) mapping of taxa for each node in the sub-tree below
@@ -24,6 +29,9 @@ def _collectCladeTaxa(tree, nodeId, taxa, partitions, withHeights) :
 
   The returned mapping has the taxa as key, in the form of a set of integeres,
   each an index into taxa. The value of the mapping is the node tree id.
+
+  If withHeights, the map value if a pair (node-id,node-height). Assumes all
+  tips at 0.
   """
   
   node = tree.node(nodeId)
@@ -90,6 +98,9 @@ def branchScoreTreeDistance(tree1, tree2, distanceMetric = vdistance) :
     d2.append(tree2.node(n).data.branchlength);
     d1.append(0)
 
+  if isinstance(distanceMetric, (list,tuple)) :
+    return [m(d1,d2) for m in distanceMetric]
+  
   return distanceMetric(d1,d2)
 
 def heightsScoreTreeDistance(tree1, tree2) :
@@ -221,3 +232,88 @@ def allPartitions(referenceTree, trees, func = None) :
         pk.append(v)
 
   return p
+
+def _setTreeClades_i(tree, nodeID) :
+  # should be enhanced for tip dates
+  node = tree.node(nodeID)
+  if node.data.taxon :
+    node.data.clade = [node.data.taxon]
+    node.data.height = 0
+    return [node]
+
+  cl = [_setTreeClades_i(tree, ch) for ch in node.succ]
+  allt = reduce(operator.add, [x[0].data.clade for x in cl])
+  for x in cl :
+    x[0].data.clade = frozenset(x[0].data.clade)
+  node.data.clade = allt
+  br = cl[0][0].data.branchlength
+  node.data.height = cl[0][0].data.height + (0 if br is None else br)
+  return [node] + reduce(operator.add, cl)
+
+def setTreeClades(tree):
+  """ Set clade attribute in each node data.clade = frozenset(taxa)"""
+  r = _setTreeClades_i(tree, tree.root)
+  r[0].data.clade = frozenset(r[0].data.clade)
+  return r
+
+def cladesInTreesSet(trees, withPairs=False, tidyup=True) :
+  clc = defaultdict(lambda : 0)
+  clc2 = defaultdict(lambda : 0) if withPairs else None
+  for xtree in trees:
+    nodes = setTreeClades(xtree)
+    
+    for node in nodes:
+      cladeSet = node.data.clade 
+      clc[cladeSet] += 1
+      if withPairs :
+        c2 = (cladeSet,) + tuple([frozenset(xtree.node(s).data.clade)
+                                  for s in node.succ])
+        clc2[c2] += 1
+      if tidyup :
+        del node.data.clade   
+    #for n in xtree.get_terminals():
+    #  node = xtree.node(n)
+    #  node.data.clade = frozenset(node.data.clade)
+      
+  n = len(trees)
+  clc = dict([(k,x/n) for k,x in clc.iteritems()])
+  if withPairs :
+    clc2 = dict([(k,x/n) for k,x in clc2.iteritems()])
+    return (clc, clc2)
+  return clc
+
+def rootedAgreementScore(tree1, tree2, scaled=False) :
+  t1nodes = setTreeClades(tree1)
+  t2nodes = setTreeClades(tree2)
+  t2map = dict([(n.data.clade,n) for n in t2nodes])
+
+  tot,tl1,tl2 = 0.0,0,0
+  for t1n in t1nodes :
+    b1 = t1n.data.branchlength
+    tl1 += b1
+    t2n = t2map.get(t1n.data.clade)
+    if t2n is None :
+      #print "no",t1n.data.clade
+      tot += t1n.data.branchlength
+    else :
+      b2 = t2n.data.branchlength
+      l1,u1 = t1n.data.height, t1n.data.height + b1
+      l2,u2 = t2n.data.height, t2n.data.height + b2
+      # for an unknown reason, this produces 0 when tree is compared against
+      # itself, while the simple form produces epsilon
+      dd = min(b1 + b2 + 2*max(l1,l2) - 2*min(u1,u2), b1+b2)
+      tot += dd
+      #tot += b1 + b2 - 2*max(min(u1,u2) - max(l1,l2), 0)
+      t2n.data.shared = 1
+      #print l1,u1,l2,u2,dd, tot
+      
+  for t2n in t2nodes:
+    b2 = t2n.data.branchlength
+    tl2 += b2
+    if hasattr(t2n.data, "shared") :
+      del t2n.data.shared
+    else :
+      tot += b2
+      #print tot
+      
+  return tot/(tl1+tl2) if scaled else tot
