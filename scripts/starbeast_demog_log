@@ -14,7 +14,7 @@ parser = optparse.OptionParser(usage =
                                """ %prog [OPTIONS] beast-species-tree output-log-file
 
   Generate a tracer-readable file with population size information per clade, to
-  truly assess the ESS's on population sizes. """)
+  truly assess the ESS's on population sizes.""")
 
 parser.add_option("-t", "--threshold", dest="threshold",
                   help="""Exclude all clades with posterior probability lower"""
@@ -35,7 +35,7 @@ if len(args) == 0 :
   sys.exit(1)
   
 nexusTreesFileName = args[0]
-burnIn =  float(options.burnin)/100.0
+burnIn = float(options.burnin)/100.0
 tops = True
 
 threshold = float(options.threshold)/100.0
@@ -64,7 +64,9 @@ nexusFile = INexus.INexus()
 for stateNo,tree in enumerate(nexusFile.read(nexusTreesFileName,
                                              slice(int(burnIn*nTrees), -1, 1))):
   has = beastLogHelper.setDemographics([tree])
-  assert has[0]
+  if not has[0] :
+    print >> sys.stderr, "No demographic information in tree(s)."
+    sys.exit(1)
   
   if tops:
     treeTopologies.append(toNewick(tree, topologyOnly=True))
@@ -124,9 +126,9 @@ def dist1(c1,c2) :
       d += 1
   return d
 
-# Assigning unique numbers to topologies is a hard problem. I use a very rough
-# heuristic here: first sort topologies by posterior probability (higher to
-# lower), then order them by starting with the first and picking as next the
+# Assigning unique numbers to topologies is a hard problem. A very rough
+# heuristic is used here: first sort topologies by posterior probability (higher
+# to lower), then order them by starting with the first and picking as next the
 # first one with the smallest distance (Robinson-Foulds) to the last one.
 
 if tops:
