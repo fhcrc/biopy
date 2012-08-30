@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#!/usr/bin/env python
 ## This file is part of biopy.
 ## Copyright (C) 2010 Joseph Heled
 ## Author: Joseph Heled <jheled@gmail.com>
@@ -22,7 +22,7 @@ parser = optparse.OptionParser(usage =
 	Annotate tree with posterior estimate of population sizes. Prints NEWICK
 	tree to standard output. On UNIX it is easy to get the tree for the
 	first argument from biopy itself, e.g (assuming the bash shell)
-        starbeast_posterior_popsizes $(summary_tree.py trees.nexus) trees.nexus.""")
+        starbeast_posterior_popsizes $(summary_tree trees.nexus) trees.nexus.""")
 
 parser.add_option("-b", "--burnin", dest="burnin",
                   help="Burn-in amount (percent, default %default)", default = "10")
@@ -104,7 +104,8 @@ for tree in nexusReader.read(nexFile, slice(int(burnIn*nTrees), -1, every)):
         ipop = node.data.demographic.integrate(l)/l
       e.append(ipop)
       if noTaxaOpt and len(cladeSet) == 1 :
-        taxaDict[iter(cladeSet).next()].append( node.data.demographic.population(0))
+        px = node.data.demographic.population(0)
+        taxaDict[iter(cladeSet).next()].append(px)
         
 constDemos = all([tree.node(x).data.demographic.naturalLimit() is None
                   for x in tree.all_ids()])
@@ -162,10 +163,12 @@ else :
       ps,pe = pops[s1] + (pops[s2] if s2 is not None else 0), pops[e]
       if pp is not None :
         ps = pp
-      d = demographic.LinearPiecewisePopulation([ps,pe], [branch])
-      ipop = d.integrate(branch)/branch
-      xerr2 = n*ipop**2 - 2*ipop*mn + smn
-      err += xerr2 * branch
+      # root has 0 branch length with hybrid model
+      if branch > 0 :
+        d = demographic.LinearPiecewisePopulation([ps,pe], [branch])
+        ipop = d.integrate(branch)/branch
+        xerr2 = n*ipop**2 - 2*ipop*mn + smn
+        err += xerr2 * branch
     return err
 
   if 0 : # debug
@@ -184,9 +187,12 @@ else :
     ps,pe = pops[s1] + (pops[s2] if s2 is not None else 0), pops[e]
     if pp is not None :
       ps = pp
-    d = demographic.LinearPiecewisePopulation([ps,pe], [branch])
-    ipop = d.integrate(branch)/branch
+    # take mean for zero branch 
+    if branch == 0 :
+      ps = pe = n/mn
     if 0 :
+      d = demographic.LinearPiecewisePopulation([ps,pe], [branch])
+      ipop = d.integrate(branch)/branch
       print (s1,s2),e, ipop, mn/n, (ps - d.population(0), ps, d.population(0))
       
     nd.data.attributes = {'dmv' : ('{%g,%g}' % (ps,pe)), 'dmt' : str(branch)}

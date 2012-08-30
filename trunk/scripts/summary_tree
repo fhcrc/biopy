@@ -70,7 +70,7 @@ parser.add_option("-p", "--progress", dest="progress",
                   action="store_true", default = False)
 
 parser.add_option("", "--no-derivative", dest="derivative",
-                  help="Use analytic derivative in optimization function (experimental)",
+                  help="Do not use analytic derivative in optimization function",
                   action="store_false", default = True)
 
 options, args = parser.parse_args()
