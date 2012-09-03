@@ -154,7 +154,7 @@ def _drawTree(tree, nid, cladesDict, positioning, fill, generalPlotAttributes,
     return aux
 
   pr = [_drawTree(tree, si, cladesDict, positioning, fill, generalPlotAttributes,
-                  splitPoints, keepAux)for si in node.succ]
+                  splitPoints, keepAux) for si in node.succ]
 
   pr = sorted(pr, key = lambda x : x.center.center()) # sort by center
   centerc = positioning(node, [x.center for x in pr])

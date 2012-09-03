@@ -18,11 +18,11 @@ from biopy.treeutils import getTreeClades, countNexusTrees, treeHeight
 parser = optparse.OptionParser("""%prog [OPTIONS] posterior-trees.nexus figfilename""")
 
 parser.add_option("-b", "--burnin", dest="burnin",
-                  help="Burn-in amount (percent, default 10)", default = "10")
+                  help="Burn-in amount (percent, default %default)", default = "10")
 
 parser.add_option("-e", "--every", dest="every",
                   help="""thin out - take one tree for every 'e'. Especially \
-useful if you run out of memory (default all, i.e. 1)""", default = "1")
+useful if you run out of memory (default all, i.e. %default)""", default = "1")
 
 parser.add_option("-m", "--mean-tree", dest="mainTree", action="append",
                   help="""Show tree on top of river (the tree from \
@@ -46,7 +46,7 @@ parser.add_option("", "--ychop", dest="ychop",
 (0 < level < 1)""", default = None) 
 
 parser.add_option("", "--alphafactor", dest="afactor",
-                  help="""Lower values result in lower drawing intensity.""", default = 10.0) 
+                  help="""Reduce this value to lower drawing intensity.""", default = 10.0) 
 
 parser.add_option("", "--positioning", dest="positioning",
                   type='choice', choices=['mean', 'taxonmean', 'between'],
@@ -164,7 +164,7 @@ if colorTops :
       for x in tree.get_terminals() :
         tree.node(x).data.x = xs[tree.node(x).data.taxon]
       h = treePlotting.drawTree(tree, tree.root, cd, positioning = positioning,
-                                plotLinesAttr = {'color' : col, 'alpha' : alpha})
+                                generalPlotAttributes = {'color' : col, 'alpha' : alpha})
       pheights.append(h)
       heights.append(treeHeight(tree))
     c0 = (c0 + topPercent) % 1
@@ -177,7 +177,7 @@ else :
     for x in tree.get_terminals() :
        tree.node(x).data.x = xs[tree.node(x).data.taxon]
     h = treePlotting.drawTree(tree, tree.root, cd, positioning = positioning,
-                              plotLinesAttr = {'color' : "lime", 'alpha' : alpha})
+                              generalPlotAttributes = {'color' : "lime", 'alpha' : alpha})
     pheights.append(h)
     heights.append(treeHeight(tree))
 
@@ -206,7 +206,7 @@ if len(mainTree) :
        tree.node(x).data.x = xs[tree.node(x).data.taxon]
     h = treePlotting.drawTree(tree, tree.root, None,
                               positioning = positioning, fill=False,
-                              plotLinesAttr = {'color' : col})
+                              generalPlotAttributes = {'color' : col})
     hmin = max(h, hmin)
 
 labels = []

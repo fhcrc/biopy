@@ -20,8 +20,8 @@ __all__ = ["branchScoreTreeDistance", "treeScoreDistance",
            "heightsScoreTreeDistance"
            "allPartitions", "treeLength", "treeLengthNormed",
            "treeArea", "vdistance",
-           "rootedAgreementScore", "cladesInTreesSet",
-           "setTreeClades"]
+           "rootedAgreementScore", "conditionalCladeScore",
+           "cladesInTreesSet", "setTreeClades"]
 
 def _collectCladeTaxa(tree, nodeId, taxa, partitions, withHeights) :
   """ Return a (reverse) mapping of taxa for each node in the sub-tree below
@@ -207,7 +207,7 @@ def treeArea(tree) :
   """
   return sum([_nodeBranchPop(tree, x) for x in tree.all_ids() if x != tree.root])
 
-def allPartitions(referenceTree, trees, func = None) :
+def allPartitions(referenceTree, trees, func = None, withHeights = False) :
   """ Clade information summary for a set of trees.
 
   Summerize clades from all trees in one mapping. All trees must be on the
@@ -220,7 +220,7 @@ def allPartitions(referenceTree, trees, func = None) :
   p = dict()
   for tree in trees:
     p1 = dict()
-    _collectCladeTaxa(tree, tree.root, taxa, p1, False)
+    _collectCladeTaxa(tree, tree.root, taxa, p1, withHeights)
     for k,nd in p1.iteritems() :
       pk = p.get(k)
       v = (tree, nd)
@@ -282,6 +282,53 @@ def cladesInTreesSet(trees, withPairs=False, tidyup=True) :
     return (clc, clc2)
   return clc
 
+## def getSPS(xtrees) :  
+##   clc = cladesInTreesSet(xtrees)
+
+##   sp = [sum([log(clc[frozenset(c)]) for c,node in getTreeClades(xtree, False)])
+##         for xtree in xtrees]
+
+##   sps = sorted(enumerate(sp), key = lambda x : x[1], reverse=1)
+    
+##   return sp,sps
+
+def conditionalCladeScore(tree, clc, clc2, laplaceCorrection = False) :
+  tidyup = False
+  if not hasattr(tree.node(tree.root).data, "clade") :
+    setTreeClades(tree)
+    tidyup = True
+    
+  totlog = 0
+  for i in tree.all_ids():
+    node = tree.node(i)
+    if node.succ :
+      c = node.data.clade
+      k = (c,) + tuple([tree.node(s).data.clade for s in node.succ])
+      c2 = clc2.get(k)
+      if c2 :
+        if laplaceCorrection :
+          totlog += log((c2+(1./(2.0**(len(c)-1)-1)))/(clc[c]+1))
+        else :
+          totlog += log(c2/clc[c])
+      else :
+        if laplaceCorrection :
+          totlog += -log(2**(len(c)-1)-1)
+        else :
+          totlog = float("-inf")
+          break
+  if tidyup :
+    for i in tree.all_ids() :
+      del tree.node(i).data.clade
+
+  return totlog
+
+# t1 = parseNewick('(((c,d),b),a)')
+# t2 = parseNewick('(((a,c),b),d)')
+# c1,c2 = biopy.treeMeasure.cladesInTreesSet([t1,t2], withPairs=1)
+# 1 == sum([exp(biopy.treeMeasure.conditionalCladeScore(x, c1, c2))
+#          for x in [parseNewick(toNewick(y))
+#                     for y in allTrees([x for x in "abcd"])]])
+
 def rootedAgreementScore(tree1, tree2, scaled=False) :
   t1nodes = setTreeClades(tree1)
   t2nodes = setTreeClades(tree2)
@@ -294,7 +341,7 @@ def rootedAgreementScore(tree1, tree2, scaled=False) :
     t2n = t2map.get(t1n.data.clade)
     if t2n is None :
       #print "no",t1n.data.clade
-      tot += t1n.data.branchlength
+      tot += b1
     else :
       b2 = t2n.data.branchlength
       l1,u1 = t1n.data.height, t1n.data.height + b1

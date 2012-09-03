@@ -198,7 +198,7 @@ nexusReader = INexus.INexus()
 nBurninTrees = int(burnIn*nTrees)
 
 if progress:
-  print >> sys.stderr, "reading %d trees ...," % (nTrees - nBurninTrees),
+  print >> sys.stderr, "reading %d trees ...," % ((nTrees - nBurninTrees)//every),
 
 try :
   trees = list(nexusReader.read(nexFile, slice(nBurninTrees, -1, every)))

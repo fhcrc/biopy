@@ -782,6 +782,42 @@ effectiveSampleStep(PyObject*, PyObject* args)
   //  return PyFloat_FromDouble(ess);
 }
 
+
+
+static PyObject*
+sumNonIntersect(PyObject*, PyObject* args)
+{
+  PyObject* lu2;
+  double l1,u1;
+  
+  if( !PyArg_ParseTuple(args, "ddO", &l1, &u1, &lu2) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    return 0;
+  }
+
+  if( ! PySequence_Check(lu2) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args: not a sequence");
+    return 0;
+  }
+
+  double tot = 0.0;
+  double const b1 = u1-l1;
+
+  
+  int const nSeq = PySequence_Size(lu2);
+  
+  for(int k = 0; k < nSeq; ++k) {
+    PyObject* const l2u2 = PySequence_Fast_GET_ITEM(lu2, k);
+
+    double const l2 = PyFloat_AsDouble( PySequence_Fast_GET_ITEM(l2u2,0) );
+    double const u2 = PyFloat_AsDouble( PySequence_Fast_GET_ITEM(l2u2,1) );
+    double const b1b2 = b1 + (u2-l2);
+    tot += std::min(b1b2 + 2*(std::max(l1,l2) - std::min(u1,u2)), b1b2);
+  }
+
+  return PyFloat_FromDouble(tot);
+}
+
 static PyMethodDef cchelpMethods[] = {
   {"nonEmptyIntersection",  nonEmptyIntersection, METH_VARARGS,
    ""},
@@ -801,6 +837,9 @@ static PyMethodDef cchelpMethods[] = {
    " Distance is total sum of mismatched characters."},
 
   {"parsetree",  parseSubTree, METH_VARARGS,
+   ""},
+
+  {"sumNonIntersect",  sumNonIntersect, METH_VARARGS,
    ""},
 
   {"effectiveSampleStep",  effectiveSampleStep, METH_VARARGS,

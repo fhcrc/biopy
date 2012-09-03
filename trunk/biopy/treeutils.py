@@ -262,13 +262,16 @@ def _collectNodeHeights(tree, nid, heights) :
       dx = hs1-hs0
       # add hs1-hs0 to all left (0) side
       for n in tips0 :
-        heights[n] += dx
+        # protect from numerical instability: insure parent is higher than son
+        heights[n] = min(heights[n] + dx, h)
+        assert heights[n] <= h
     else :
       # add hs0-hs1 to all right (1) side 
       h = hs0
       dx = hs0-hs1
       for n in tips1 :
-        heights[n] += dx
+        heights[n] = min(heights[n] + dx, h)
+        assert heights[n] <= h
   else :
     h = hs0
   heights[node.id] = h

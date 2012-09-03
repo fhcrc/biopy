@@ -3,6 +3,8 @@
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 
+from __future__ import division
+
 """
 ===================
 Substitusion Models 
@@ -229,8 +231,12 @@ class SubstitutionModel(object) :
     subsCond = self._condProbsSubTree(tree, tree.root)
     self._clearTransitionSpeedup(tree)
     pi = self.pi0
-    l = sum([log(dot(pi, x)) for x in subsCond])
-    return l
+    try : 
+      l = sum([log(dot(pi, x)) for x in subsCond])
+      return l
+    except ValueError:
+      return float('-inf')
+      
 
 #
 # jc = msubmodels.JCSubstitutionModel(mu = 0.005)
