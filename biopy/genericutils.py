@@ -9,6 +9,8 @@ Generic helpers
 ===============
 """
 
+__all__ = ["fileFromName", "sumViaLog"]
+
 import os.path, gzip, bz2
 
 def fileFromName(fname) :
@@ -32,3 +34,17 @@ def fileFromName(fname) :
     return bz2.BZ2File(fname + ".bz2")
   
   raise IOError("no such file " + fname)
+
+from numpy import log1p
+import math
+
+def sumViaLog(x) :
+  """calculate log of the sum of numbers in x, each number in x represented by
+  its log"""
+
+  x = sorted(x)
+  v = x[0]
+  for z in x[1:] :
+    # log-add v and z into v
+    v = z + log1p(math.exp(v-z))
+  return v
