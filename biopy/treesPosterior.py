@@ -359,7 +359,7 @@ def minPosteriorRADistanceTree(tree, trees, limit = scipy.inf, norm = True,
 
       assert len(trees) == a1 + len(br)
 
-      dt = '[' + ','.join(["(%.15g,%.15g)" % (h,h+b) for h,b in posteriorParts[k]]) + ']'
+      dt = '[' + ','.join(["(%.15g,%.15g)" % (h,h+b) for h,b in br]) + ']'
       ee += "+ _sumNonIntersect(bs%d,bs%d+b%d,%s)" % (r,r,r,dt)
       ee += "+ %d * b%d" % (a1,r)
       
@@ -500,8 +500,8 @@ def _prepare(bs) :
   for b in sbs :
     tot += b
     cums.append(tot)
-  return  "((" + ','.join(["%.15g" % b for b in sbs]) + '),(' + \
-         ','.join(["%.15g" % s for s in cums]) + '))'
+  return  "((" + ','.join(["%.15g" % b for b in sbs]) + ',),(' + \
+         ','.join(["%.15g" % s for s in cums]) + ',))'
 
 import bisect
 def _absDiffBranch(b1,(sbs,cums)) :
@@ -514,6 +514,27 @@ def _absDiffBranch(b1,(sbs,cums)) :
     tot = b1*(i+i-len(sbs)) + cums[-1] - 2*cums[i]
   return tot
 
+## import numpy.linalg
+## from treeMeasure import branchScoreTreeDistance
+## def truebs1(tree, trees) :
+##   vd = lambda a1,a2 : numpy.linalg.norm([x-y for x,y in zip(a1,a2)], 1)
+##   return sum(branchScoreTreeDistance(tree, x, vd) for x in trees)
+## def v1score_ck(v1score, zz0, tree, trees) :
+##   global ssx, code2branches, treeParts, fctr
+  
+##   t1 = truebs1(tree, trees)*fctr
+##   t2 = v1score(zz0)
+##   #import pdb ; pdb.set_trace()
+##   assert abs(t1-t2)/t1 < 1e-8, ( t1,t2, t1-t2)
+##   return t2
+
+## def totr(zz0) :
+##   global ssx, code2branches, treeParts, fctr
+##   brs = code2branches(zz0)
+##   for r,k in enumerate(treeParts) :
+##     ssx.node(treeParts[k][0][1]).data.branchlength = brs[r]/fctr
+##   return ssx
+
 def minPosteriorNorm1DistanceTree(tree, trees, limit = scipy.inf, norm = True,
                                   nodesMinHeight = None, withDerivative = False,
                                   withInit = True, factr=10000000.0,
@@ -525,6 +546,8 @@ def minPosteriorNorm1DistanceTree(tree, trees, limit = scipy.inf, norm = True,
   If the distance is known to be larger, the optimization for this tree can be
   skipped.
   """
+  #global ssx, treeParts, fctr
+  
   assert not withDerivative
   # not correct for tip/node lower bounds
   assert nodesMinHeight is None
@@ -532,12 +555,13 @@ def minPosteriorNorm1DistanceTree(tree, trees, limit = scipy.inf, norm = True,
   treeParts = allPartitions(tree, [tree])
 
   posteriorParts = allPartitions(tree, trees,
-                                 func = lambda t,(n,h) : t.node(n).data.branchlength,
-                                 withHeights = True)
+                                 func = lambda t,n : t.node(n).data.branchlength,
+                                 withHeights = False)
 
   # For numerical stability sake in computing gradients, scale trees
   # so that mean root height is 1 
   fctr = len(trees)/ sum([treeHeight(x) for x in trees]) if norm else 1
+
   if verbose: print fctr
   
   # Text of expression to compute the total distance. The variables are the
@@ -557,7 +581,7 @@ def minPosteriorNorm1DistanceTree(tree, trees, limit = scipy.inf, norm = True,
 
       assert len(trees) == a1 + len(br)
 
-      ee += "+ _absDiffBranch(b%d,%s)" % (r,_prepare(posteriorParts[k]))
+      ee += "+ _absDiffBranch(b%d,%s)" % (r,_prepare(br))
       ee += "+ %d * b%d" % (a1,r)
       
       if withDerivative:
@@ -605,11 +629,13 @@ def minPosteriorNorm1DistanceTree(tree, trees, limit = scipy.inf, norm = True,
                                                withInit = True,
                                                withHeights = True)
     
+  #global v1score
   # Define the posterior distance function on the fly.
-  cod = ("def rascore(x):\n  " + "\n  ".join(ba) + "\n  return " +
+  cod = ("def v1score(x):\n  " + "\n  ".join(ba) + "\n  return " +
          (('(' + ee + ", array([(" + dee + ") for k in range(nDer)]) )")
           if withDerivative else ee))
   exec cod
+  #v1score = v1score1
   if verbose: print cod
 
   # Number of variables (heights)
@@ -619,15 +645,28 @@ def minPosteriorNorm1DistanceTree(tree, trees, limit = scipy.inf, norm = True,
          + "\n  return x"
   exec xcod
 
+  global code2branches
   # Function to get the branch lengths from optimized heights
-  cod = "def code2branches(x):\n  " + "\n  ".join(ba) + "\n  " + \
+  codb = "def code2branchesa(x):\n  " + "\n  ".join(ba) + "\n  " + \
        "return (" + ",".join(['b%d' % k for k in range(len(treeParts))]) + ")" 
-  exec cod
+  exec codb
   if verbose: print cod
-
+  code2branches = code2branchesa
   if verbose :
     print "@@",nx, minRoot, treeHeight(tree) * fctr
     print cod
+
+  if 0 :
+    cod8 = "def tv1score(tree):\n"
+    for r,k in enumerate(treeParts) :
+      cod8 += "  b%d = tree.node(%d).data.branchlength\n" % (r, treeParts[k][0][1])
+    cod8 += "  return " +  ee
+    exec cod8
+  
+  #ssx = copy.deepcopy(tree)
+  #global xtrees
+  #xtrees = trees
+  #exec """def v1scorex(zz0) : return v1score_ck(v1score, zz0, totr(zz0), xtrees)"""
   
   maxfun = 15000
   if 1 :
@@ -641,9 +680,9 @@ def minPosteriorNorm1DistanceTree(tree, trees, limit = scipy.inf, norm = True,
         x0 = [1 if norm else treeHeight(tree)] + \
              [random.random() for k in range(nx-1)]
 
-      initialVal = rascore(x0)
+      initialVal = v1score(x0)
       assert x0[0] >= minRoot
-      zz = scipy.optimize.fmin_l_bfgs_b(rascore, x0,
+      zz = scipy.optimize.fmin_l_bfgs_b(v1score, x0,
                                         approx_grad=0 if withDerivative else 1,
                                         bounds = [[minRoot,None]] + [[0,1]]*(nx-1),
                                         factr = factr,
@@ -651,7 +690,7 @@ def minPosteriorNorm1DistanceTree(tree, trees, limit = scipy.inf, norm = True,
       if warnings and zz[2]['warnflag'] != 0 :
         print "WARNING:", zz[2]['task']
         
-      finaleVal = rascore(zz[0])
+      finaleVal = v1score(zz[0])
       if finaleVal < initialVal :
         break
       withInit = False
@@ -659,9 +698,9 @@ def minPosteriorNorm1DistanceTree(tree, trees, limit = scipy.inf, norm = True,
       if factr < 1e6 :
         # failed, leave as is
         zz = htox()
-        finaleVal = rascore(zz[0])
+        finaleVal = v1score(zz[0])
   else :
-    zz = scipy.optimize.fmin_tnc(rascore,
+    zz = scipy.optimize.fmin_tnc(v1score,
                                  [treeHeight(tree)*fctr] +
                                  [random.uniform(.8,.9) for k in range(nx-1)],
                                  #[.8 for k in range(nx-1)],
@@ -684,4 +723,7 @@ def minPosteriorNorm1DistanceTree(tree, trees, limit = scipy.inf, norm = True,
   if withDerivative :
     val = val[0]
   return (ss, val/fctr if norm else val)
+
+#  return (ss, val/fctr if norm else val,
+#          (v1score, htox, code2branches, fctr, tv1score, cod8, zz[0]))
 

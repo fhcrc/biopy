@@ -43,17 +43,20 @@ parser.add_option("", "--yclip", dest="yclip",
 
 parser.add_option("", "--ychop", dest="ychop",
                   help="""chop root demographic to fraction of total tree \
-(0 < level < 1)""", default = None) 
+(0 < level)""", default = None) 
 
-parser.add_option("", "--alphafactor", dest="afactor",
+parser.add_option("", "--alphafactor", dest="afactor", metavar="F",
                   help="""Reduce this value to lower drawing intensity.""", default = 10.0) 
+
+parser.add_option("", "--tree-spacing", dest="treespacing",
+                  help="""Additional spacing (> 0 default %default)""", default = 0.3) 
 
 parser.add_option("", "--positioning", dest="positioning",
                   type='choice', choices=['mean', 'taxonmean', 'between'],
                   help="Method of positioning internal nodes based on clade \
 taxa (mean [default] | taxonmean | between).", default = 'mean') 
 
-parser.add_option("", "--fontsize", dest="fontsize",
+parser.add_option("", "--fontsize", dest="fontsize", metavar="N",
                   help="""labels font size.""", default = 12) 
 
 parser.add_option("", "--mcolors", dest="mcolors", action="append",
@@ -114,7 +117,7 @@ nexusReader = INexus.INexus()
 nBurninTrees = int(burnIn*nTrees)
 
 if progress:
-  print >> sys.stderr, "reading %d trees ...," % (nTrees - nBurninTrees),
+  print >> sys.stderr, "reading %d trees ...," % ((nTrees - nBurninTrees)//every),
 
 trees = []
 for tree in nexusReader.read(nexFile, slice(nBurninTrees, -1, every)) :
@@ -124,7 +127,7 @@ for tree in nexusReader.read(nexFile, slice(nBurninTrees, -1, every)) :
 if progress:
   print >> sys.stderr, "preparing ...,",
 
-wd = treePlotting.getSpacing(trees, .3)
+wd = treePlotting.getSpacing(trees, float(options.treespacing))
 ref = mainTree[0] if mainTree else None
 taxOrder = treePlotting.getTaxaOrder(trees, refTree = ref,
                                      reportTopologies = colorTops) 
@@ -205,7 +208,7 @@ if len(mainTree) :
     for x in tree.get_terminals() :
        tree.node(x).data.x = xs[tree.node(x).data.taxon]
     h = treePlotting.drawTree(tree, tree.root, None,
-                              positioning = positioning, fill=False,
+                              positioning = positioning, fill=None,
                               generalPlotAttributes = {'color' : col})
     hmin = max(h, hmin)
 
