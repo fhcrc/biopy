@@ -41,7 +41,7 @@ parser.add_option("-l", "--limit", dest="limit", metavar="S",
                   """ tested under M$windows or OSX """, 
                   default = "-1") 
 
-parser.add_option("-t", "--topology", dest="topology",
+parser.add_option("", "--topology", dest="topology",
                   help="""Try only this topology""", default = None)
 
 parser.add_option("", "--score", dest="score",
@@ -96,6 +96,9 @@ limit = int(options.limit)
 useOnlyMatchingTopologies = options.matching
 
 if options.topology is not None :
+  if '(' not in options.topology:
+    print >> sys.stderr,"no '(' in topology?"
+    sys.exit(1)
   try :
     options.topology = INexus.Tree(options.topology)
   except Exception,e:

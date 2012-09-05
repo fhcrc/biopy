@@ -15,6 +15,7 @@ from biopy.genericutils import fileFromName
 
 from biopy import INexus, beastLogHelper, demographic
 from biopy.treeutils import toNewick, countNexusTrees, getTreeClades
+from biopy.bayesianStats import hpd
 
 parser = optparse.OptionParser(usage =
                                """ %prog [OPTIONS] tree posterior-trees.nexus
@@ -85,7 +86,7 @@ if progress:
 
 # Root 'branches'
 rBranches = []
-
+constRoot = True
 for tree in nexusReader.read(nexFile, slice(int(burnIn*nTrees), -1, every)):
   has = beastLogHelper.setDemographics([tree])         ; assert has[0]
   clades = getTreeClades(tree, True)
@@ -101,6 +102,7 @@ for tree in nexusReader.read(nexFile, slice(int(burnIn*nTrees), -1, every)):
       else :
         if node.id == tree.root :
           rBranches.append(l)
+          constRoot = constRoot and (d.population(0) == d.population(l))
         ipop = node.data.demographic.integrate(l)/l
       e.append(ipop)
       if noTaxaOpt and len(cladeSet) == 1 :
@@ -142,7 +144,7 @@ else :
     else :
       s = [me[x] for x in n.succ]
       
-    b =  n.data.branchlength if ni != target.root else mean(rBranches)
+    branch = n.data.branchlength if ni != target.root else mean(rBranches)
 
     vals = []
     for c,n1 in targetClades:
@@ -151,24 +153,30 @@ else :
         break
 
     if len(vals) > 0 :
-      v = (len(vals), sum(vals), sum([x**2 for x in vals]))
+      v = (len(vals), sum(vals), sum([x**2 for x in vals]), hpd(vals, 0.95))
     else :
       v = (0,0,0)
-    popIndices.append((s, me[ni], b, v, n, pp))
+    e = me[ni] if not (ni == target.root and constRoot) else None
+    popIndices.append((s, e, branch, v, n, pp))
 
   def err(p, pasn) :
     pops = [abs(x) for x in p] 
     err = 0.0
-    for (s1,s2),e,branch,(n,mn,smn),nd,pp in pasn :
-      ps,pe = pops[s1] + (pops[s2] if s2 is not None else 0), pops[e]
-      if pp is not None :
-        ps = pp
-      # root has 0 branch length with hybrid model
-      if branch > 0 :
-        d = demographic.LinearPiecewisePopulation([ps,pe], [branch])
-        ipop = d.integrate(branch)/branch
+    for (s1,s2),e,branch,(n,mn,smn,ci),nd,pp in pasn :
+      if e is None:
+        ipop = 1/(pops[s1] + pops[s2])
         xerr2 = n*ipop**2 - 2*ipop*mn + smn
         err += xerr2 * branch
+      else :
+        ps,pe = pops[s1] + (pops[s2] if s2 is not None else 0), pops[e]
+        if pp is not None :
+          ps = pp
+        # 0 branch length (probably from optimizer)
+        if branch > 0 :
+          d = demographic.LinearPiecewisePopulation([ps,pe], [branch])
+          ipop = d.integrate(branch)/branch
+          xerr2 = n*ipop**2 - 2*ipop*mn + smn
+          err += xerr2 * branch
     return err
 
   if 0 : # debug
@@ -183,19 +191,23 @@ else :
   oo = fmin_powell(lambda x : err(x, popIndices), pops, disp=0, full_output=1)
   pops = [abs(x) for x in oo[0]]
 
-  for (s1,s2),e,branch,(n,mn,smn),nd,pp in popIndices :
-    ps,pe = pops[s1] + (pops[s2] if s2 is not None else 0), pops[e]
-    if pp is not None :
-      ps = pp
-    # take mean for zero branch 
-    if branch == 0 :
-      ps = pe = n/mn
-    if 0 :
-      d = demographic.LinearPiecewisePopulation([ps,pe], [branch])
-      ipop = d.integrate(branch)/branch
-      print (s1,s2),e, ipop, mn/n, (ps - d.population(0), ps, d.population(0))
+  for (s1,s2),e,branch,(n,mn,smn,ci),nd,pp in popIndices :
+    if e is None :
+      ps = pe = pops[s1] + pops[s2]
+    else :
+      ps,pe = pops[s1] + (pops[s2] if s2 is not None else 0), pops[e]
+      if pp is not None :
+        ps = pp
+      # take mean for zero branch 
+      if branch == 0 :
+        ps = pe = n/mn
+      if 0 :
+        d = demographic.LinearPiecewisePopulation([ps,pe], [branch])
+        ipop = d.integrate(branch)/branch
+        print (s1,s2),e, ipop, mn/n, (ps - d.population(0), ps, d.population(0))
       
-    nd.data.attributes = {'dmv' : ('{%g,%g}' % (ps,pe)), 'dmt' : str(branch)}
+    nd.data.attributes = {'dmv' : ('{%g,%g}' % (ps,pe)), 'dmt' : str(branch),
+                          'dmv95' :  ('{%g,%g}' % tuple([1/x for x in reversed(ci)]))}
 
 if progress:
   print >>  sys.stderr, "done." 
