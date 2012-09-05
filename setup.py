@@ -8,9 +8,6 @@ module1 = Extension('cchelp',
 module2 = Extension('cnexus',
                     sources = ['biopy/cnexus.c'])
 
-module3 = Extension('ctree',
-                    sources = ['biopy/ctree.cc'])
-
 classifiers=[
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
@@ -36,7 +33,7 @@ setup (name = 'biopy',
        platforms = ["Linux", "Mac OS-X"],
        packages = ['biopy'],
        package_dir={'biopy': 'biopy'},
-       ext_modules = [module1,module2,module3],
+       ext_modules = [module1,module2],
        scripts = glob.glob('scripts/*'),
        data_files=[('doc',glob.glob('html/*.*')),
                    ('doc/_images', glob.glob('html/_images/*.*')),
