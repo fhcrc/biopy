@@ -242,9 +242,9 @@ seqEvolve(PyObject*, PyObject* args)
   return seq;
 }
 
-// #include <iostream>
-// using std::cout;
-// using std::endl;
+#include <iostream>
+using std::cout;
+using std::endl;
 
 static PyObject*
 seqsMinDiff(PyObject*, PyObject* args)
@@ -416,7 +416,9 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
 {
   int eat = skipSpaces(txt);
   txt += eat;
-  
+  //int ll = strlen(txt);
+  //cout << ll << endl;
+    
   PyObject* vals = NULL;
   PyObject* const nodeData = PyList_New(4);
   
@@ -424,6 +426,9 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
     vector<int> subs;
     while( true ) {
       int n1 = readSubTree(txt+1, nodes);
+      if( n1 < 0 ) {
+	return n1;
+      }
       eat += 1+n1;
       txt += 1+n1;
       subs.push_back(nodes.size()-1);
@@ -450,14 +455,22 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
         txt += 1;
         break;
       }
-      return -1; // error
+      return -(strlen(txt)+1); // error
     }
   } else {
     // a terminal
     const char* s = txt;
-    while( ! isspace(*s) && *s != ':' && *s != '[' && *s != ','
-	   && *s != '(' && *s != ')' && *s != ']' ) {
-      ++s;
+    if( *s == '\'' || *s == '"' ) {
+      int const e = _getStuff(s+1, *s);
+      if( e < 0 ) {
+	return -(strlen(txt)+1);
+      }
+      s += e+2;
+    } else {
+      while( ! isspace(*s) && *s != ':' && *s != '[' && *s != ','
+	     && *s != '(' && *s != ')' && *s != ']' ) {
+	++s;
+      }
     }
     int const n1 = s - txt;
 
@@ -483,7 +496,7 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
 	vector<PyObject*> vs;
 	int n1 = parseAttributes(txt+2, vs);
 	if( n1 < 0 ) {
-	  return -1;
+	  return -(1+strlen(txt));
 	}
 	n1 += 3;
 	n1 += skipSpaces(txt+n1);
@@ -507,7 +520,7 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
 	// skip comment
 	int const e = _getStuff(txt+1, ']');
 	if( e < 0 ) {
-	  return -1;
+	  return -(1+strlen(txt));
 	} else {
 	  txt += e+2;
 	  eat += e+2;
@@ -541,10 +554,10 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
     
     //std::cout << nTxt << std::endl;  
     char* endp;
-    double b = strtod(nTxt, &endp);
+    double const b = strtod(nTxt, &endp);
     n1 = endp - nTxt;
     if( n1 == 0 ) {
-      return -1;
+      return -(1+strlen(txt));
     }
     
     branch = PyFloat_FromDouble(b);
@@ -623,23 +636,26 @@ parseSubTree(PyObject*, PyObject* args)
   }
   vector<PyObject*> nodes;
 
-  int const nc = readSubTree(treeTxt, nodes);
-  if( nc != strlen(treeTxt) ) {
-    if( nc<0 || (nc + skipSpaces(treeTxt + nc) != strlen(treeTxt)) ) {
-      // clean !!!
-      for(unsigned int k = 0; k < nodes.size(); ++k) {
-	for(int i = 0; i < 4; ++i) {
-	  Py_DECREF(PySequence_GetItem(nodes[k], i));
-	}
-	Py_DECREF(nodes[k]);
+  int const txtLen = strlen(treeTxt);
+  int nc = readSubTree(treeTxt, nodes);
+  if( nc > 0 ) {
+    nc += skipSpaces(treeTxt + nc);
+  }
+  if( ! (nc == txtLen || (nc+1 == txtLen && treeTxt[nc] == ';')) ) {
+    // clean !!!
+    for(unsigned int k = 0; k < nodes.size(); ++k) {
+      for(int i = 0; i < 4; ++i) {
+	Py_DECREF(PySequence_GetItem(nodes[k], i));
       }
-      if( nc < 0) {
-	PyErr_SetString(PyExc_ValueError, "failed parsing.") ;
-      } else {
-	PyErr_SetString(PyExc_ValueError, "extraneous characters at tree end");
-      }
-      return 0;
+      Py_DECREF(nodes[k]);
     }
+    if( nc < 0) {
+      int const where = txtLen+(nc+1);
+      PyErr_Format(PyExc_ValueError, "failed parsing around %d (%10.10s ...).", where, treeTxt+where);
+    } else {
+      PyErr_SetString(PyExc_ValueError, "extraneous characters at tree end");
+    }
+    return 0;
   }
   
   PyObject* n = PyTuple_New(nodes.size());
