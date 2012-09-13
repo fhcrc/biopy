@@ -536,8 +536,40 @@ class Tree(Nodes.Chain):
         
     def __str__(self):
         """Short version of to_string(), gives plain tree"""
-        return self.to_string(plain=True)
-        
+        return self.toNewick()
+    #return self.to_string(plain=True)
+
+    def toNewick(self, nodeId = None, topologyOnly = False, attributes = None) :
+      """ BioPython tree or sub-tree to unique NEWICK format.
+
+      Child nodes are sorted (via text), so representation is unique and does not
+      depend on arbitrary children ordering.
+      """
+
+      if not nodeId :
+        nodeId = self.root
+      node = self.node(nodeId)
+      data = node.data
+      if data.taxon :
+        rep = data.taxon
+      else :
+        reps = [self.toNewick(n, topologyOnly, attributes) for n in node.succ]
+        reps.sort()
+        rep = "(" + ",".join(reps) + ")"
+
+      if attributes is not None :
+        attrs = getattr(data, attributes, None)
+        if attrs is not None and len(attrs) :
+          s = '[&'
+          for a in attrs:
+            s += (a+'='+str(attrs[a])+",")
+          s = s[:-1] + ']'
+          rep += s
+
+      if not topologyOnly and nodeId != self.root and data.branchlength is not None:
+        rep = rep + (":%r" % data.branchlength)
+      return rep
+    
     def unroot(self):
         """Defines a unrooted Tree structure, using data of a rooted Tree."""
 
