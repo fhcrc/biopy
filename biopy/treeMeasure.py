@@ -233,6 +233,10 @@ def allPartitions(referenceTree, trees, func = None, withHeights = False) :
 
   return p
 
+def _parHeight(node) :
+  br = node.data.branchlength
+  return node.data.height + (0 if br is None else br)
+
 def _setTreeClades_i(tree, nodeID) :
   # should be enhanced for tip dates
   node = tree.node(nodeID)
@@ -247,41 +251,65 @@ def _setTreeClades_i(tree, nodeID) :
     x[0].data.clade = frozenset(x[0].data.clade)
   node.data.clade = allt
   br = cl[0][0].data.branchlength
-  node.data.height = cl[0][0].data.height + (0 if br is None else br)
+  node.data.height = max([_parHeight(n[0]) for n in cl])
   return [node] + reduce(operator.add, cl)
 
 def setTreeClades(tree):
-  """ Set clade attribute in each node data.clade = frozenset(taxa)"""
+  """ Set clade attribute in each node data.
+
+  clade = frozenset(taxa) and height = float
+  """
   r = _setTreeClades_i(tree, tree.root)
   r[0].data.clade = frozenset(r[0].data.clade)
   return r
 
-def cladesInTreesSet(trees, withPairs=False, tidyup=True) :
-  clc = defaultdict(lambda : 0)
-  clc2 = defaultdict(lambda : 0) if withPairs else None
+def cladesInTreesSet(trees, withPairs=False, tidyup=True, func=None, withTaxa = False) :
+  newitem = (lambda : 0) if func is None else (lambda : [])
+  clc = defaultdict(newitem)
+  clc2 = defaultdict(newitem) if withPairs else None
   for xtree in trees:
     nodes = setTreeClades(xtree)
     
     for node in nodes:
-      cladeSet = node.data.clade 
-      clc[cladeSet] += 1
+      cladeSet = node.data.clade
+      if not withTaxa and len(cladeSet) == 1 :
+        continue
+      
+      if func :
+        dat = func(node.data)
+        clc[cladeSet].append(dat)
+      else :
+        clc[cladeSet] += 1
+        
       if withPairs :
-        c2 = (cladeSet,) + tuple([frozenset(xtree.node(s).data.clade)
-                                  for s in node.succ])
-        clc2[c2] += 1
+        c2 = (cladeSet,frozenset((frozenset(xtree.node(s).data.clade)
+                                  for s in node.succ)))
+        if func :
+          clc2[c2].append(dat)
+        else :
+          clc2[c2] += 1
+          
       if tidyup :
         del node.data.clade   
+        del node.data.height   
     #for n in xtree.get_terminals():
     #  node = xtree.node(n)
     #  node.data.clade = frozenset(node.data.clade)
-      
-  n = len(trees)
-  clc = dict([(k,x/n) for k,x in clc.iteritems()])
-  if withPairs :
-    clc2 = dict([(k,x/n) for k,x in clc2.iteritems()])
-    return (clc, clc2)
-  return clc
 
+  if func is None :
+    #n = len(trees)
+    clc = dict([(k,x) for k,x in clc.iteritems()])
+    if withPairs :
+      clc2 = dict([(k,x) for k,x in clc2.iteritems()])
+      return (clc, clc2)
+    return clc
+  else :
+    clc = dict([(k,x) for k,x in clc.iteritems()])
+    if withPairs :
+      clc2 = dict([(k,x) for k,x in clc2.iteritems()])
+      return (clc, clc2)
+    return clc
+  
 ## def getSPS(xtrees) :  
 ##   clc = cladesInTreesSet(xtrees)
 
@@ -292,7 +320,9 @@ def cladesInTreesSet(trees, withPairs=False, tidyup=True) :
     
 ##   return sp,sps
 
-def conditionalCladeScore(tree, clc, clc2, laplaceCorrection = False) :
+def conditionalCladeScore(tree, clc12, laplaceCorrection = False) :
+  clc, clc2 = clc12
+
   tidyup = False
   if not hasattr(tree.node(tree.root).data, "clade") :
     setTreeClades(tree)
@@ -303,7 +333,9 @@ def conditionalCladeScore(tree, clc, clc2, laplaceCorrection = False) :
     node = tree.node(i)
     if node.succ :
       c = node.data.clade
-      k = (c,) + tuple([tree.node(s).data.clade for s in node.succ])
+      if len(c) <= 2 :
+        continue
+      k = (c, frozenset([tree.node(s).data.clade for s in node.succ]))
       c2 = clc2.get(k)
       if c2 :
         if laplaceCorrection :
@@ -312,7 +344,8 @@ def conditionalCladeScore(tree, clc, clc2, laplaceCorrection = False) :
           totlog += log(c2/clc[c])
       else :
         if laplaceCorrection :
-          totlog += -log(2**(len(c)-1)-1)
+          c1 = clc.get(c)
+          totlog += -log((2.0**(len(c)-1)-1) * ((1 if c1 is None else c1+1)))
         else :
           totlog = float("-inf")
           break

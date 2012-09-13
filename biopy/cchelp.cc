@@ -818,7 +818,6 @@ sumNonIntersect(PyObject*, PyObject* args)
 
   double tot = 0.0;
   double const b1 = u1-l1;
-
   
   int const nSeq = PySequence_Size(lu2);
   
@@ -832,6 +831,48 @@ sumNonIntersect(PyObject*, PyObject* args)
   }
 
   return PyFloat_FromDouble(tot);
+}
+
+static PyObject*
+sumNonIntersectDer(PyObject*, PyObject* args)
+{
+  PyObject* lu2;
+  double l1,u1;
+  
+  if( !PyArg_ParseTuple(args, "ddO", &l1, &u1, &lu2) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    return 0;
+  }
+
+  if( ! PySequence_Check(lu2) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args: not a sequence");
+    return 0;
+  }
+
+  double tot = 0.0;
+  double const b1 = u1-l1;
+  int dvdl1 = 0, dvdu1 = 0;
+    
+  int const nSeq = PySequence_Size(lu2);
+  
+  for(int k = 0; k < nSeq; ++k) {
+    PyObject* const l2u2 = PySequence_Fast_GET_ITEM(lu2, k);
+
+    double const l2 = PyFloat_AsDouble( PySequence_Fast_GET_ITEM(l2u2,0) );
+    double const u2 = PyFloat_AsDouble( PySequence_Fast_GET_ITEM(l2u2,1) );
+    double const b1b2 = b1 + (u2-l2);
+    tot += std::min(b1b2 + 2*(std::max(l1,l2) - std::min(u1,u2)), b1b2);
+
+    dvdl1 += ( l2 <= l1 && l1 <= u2 ) ? 1 : -1;
+    dvdu1 += ( l2 <= u1 && u1 <= u2 ) ? -1 : 1;
+  }
+
+  PyObject* o = PyTuple_New(3);
+  PyTuple_SET_ITEM(o, 0, PyFloat_FromDouble(tot));
+  PyTuple_SET_ITEM(o, 1, PyFloat_FromDouble(dvdl1));
+  PyTuple_SET_ITEM(o, 2, PyFloat_FromDouble(dvdu1));
+
+  return o;
 }
 
 static PyMethodDef cchelpMethods[] = {
@@ -856,6 +897,9 @@ static PyMethodDef cchelpMethods[] = {
    ""},
 
   {"sumNonIntersect",  sumNonIntersect, METH_VARARGS,
+   ""},
+
+  {"sumNonIntersectDer",  sumNonIntersectDer, METH_VARARGS,
    ""},
 
   {"effectiveSampleStep",  effectiveSampleStep, METH_VARARGS,

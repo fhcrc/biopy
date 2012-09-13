@@ -198,33 +198,10 @@ def countNexusTrees(nexFileName) :
 def toNewick(tree, nodeId = None, topologyOnly = False, attributes = None) :
   """ BioPython tree or sub-tree to unique NEWICK format.
 
-  Children nodes are sorted (via text), so representation is unique and does not
+  Child nodes are sorted (via text), so representation is unique and does not
   depend on arbitrary children ordering.
   """
-  
-  if not nodeId :
-    nodeId = tree.root
-  node = tree.node(nodeId)
-  data = node.data
-  if data.taxon :
-    rep = data.taxon
-  else :
-    reps = [toNewick(tree, n, topologyOnly, attributes) for n in node.succ]
-    reps.sort()
-    rep = "(" + ",".join(reps) + ")"
-
-  if attributes is not None :
-    attrs = getattr(data, attributes, None)
-    if attrs is not None and len(attrs) :
-      s = '[&'
-      for a in attrs:
-        s += (a+'='+str(attrs[a])+",")
-      s = s[:-1] + ']'
-      rep += s
-    
-  if not topologyOnly and nodeId != tree.root and data.branchlength is not None:
-    rep = rep + (":%r" % data.branchlength)
-  return rep
+  return tree.toNewick(nodeId, topologyOnly,attributes)
 
 
 def _getNodeHeight(tree, n, heights, w = 0):
