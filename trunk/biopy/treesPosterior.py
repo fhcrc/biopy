@@ -20,7 +20,7 @@ ROOTED_AGREEMENT:
 Fixed target topology
 """
 
-__all__ = ["minDistanceTree"]
+__all__ = ["minDistanceTree", "BRANCH_SCORE" , "BRANCH_SCORE_2" , "HEIGHTS_SCORE" , "ROOTED_AGREEMENT" ]
 
 BRANCH_SCORE , BRANCH_SCORE_2 , HEIGHTS_SCORE , ROOTED_AGREEMENT = range(4)
 
@@ -265,7 +265,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
         # The constant term contribution 
         c0 += sum([x**2 for x in br])
 
-      if method == BRANCH_SCORE:
+      elif method == BRANCH_SCORE:
         if withDerivative :
           pee += "  ab%d,abd%d = _absDiffBranchDer(b%d,%s)\n" % (nn,nn,nn,_prepare(br))
           pee += "  abd%d += %d\n" % (nn,a1)
@@ -277,7 +277,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
 
         ee += "+ %d * b%d" % (a1,nn)
         
-      if method == HEIGHTS_SCORE :
+      elif method == HEIGHTS_SCORE :
         if not tree.node(nn).data.taxon  :
           vls = _prepare([x[0] for x in br])
           if withDerivative :
@@ -294,7 +294,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
           if a1 > 0 :
             ee += "+ %d * b%d" % (a1,nn)
             
-      if method == ROOTED_AGREEMENT :
+      elif method == ROOTED_AGREEMENT :
         dt = '[' + ','.join(["(%.15g,%.15g)" % (h,h+b) for h,b in br]) + ']'
         if withDerivative :
           # value, d(value)/d(branch-start), d(value)/d(branch-end-height)
@@ -326,7 +326,8 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
 
         if a1 > 0 :
           ee += "+ %d * b%d" % (a1,nn)
-
+      else :
+        raise RuntimeError("Invalid method" + method)
     else :
       # A tree clade not appearing in posterior: contributes the full branch
       # length for each posterior tree.
@@ -471,7 +472,8 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
 
   brs = code2branches(sol[0])
   for nn,br in brs:
-    newTree.node(nn).data.branchlength = br/fctr
+    # numerical instability : don't permit negative branches
+    newTree.node(nn).data.branchlength = max(br/fctr, 0)
 
   val = finaleVal
   if withDerivative :
