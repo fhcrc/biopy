@@ -7,75 +7,94 @@
 
 from __future__ import division
 
-import optparse, sys, os.path
+import argparse, sys, os.path
 from time import time
 
 from biopy.genericutils import fileFromName
 from biopy.treeutils import toNewick, countNexusTrees, nodeHeights, getCommonAncesstor
 
-from biopy.treesPosterior import minPosteriorDistanceTree
+import biopy.treesPosterior
+minDistanceTree = biopy.treesPosterior.minDistanceTree
+
 from biopy import INexus
 from biopy import beastXMLhelper
 
-parser = optparse.OptionParser(usage =  """ %prog [OPTIONS] posterior-trees.nexus 
+class DistanceAction(argparse.Action):
+  def __call__(self, parser, names, values, option_string=None):
+    val = getattr(biopy.treesPosterior, values.replace('-','_').upper())
+    setattr(names, self.dest, val)
+    
+parser = argparse.ArgumentParser(description=""" %prog [OPTIONS] posterior-trees.nexus 
 
   Generate a single summary tree for a set of posterior trees.""")
 
-parser.add_option("-b", "--burnin", dest="burnin",
-                  help="Burn-in amount (percent, default %default)", default = "10")
+parser.add_argument("-b", "--burnin", type = float,
+                    help="Burn-in amount (percent, default %(default)g)", default = 10)
 
-parser.add_option("-e", "--every", dest="every", metavar="E",
-                  help="""thin out - take one tree for every E. Especially
-                  useful if you run out of memory (default all,
-                  i.e. %default)""", default = "1")
+parser.add_argument("--every", "-e", metavar="E", type = int,
+                    help="""thin out - take one tree for every E. Especially
+                    useful if you run out of memory (default all,
+                    i.e. %(default)d)""", default = 1)
 
-parser.add_option("-n", "--ntops", dest="ntops", metavar="N",
-                  help="""Use the top N topologies from the posterior (default
-                  %default)""", default = "10")
+parser.add_argument("--sort-topologies-by", dest="sortby", metavar="METHOD", 
+                    choices=["highest-posterior", "conditional", "mcc"],
+                    default="mcc", help="""default %(default)s""")
 
-parser.add_option("-l", "--limit", dest="limit", metavar="S",
-                  help="""run at most S seconds, trying out topologies in""" + \
-                  """ decreasing order of support and in random order for""" + \
-                  """ topologies with equal support (default -1, i.e no""" + \
-                  """ time limits). Note that timing code has not been""" + \
-                  """ tested under M$windows or OSX """, 
-                  default = "-1") 
+parser.add_argument("--distance-method", dest="distance", metavar="METHOD", 
+                    choices=["branch-score", "branch-score-2", "heights-score",
+                    "rooted-agreement"], action = DistanceAction,
+                    default = biopy.treesPosterior.BRANCH_SCORE, help=""" default branch-score""")
 
-parser.add_option("", "--topology", dest="topology",
-                  help="""Try only this topology""", default = None)
+parser.add_argument("--ntops", "-n", metavar="N", type = int,
+                    help="""Use the top N topologies from the posterior (default
+                    %(default)d)""", default = 1)
 
-parser.add_option("", "--score", dest="score",
-                  help="Print score as a tree attribute",
-                  action="store_true", default = False)
+parser.add_argument("--limit", "-l", metavar="S", type = int,
+                    help="""run at most S seconds, trying out topologies in""" + \
+                    """ decreasing order of support and in random order for""" + \
+                    """ topologies with equal support (default -1, i.e no""" + \
+                    """ time limits). Note that timing code has not been""" + \
+                    """ tested under M$windows or OSX """, 
+                    default = -1) 
 
-parser.add_option("", "--matching", dest="matching",
-                  help="With --topology, use only posterior trees with an """ +
-                  """identical topology to the target.""",
-                  action="store_true", default = False)
+parser.add_argument("--topology",
+                    help="""Try only this topology""", default = None)
 
-parser.add_option("", "--compatible", dest="compatible", metavar="TREE",
-                  help="Insure gene tree is compatible with species TREE.",
-                  default = None)
+parser.add_argument("--score", help="Print score as a tree attribute",
+                    action="store_true", default = False)
 
-parser.add_option("", "--species-mapping", dest="spmap", metavar="FILE",
-                  help=("A file contatining the mapping of gene lineages to" + 
-                        " species for the --compatible option (currently " + 
-                        "only BEAST(1) XML file supported). Otherwise, a simple" +
-                        " scheme of looking for the species name inside the gene" +
-                        " name is used."),
-                  default = None)
+parser.add_argument("--laplace-correction", dest = "correction", help="",
+                    action="store_true", default = False)
 
-parser.add_option("-p", "--progress", dest="progress",
-                  help="Print out progress messages to terminal (standard error)",
-                  action="store_true", default = False)
+parser.add_argument("--matching",
+                    help="With --topology, use only posterior trees with an """ +
+                    """identical topology to the target.""",
+                    action="store_true", default = False)
 
-parser.add_option("", "--no-derivative", dest="derivative",
-                  help="Do not use analytic derivative in optimization function",
-                  action="store_false", default = True)
+parser.add_argument("--compatible", metavar="TREE",
+                    help="Insure gene tree is compatible with species TREE.",
+                    default = None)
 
-options, args = parser.parse_args()
+parser.add_argument("--species-mapping", dest="spmap", metavar="FILE",
+                    help=("A file contatining the mapping of gene lineages to" + 
+                          " species for the --compatible option (currently " + 
+                          "only BEAST(1) XML file supported). Otherwise, a simple" +
+                          " scheme of looking for the species name inside the gene" +
+                          " name is used."),
+                    default = None)
 
-nexusTreesFileName = args[0]
+parser.add_argument("-p", "--progress", dest="progress",
+                    help="Print out progress messages to terminal (standard error)",
+                    action="store_true", default = False)
+
+parser.add_argument("--no-derivative", dest="derivative",
+                    help="Do not use analytic derivative in optimization function",
+                    action="store_false", default = True)
+
+parser.add_argument('trees', metavar='FILE',  help="Trees file (NEXUS)")
+
+options = parser.parse_args()
+nexusTreesFileName = options.trees
 try :
   nexFile = fileFromName(nexusTreesFileName)
 except Exception,e:
@@ -84,20 +103,20 @@ except Exception,e:
   sys.exit(1)
 
 progress = options.progress
-burnIn = float(options.burnin)
+burnIn = options.burnin
 if 0 < burnIn < 1 :
   print >> sys.stderr, ("*** Warning ***: tiny value for burn-in. Burn-in is"
-                        " given as a percent, betwee 0 and 100.")
+                        " given as a percent in the range zero to 100.")
 burnIn /= 100.0
 
-every = int(options.every)
-ntops = int(options.ntops)
-limit = int(options.limit)
+every = options.every
+ntops = options.ntops
+limit = options.limit
 useOnlyMatchingTopologies = options.matching
 
 if options.topology is not None :
   if '(' not in options.topology:
-    print >> sys.stderr,"no '(' in topology?"
+    print >> sys.stderr,"topology is not a tree? (contains no '(')"
     sys.exit(1)
   try :
     options.topology = INexus.Tree(options.topology)
@@ -106,7 +125,7 @@ if options.topology is not None :
     sys.exit(1)
 else :
   if useOnlyMatchingTopologies:
-    print >> sys.stderr, """Using --matching without --topology is\
+    print >> sys.stderr, """WARNING: Using --matching without --topology is\
  dubious. procceding anyway..."""
 
 if options.compatible is not None :
@@ -116,19 +135,19 @@ if options.compatible is not None :
     try :
       spTree = INexus.Tree(options.compatible)
     except Exception,e:
-      print >> sys.stderr, "*** Error: failed to parse tree: ",\
+      print >> sys.stderr, "*** Error: failed to read tree: ",\
             e.message,"[",options.compatible,"]"
       sys.exit(1)
 
   if options.spmap is not None :
-    bd = {'species':None}
+    bd = {'species' : None}
     bsps = beastXMLhelper.readBeastFile(options.spmap, bd)
     speciesMapping = bd['species']['species']
 
     def getSpeciesOf(name) :
-      for x in speciesMapping :
-        if name in speciesMapping[x] :
-          return x
+      for spName in speciesMapping :
+        if name in speciesMapping[spName] :
+          return spName
       return None
     
   else :
@@ -143,15 +162,10 @@ if options.compatible is not None :
         return spNames[sid]
       return None
     
-    #print >> sys.stderr, ("*** Error: must specify a mapping" +
-    #                      " (--species-mapping) with --compatible")
-    #sys.exit(1)
-
-    
   def _setSPS(tr, nid) :
     """ Store the set of species spanned by the subtree in each node.
 
-    At the end, each node of tree 'tr' contains the data.species memeber, a set
+    At the end, each node in tree 'tr' contains data.species whixh holds the set
     species names as strings.
     """
     n = tr.node(nid)
@@ -171,7 +185,7 @@ if options.compatible is not None :
 
   def getSPlimits(gtr, spt = spTree) :
     """ Establish a mapping between each internal node of the gene tree 'gtr' and
-    its minimum height according to species tree spt.
+    its minimum height according to species tree 'spt'.
     """
 
     nh = nodeHeights(gtr, allTipsZero = False)
@@ -210,7 +224,7 @@ except Exception,e:
   sys.exit(1)
 
 if len(trees) == 0 :
-  print >> sys.stderr, "**Error: No trees"
+  print >> sys.stderr, "**Error: No trees read."
   sys.exit(1)
 
 if 1 :
@@ -220,7 +234,41 @@ if 1 :
       data = tree.node(nid).data
       if hasattr(data, "attributes") :
         del data.attributes
-   
+
+from biopy.treeMeasure import cladesInTreesSet, conditionalCladeScore
+from biopy.treeutils import getTreeClades, treeHeight
+from math import log
+
+def sortTopologies(allTops, atMost) :
+  trees = reduce(lambda x,y : x+y, [trs for top,trs in allTops])
+  if options.sortby == 'mcc' :
+    cl = cladesInTreesSet(trees)
+    mcc = lambda (top,trs) : sum([log(cl[frozenset(c)])
+                                for c,node in getTreeClades(trs[0], False)])
+    allTops.sort(key = mcc, reverse=1)
+  elif options.sortby ==  "highest-posterior":
+    
+    allTops.sort(reverse=1, key = lambda (top,trs) : len(trs))
+    allh = sorted([treeHeight(t) for t in trees])
+    hmed = allh[len(allh)//2]
+    tot = 0
+    for i in range(len(allTops)) :
+      top,trs = allTops[i]
+      # not efficient
+      trs.sort(key = lambda h : abs(treeHeight(h)-hmed))
+      tot += len(trs)
+      if tot >= atMost :
+        break
+      
+  elif options.sortby == "conditional":
+    clc2 = cladesInTreesSet(trees, 1)
+    lar = lambda (top,trs) : conditionalCladeScore(trs[0], clc2, options.correction)
+    allTops.sort(key = lar, reverse=1)
+  else :
+    raise
+  
+  return allTops
+
 if 1:
   if progress:
     print >> sys.stderr, "collect topologies and sort ...,",
@@ -234,8 +282,9 @@ if 1:
 
   allt = topology.items()
   # Sort by amount of support
-  allt.sort(reverse=1, key = lambda l : len(l[1]))
-
+  #allt.sort(reverse=1, key = lambda l : len(l[1]))
+  allt = sortTopologies(allt, ntops)
+  
 if ntops > len(allt) :
   ntops = len(allt)
   
@@ -305,9 +354,8 @@ for tree in candidates:
   nh = getSPlimits(tree) if options.compatible is not None else None
     
   norm = True
-  tr, score = minPosteriorDistanceTree(tree, postTrees, norm = norm,
-                                       nodesMinHeight = nh,
-                                       withDerivative = options.derivative)
+  tr, score = minDistanceTree(options.distance, tree, postTrees, norm = norm,
+                              nodesMinHeight = nh, withDerivative = options.derivative)
   
   # normalize score
   score = (score / len(postTrees)) ** 0.5
@@ -315,16 +363,19 @@ for tree in candidates:
   #print 
   #print score,toNewick(tr)
 
+  newBest = False
   if score < bestScore:
     bestScore = score
     bestTree = tr
+    newBest = True
+    
   nCandidatesTried += 1
   if limit > 0 or progress :
     timenow = time()
     if progress:
       print >> sys.stderr, \
-            ("%ds/%d (%g), " % (round(timenow - startTime),
-                                nCandidatesTried,bestScore)),
+            ("%ds/%d (%g%s), " % (round(timenow - startTime),
+                                nCandidatesTried, bestScore, '*' if newBest else '')),
     if timenow - startTime >= limit > 0 :
       print >> sys.stderr, "time limit reached ...,",
       break
