@@ -247,8 +247,10 @@ def sortTopologies(allTops, atMost) :
                                 for c,node in getTreeClades(trs[0], False)])
     allTops.sort(key = mcc, reverse=1)
   elif options.sortby ==  "highest-posterior":
-    
+    # Sort by amount of support
     allTops.sort(reverse=1, key = lambda (top,trs) : len(trs))
+
+    # sort each group with same support by distance of root to median root
     allh = sorted([treeHeight(t) for t in trees])
     hmed = allh[len(allh)//2]
     tot = 0
@@ -281,8 +283,6 @@ if 1:
       topology[k].append(tree)
 
   allt = topology.items()
-  # Sort by amount of support
-  #allt.sort(reverse=1, key = lambda l : len(l[1]))
   allt = sortTopologies(allt, ntops)
   
 if ntops > len(allt) :
@@ -352,9 +352,10 @@ for tree in candidates:
           % (len(postTrees), len(trees), k) 
 
   nh = getSPlimits(tree) if options.compatible is not None else None
-    
+
+  # Use normalization and init defaults 
   norm = True
-  tr, score = minDistanceTree(options.distance, tree, postTrees, norm = norm,
+  tr, score = minDistanceTree(options.distance, tree, postTrees,
                               nodesMinHeight = nh, withDerivative = options.derivative)
   
   # normalize score
