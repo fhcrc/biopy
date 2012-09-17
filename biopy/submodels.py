@@ -308,6 +308,11 @@ class JCSubstitutionModel(StationaryGTR) :
 
     nd = 0.25 - 0.25 * math.exp((-4.0/3.0) * self.mu * branch)
     d = 1 - 3*nd
+    if nd == 0 :
+      # use exp(x) = 1+x for small x. in somce cases this can prevent
+      # a zero log-like for a column
+      nd = (self.mu * branch)/3.0
+      d = 1 - (self.mu * branch)
     return array([[d,nd,nd,nd],[nd,d,nd,nd],[nd,nd,d,nd],[nd,nd,nd,d]])
   
 

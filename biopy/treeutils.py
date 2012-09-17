@@ -27,7 +27,7 @@ import Nodes
 __all__ = ["TreeBuilder", "TreeLogger", "getClade", "getTreeClades",
            "getCommonAncesstor", "countNexusTrees", "toNewick", "nodeHeights",
            "nodeHeight", "treeHeight", "setLabels", "convertDemographics",
-           "coalLogLike", "getPostOrder", "setSpeciesSimple"]
+           "coalLogLike", "getPostOrder", "getPreOrder", "setSpeciesSimple"]
 
 
 class TreeBuilder(object) :
@@ -185,6 +185,21 @@ def getPostOrder(tree, nodeId = None) :
   if node.succ :
     p = reduce(lambda x,y : x+y, [getPostOrder(tree, x) for x in node.succ] + [p])
   return p
+
+def getPreOrder(tree, nid = None, includeTaxa = True) :
+  if nid is None:
+    nid = tree.root
+  node = tree.node(nid)
+  isLeaf = len(node.succ) == 0
+  
+  r = [nid]
+  if isLeaf:
+    if not includeTaxa :
+      r = []
+  else :
+    r.extend(reduce(lambda x,y : x+y, [getPreOrder(tree, n, includeTaxa)
+                                       for n in node.succ]))
+  return r
 
 def countNexusTrees(nexFileName) :
   """ Number of trees in a nexus file."""
