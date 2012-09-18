@@ -38,12 +38,15 @@ parser.add_argument("--every", "-e", metavar="E", type = int,
 
 parser.add_argument("--sort-topologies-by", dest="sortby", metavar="METHOD", 
                     choices=["highest-posterior", "conditional", "mcc"],
-                    default="mcc", help="""default %(default)s""")
+                    default = "mcc",
+                    help="""Try topologies in order determined by this""" +
+                    """ criteria. mcc,conditional,highest-posterior default %(default)s""")
 
 parser.add_argument("--distance-method", dest="distance", metavar="METHOD", 
-                    choices=["branch-score", "branch-score-2", "heights-score",
-                    "rooted-agreement"], action = DistanceAction,
-                    default = biopy.treesPosterior.BRANCH_SCORE, help=""" default branch-score""")
+                    choices=["branch-score", "branch-score-2", "heights-score", "rooted-agreement"],
+                    action = DistanceAction, default = biopy.treesPosterior.BRANCH_SCORE,
+                    help="""Tree distance method to use: branch-score,branch-score-2,""" +
+                    """heights-score,rooted-agreement (default branch-score)""")
 
 parser.add_argument("--ntops", "-n", metavar="N", type = int,
                     help="""Use the top N topologies from the posterior (default

@@ -203,8 +203,9 @@ if len(mainTree) :
     colors = options.mcolors
   else :
     colors = ["red", "blue", "green"]
-    
-  for tree,col in zip(mainTree, colors):
+
+  import itertools
+  for tree,col in zip(mainTree, itertools.cycle(colors)):
     for x in tree.get_terminals() :
        tree.node(x).data.x = xs[tree.node(x).data.taxon]
     h = treePlotting.drawTree(tree, tree.root, None,

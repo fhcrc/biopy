@@ -24,8 +24,6 @@ __all__ = ["minDistanceTree", "BRANCH_SCORE" , "BRANCH_SCORE_2" , "HEIGHTS_SCORE
 
 BRANCH_SCORE , BRANCH_SCORE_2 , HEIGHTS_SCORE , ROOTED_AGREEMENT = range(4)
 
-# "minPosteriorRADistanceTree", "minPosteriorNorm1DistanceTree"]
-
 import scipy, scipy.optimize, copy, random
 from scipy.optimize import fminbound
 
@@ -44,12 +42,10 @@ def _setTreeHeights(tree, opts) :
   for node in order :
     if not node.succ:
       node.data.height = 0
-      #print "set",node.id,node.data.height
     else :
       hs = [tree.node(x).data.height for x in node.succ]
       mn = sum([h + opts[x] for x,h in zip(node.succ,hs)])/len(hs)
       node.data.height = max(*(hs + [mn]))
-     # print "set",node.id,hs,mean([h + opts[x] for x,h in zip(node.succ,hs)]),node.data.height
 
   for n in tree.all_ids() :
     node = tree.node(n)
@@ -59,27 +55,7 @@ def _setTreeHeights(tree, opts) :
       assert node.data.branchlength >= 0
   return tree
 
-def _setTreeHeightsh(tree, opts) :
-  order = getPostOrder(tree)
-  for node in order :
-    if not node.succ:
-      node.data.height = 0
-      #print "set",node.id,node.data.height
-    else :
-      hs = [tree.node(x).data.height for x in node.succ]
-      mn = opts[node.id]
-      node.data.height = max(*(hs + [mn]))
-     # print "set",node.id,hs,mean([h + opts[x] for x,h in zip(node.succ,hs)]),node.data.height
-
-  for n in tree.all_ids() :
-    node = tree.node(n)
-    if node.prev is not None:
-      p = tree.node(node.prev) 
-      node.data.branchlength = p.data.height - node.data.height
-      assert node.data.branchlength >= 0
-  return tree
-  
-# sort branches and pre compute cumulative sum, so distance can be computed
+# Sort branches and pre-compute cumulative sum, so distance can be computed
 # in O(lg(n)), using a binary search, instead of O(n).
 
 def _prepare(bs, stringOnly = True) :
@@ -97,6 +73,7 @@ def _prepare(bs, stringOnly = True) :
 
 import bisect
 def _absDiffBranch(b1,(sbs,cums)) :
+  # Assume binary search overhead for small lists is 16 (not verified)
   if len(sbs) <= 16 :
     tot = 0
     for b in sbs :
@@ -106,6 +83,7 @@ def _absDiffBranch(b1,(sbs,cums)) :
     tot = b1*(i+i-len(sbs)) + cums[-1] - 2*cums[i]
   return tot
 
+# Value and derivative
 def _absDiffBranchDer(b1,(sbs,cums)) :
   if len(sbs) <= 16 :
     tot,dtot = 0,0
@@ -122,19 +100,6 @@ def _absDiffBranchDer(b1,(sbs,cums)) :
     tot = b1*dtot + cums[-1] - 2*cums[i]
   return tot,dtot
 
-## def _getNodeIDsDescendingHeight(tree, nid, includeTaxa = True) :
-##   node = tree.node(nid)
-##   isLeaf = len(node.succ) == 0
-  
-##   r = [nid]
-##   if isLeaf:
-##     if not includeTaxa :
-##       r = []
-##   else :
-##     r.extend(reduce(lambda x,y : x+y,
-##                     [_getNodeIDsDescendingHeight(tree, n, includeTaxa)
-##                      for n in node.succ]))
-##   return r
 
 def der(k, n, h) :
   return ",".join((['x[%d] * d_h%d_x[%d]' % (k,h,i) for i in range(k)] +
@@ -143,6 +108,7 @@ def der(k, n, h) :
 
 def hs2ratio(h, hpar, hmin) :
   assert hpar >= h >= hmin
+  
   dp = hpar - hmin
   dh = h - hmin
   if dp == 0 :
@@ -153,21 +119,24 @@ def hs2ratio(h, hpar, hmin) :
 def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
                                withDerivative = False, withInit = False,
                                withHeights = False, paranoid = False) :
-  """ nodesMinHeight: minimum height (lower bound) for internal nodes"""
+  """ nodesMinHeight: minimum height (lower bound) for internal nodes
+  paranoid: add internal consistency checks
+  """
+  
   allid = set(tree.all_ids())
   # taxa
   terms = set(tree.get_terminals())
   # internal nodes
   allint = allid - terms
 
-  # works for dated tips as well
+  # Works for dated tips as well
   nh = nodeHeights(tree, allTipsZero = False)
-  # node before its descendants
+  # Node before its descendants
   nInOrder = getPreOrder(tree, includeTaxa=False)
-  # reversed, child before parent
+  # Reversed, child before parent
   nhInOrder = [(nh[x],x) for x in reversed(nInOrder)]
 
-  # mapping (per node) of minimum height of node, which is the max among all of
+  # Mapping (per node) of minimum height of node, which is the max among all of
   # its descendants
   mh = dict()
   for n in terms:
@@ -205,11 +174,11 @@ def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
       m = "%.15g" % mh[k]
       sr.append("h%d = x[%d] * (h%d - %s) + %s" % (k, i+1, h, m, m))
       if withInit:
-        htox.append("x[%d] = %.15g" % (i+1, hs2ratio(nh[k], nh[h], mh[k])))  #  min(max((nh[k] - mh[k])/(nh[h] - mh[k]), 0), 1)))
+        htox.append("x[%d] = %.15g" % (i+1, hs2ratio(nh[k], nh[h], mh[k])))
     else :
       sr.append("h%d = x[%d] * h%d" % (k, i+1, h))
       if withInit:
-        htox.append("x[%d] = %.15g" % (i+1,  hs2ratio(nh[k], nh[h], 0))) # min(max(nh[k] / nh[h], 0),1)))
+        htox.append("x[%d] = %.15g" % (i+1,  hs2ratio(nh[k], nh[h], 0)))
       
     if withDerivative:
       sr.append("d_h%d_x = [%s]" % (k,der(i+1, len(nInOrder), h)))
@@ -220,7 +189,7 @@ def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
       sr.append("assert h%d >= 0" % k)
     
   for r,k in enumerate(clades) :
-    n = clades[k][0][1] ; assert n != tree.root
+    n = clades[k][0][1]                                ; assert n != tree.root
     p = tree.node(n).prev
     if n in terms:
       if mh[n] != 0 :
@@ -246,8 +215,6 @@ def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
     return sr, mh[tree.root], htox
   return sr, mh[tree.root]
 
-# initMethod : "tree", "random", "opt"
-
 def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
                     nodesMinHeight = None, withDerivative = True,
                     initMethod = "opt", factr=1e7, warnings = True) :
@@ -257,9 +224,11 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
   limit is an upper bound (presumably from a prior call here with another tree).
   If the distance is known to be larger, the optimization for this tree can be
   skipped.
+
+  initMethod : "tree", "random" or "opt"  
   """
   
-  # not correct for tip/node lower bounds
+  # Not correct for tip/node lower bounds
   assert nodesMinHeight is None or (method == BRANCH_SCORE)
 
   # Do not change tree passed as argument. Copy tree and set branch lengths of
@@ -278,7 +247,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
   posteriorParts = allPartitions(tree, trees, func = func, withHeights = usesHeights)
 
   # For numerical stability in computing gradients, scale trees
-  # so that mean root height is 1 
+  # to get a mean root height of 1 
   fctr = len(trees)/ sum([treeHeight(x) for x in trees]) if norm else 1
   if verbose: print fctr
   
@@ -296,14 +265,18 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
   # Constant term of total distance (independent from branch lengths) 
   c0 = 0
 
+  # OPtimal length of branch according to BRANCH_SCORE. Used to get a quick and
+  # rough tarting point.
   optBranches = dict()
   
   for r,k in enumerate(treeParts) :
+    # Node id
     nn = treeParts[k][0][1]
+    
     if k in posteriorParts :
-      # A clade in target tree which exists in some of the trees
+      # A clade in target tree which is present in some trees of the set.
 
-      # Branchs from tree set for this clade
+      # Branchs/Heights from tree set for this clade
       if usesHeights :
         br = [(h*fctr,b*fctr) for h,b in posteriorParts[k]]
       else :
@@ -335,16 +308,12 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
           dee += "+(abd%d * d_b%d_x[k])" % (nn,nn)        
           ee += "+ ab%d" % (nn,)
         else :
+          # term for trees with the clade
           ee += "+ _absDiffBranch(b%d,%s)" % (nn,vlsas)
 
+        # term for trees without clade
         ee += "+ %d * b%d" % (a1,nn)
         
-        ## if initMethod == "opt" :
-        ##   f = lambda b : _absDiffBranch(b, vls) + a1*b
-        ##   optBranches[nn] = fminbound(f, 0, vls[0][-1])
-          
-        ## if nn == 3 :
-        ##   import pdb; pdb.set_trace()
       elif method == HEIGHTS_SCORE :
         if not tree.node(nn).data.taxon  :
           vlsas = _prepare([x[0] for x in br])
@@ -361,11 +330,6 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
 
           if a1 > 0 :
             ee += "+ %d * b%d" % (a1,nn)
-
-        ## if initMethod == "opt" :
-        ##   vls = _prepare([x[1] for x in br], False)[1]
-        ##   f = lambda b : _absDiffBranch(b, vls) + a1*b
-        ##   optBranches[nn] = fminbound(f, 0, vls[0][-1])
             
       elif method == ROOTED_AGREEMENT :
         dt = '[' + ','.join(["(%.15g,%.15g)" % (h,h+b) for h,b in br]) + ']'
@@ -406,9 +370,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
         if method != BRANCH_SCORE :
           brx = [x[1] for x in br] if usesHeights else br
           vls = _prepare(brx, False)[1]
-        # else vls ready
-        #else :
-        #  vls = _prepare(br, False)[1]
+        # else vls is ready (been computed already)
         f = lambda b : _absDiffBranch(b, vls) + a1*b
         optBranches[nn] = fminbound(f, 0, vls[0][-1])
           
@@ -444,9 +406,6 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
         else :
           ee += "+ _absDiffBranch(h0,%s)" % vlsas
           
-        ## if initMethod == "opt" :
-        ##   f = lambda b : _absDiffBranch(b, vls)
-        ##   optBranches[tree.root] = fminbound(f, 0, treeHeight(tree)*2)
         rootDone = True
       
   # Total distance of branches terminating at a clade which is missing in tree.
@@ -458,7 +417,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
       if method == BRANCH_SCORE_2:
         f = lambda b : (b * fctr - 0)**2
       elif usesHeights :
-        f = lambda hb : hb[1] * fctr
+        f = lambda (h,b) : b * fctr
       else :
         f = lambda b : b * fctr
         
@@ -466,7 +425,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
       c0 += a0
       z0 += a0
 
-  # not used anymore, save memory now
+  # Not used anymore, save memory now
   del posteriorParts ; posteriorParts = None
   
   # Tuck in the constant
@@ -476,11 +435,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
     return (None, 0.0)
 
   if initMethod == "opt":
-    #import pdb; pdb.set_trace()
-    #if method in [BRANCH_SCORE, HEIGHTS_SCORE, ROOTED_AGREEMENT] :
     _setTreeHeights(tree, optBranches)
-    #else :
-    #  pass
     
   # Get code which transforms the heights encoding to branch lengths
   # A descendant height is specified as a fraction in [0,1] of its ancestor
@@ -502,7 +457,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
   # Number of variables (heights)
   nx = len(tree.get_terminals())-1
 
-  # a function for obtaining the encoding of starting target tree
+  # Function for obtaining the encoding of starting target tree
   xcod = "def htoxs():\n  x = [0]*%d\n  " % nx + "\n  ".join(htox) \
          + "\n  return x"
   exec xcod in globals()
@@ -540,7 +495,6 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
         print "WARNING:", sol[2]['task']
         
       finaleVal = v1score(sol[0])
-      #pdb.set_trace()
       
       if finaleVal < initialVal :
         break

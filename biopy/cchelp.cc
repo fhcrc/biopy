@@ -114,9 +114,13 @@ demoLPpopulation(PyObject*, PyObject* args)
       t -= x;
       width -= x;
     }
-    double vk = darrayElement(vals, k);
-    double vkp1 =  darrayElement(vals, k+1);;
-    pop = vk + (t/width) * (vkp1 - vk);
+    double const vk = darrayElement(vals, k);
+    double const vkp1 =  darrayElement(vals, k+1);;
+    if( width == 0.0 ) {
+      pop = vk;
+    } else {
+      pop = vk + (t/width) * (vkp1 - vk);
+    }
   }
   
   return PyFloat_FromDouble(pop);

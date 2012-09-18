@@ -182,8 +182,8 @@ def _drawTree(tree, nid, cladesDict, positioning, fill, generalPlotAttributes,
     p = sum([x.wpar for x in pr])
 
   br = d.naturalLimit() or node.data.branchlength
-
   p1 = d.population(br)
+  #if br == 0 : p1 = d.vals[0]
   h = pr[0].hpar
   hpar = h + br
   if pConst :
