@@ -89,12 +89,16 @@ class TreeBuilder(object) :
     """
     t = self.t
     rr = t.node(t.root)
-    rr.set_succ(rootNode.succ)
-    for p in rootNode.succ :
-      t.node(p).set_prev(t.root)
-    if hasattr(rootNode.data,"attributes") :
-      rr.data.attributes = rootNode.data.attributes
-    t.kill(rootNode.id)
+    if rootNode.succ :
+      rr.set_succ(rootNode.succ)
+      for p in rootNode.succ :
+        t.node(p).set_prev(t.root)
+      if hasattr(rootNode.data,"attributes") :
+        rr.data.attributes = rootNode.data.attributes
+      t.kill(rootNode.id)
+    else :
+      rr.set_succ([rootNode.id])
+      rootNode.set_prev(t.root)
     return t
 
 class TreeLogger(object) :
