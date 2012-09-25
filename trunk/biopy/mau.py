@@ -45,7 +45,7 @@ def mauCanonical(tree, internalNodes = True) :
 """
 
   nh = nodeHeights(tree)
-  return mauCanonicalSub(tree, tree.node(tree.root), nh, internalNodes)
+  return _mauCanonicalSub(tree, tree.node(tree.root), nh, internalNodes)
 
 def _mauCanonicalSub(t, node, nodeHeights, internalNodes = False) :
   """ Return representation of subtree of 't' rooted at node."""
@@ -85,7 +85,7 @@ def _mau2treeInternal(leaves, heights, internals) :
   lf, lh, li = _mau2treeInternal(leaves[0:mpp1], heights[0:mp], internals[0:mp])
   rt, rh, ri = _mau2treeInternal(leaves[mpp1:], heights[mpp1:], internals[mpp1:])
   h,(i,swap) = heights[mp], internals[mp]
-  t = [[lf, h -lh, li], [rt, h - rh, ri]]
+  t = [[lf, h - lh, li], [rt, h - rh, ri]]
   if swap :
     t = t[1],t[0]
   return (t, h, i)
