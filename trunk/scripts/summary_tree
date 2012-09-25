@@ -43,6 +43,11 @@ parser.add_argument("--sort-topologies-by", dest="sortby", metavar="METHOD",
                     """ criteria. mcc better for likelihood, tcb for truth.""" +
                     """tcb,mcc,conditional,highest-posterior default %(default)s""")
 
+parser.add_argument("--search", dest="serachTopologies",
+                    help="""Search in topology space based on zero length""" +
+                    """ present in optimized trees.""",
+                    action="store_true", default = False)
+
 parser.add_argument("--distance-method", dest="distance", metavar="METHOD", 
                     choices=["branch-score", "branch-score-2", "heights-score", "rooted-agreement"],
                     action = DistanceAction, default = biopy.treesPosterior.BRANCH_SCORE,
@@ -243,6 +248,51 @@ from biopy.treeMeasure import cladesInTreesSet, conditionalCladeScore
 from biopy.treeutils import getTreeClades, treeHeight
 from math import log
 
+import copy, itertools, random
+def getNNIcandidates(tr) :
+  cans = [x for x in tr.all_ids() if x != tr.root and tr.node(x).data.branchlength == 0]
+  if len(cans) :
+    #random.shuffle(cans)
+    allc = []
+
+    tr = copy.deepcopy(tr)
+    for n in cans :
+      nn = tr.node(n)
+      if not nn.succ:
+        continue
+      nn = tr.node(n)
+      side = random.choice((0,1))
+      ch = nn.succ[side]
+      tr.node(ch).prev = nn.prev
+      par = nn.prev
+      npar = tr.node(par)
+      i = npar.succ.index(n)
+      nn.succ[side] = npar.succ[1-i]
+      tr.node(nn.succ[side]).prev = n
+      npar.succ[1-i] = ch
+    allc.append(tr)
+    
+    for n in cans :
+      nn = tr.node(n)
+      if not nn.succ:
+        continue
+      tr = copy.deepcopy(tr)
+      nn = tr.node(n)
+      side = random.choice((0,1))
+      if 1:
+        ch = nn.succ[side]
+        tr.node(ch).prev = nn.prev
+        par = nn.prev
+        npar = tr.node(par)
+        i = npar.succ.index(n)
+        nn.succ[side] = npar.succ[1-i]
+        tr.node(nn.succ[side]).prev = n
+        npar.succ[1-i] = ch
+        allc.append(tr)
+        
+    return allc
+  return []
+
 def sortTopologies(allTops, atMost) :
   trees = reduce(lambda x,y : x+y, [trs for top,trs in allTops])
   if options.sortby == 'tcb' :
@@ -294,7 +344,7 @@ if 1:
       topology[k].append(tree)
 
   allt = topology.items()
-  allt = sortTopologies(allt, ntops)
+  allt = sortTopologies(allt, ntops if limit <= 0 else len(allt))
   
 if ntops > len(allt) :
   ntops = len(allt)
@@ -320,20 +370,22 @@ same support as the %dth one (%d trees, %.3f%%)""" % (k - ntops, ntops, lLast, l
        
   candidates = [x[1][0] for x in allt[:ntops]]
 else :
-  import random
+  if 0 :
+    import random
+  
+    candidates = []
+    while len(candidates) < len(allt) :
+      l = []
+      k = len(candidates)
+      lFirst = len(allt[k][1])
+      while k < len(allt) and lFirst == len(allt[k][1]) :
+        l.append(allt[k][1][0])
+        k += 1
+      random.shuffle(l)
+      # print len(candidates), len(l), lFirst
+      candidates.extend(l)
 
-  candidates = []
-  while len(candidates) < len(allt) :
-    l = []
-    k = len(candidates)
-    lFirst = len(allt[k][1])
-    while k < len(allt) and lFirst == len(allt[k][1]) :
-      l.append(allt[k][1][0])
-      k += 1
-    random.shuffle(l)
-    # print len(candidates), len(l), lFirst
-    candidates.extend(l)
-
+  candidates = [x[1][0] for x in allt]
   #for x in candidates:
   #  print toNewick(x, None, topologyOnly=1)
   print >> sys.stderr, """trying in order %d topologies (time permitting) ...""" \
@@ -350,10 +402,17 @@ if limit > 0 or progress :
   startTime = time()
 
 postTrees = trees
+toposTried = dict()
+lesserCans = []
 
-for tree in candidates:
+while len(candidates) :
+  tree = candidates.pop(0)
+  treeTop = toNewick(tree, topologyOnly=1)
+  if treeTop in toposTried:
+    continue
+  
   if useOnlyMatchingTopologies:
-    k = toNewick(tree, None, topologyOnly=True)
+    k = treeTop
     if k not in topology :
       # no such trees, skip topology
       print >> sys.stderr, "*** skip %s, no posterior trees" % k
@@ -366,12 +425,15 @@ for tree in candidates:
 
   # Use normalization and init defaults 
   norm = True
-  tr, score = minDistanceTree(options.distance, tree, postTrees,
-                              nodesMinHeight = nh, withDerivative = options.derivative)
-  
-  # normalize score
-  score = (score / len(postTrees)) ** 0.5
 
+  tr, score = minDistanceTree(options.distance, tree, postTrees,
+                              nodesMinHeight = nh, withDerivative =
+                              options.derivative, norm = norm)
+  
+  if options.distance == biopy.treesPosterior.BRANCH_SCORE_2 :
+    # normalize score
+    score = (score / len(postTrees)) ** 0.5
+    
   #print 
   #print score,toNewick(tr)
 
@@ -380,7 +442,22 @@ for tree in candidates:
     bestScore = score
     bestTree = tr
     newBest = True
-    
+
+    if options.serachTopologies :
+      cn = getNNIcandidates(tr)
+      if len(cn) :
+        # Try the major topology (with all zero-branch NNI applied) next
+        candidates = cn[0:1] + candidates
+        lesserCans = cn[1:] + lesserCans
+
+  if options.serachTopologies :
+    toposTried[treeTop] = True
+    # Some hackish criteria: start injecting lesser topologies after 10 main
+    # ones between 4 main ones
+
+    if lesserCans and len(toposTried) > 10 and (len(toposTried)) % 4 == 0 :
+      candidates.insert(0,lesserCans.pop(0))
+      
   nCandidatesTried += 1
   if limit > 0 or progress :
     timenow = time()
