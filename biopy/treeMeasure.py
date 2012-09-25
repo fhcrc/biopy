@@ -16,12 +16,12 @@ import numpy, numpy.linalg
 from collections import defaultdict
 import operator
 
-__all__ = ["branchScoreTreeDistance", "treeScoreDistance",
-           "heightsScoreTreeDistance"
-           "allPartitions", "treeLength", "treeLengthNormed",
-           "treeArea", "vdistance",
-           "rootedAgreementScore", "conditionalCladeScore",
-           "cladesInTreesSet", "setTreeClades"]
+__all__ = [
+  "branchScoreTreeDistance", "treeScoreDistance", "heightsScoreTreeDistance",
+  "allPartitions", "treeLength", "treeLengthNormed", "treeArea", "vdistance",
+  "rootedAgreementScore", "conditionalCladeScore", "cladesInTreesSet",
+  "setTreeClades"
+  ]
 
 def _collectCladeTaxa(tree, nodeId, taxa, partitions, withHeights) :
   """ Return a (reverse) mapping of taxa for each node in the sub-tree below
@@ -292,12 +292,8 @@ def cladesInTreesSet(trees, withPairs=False, tidyup=True, func=None, withTaxa = 
       if tidyup :
         del node.data.clade   
         del node.data.height   
-    #for n in xtree.get_terminals():
-    #  node = xtree.node(n)
-    #  node.data.clade = frozenset(node.data.clade)
 
   if func is None :
-    #n = len(trees)
     clc = dict([(k,x) for k,x in clc.iteritems()])
     if withPairs :
       clc2 = dict([(k,x) for k,x in clc2.iteritems()])
@@ -309,16 +305,6 @@ def cladesInTreesSet(trees, withPairs=False, tidyup=True, func=None, withTaxa = 
       clc2 = dict([(k,x) for k,x in clc2.iteritems()])
       return (clc, clc2)
     return clc
-  
-## def getSPS(xtrees) :  
-##   clc = cladesInTreesSet(xtrees)
-
-##   sp = [sum([log(clc[frozenset(c)]) for c,node in getTreeClades(xtree, False)])
-##         for xtree in xtrees]
-
-##   sps = sorted(enumerate(sp), key = lambda x : x[1], reverse=1)
-    
-##   return sp,sps
 
 def conditionalCladeScore(tree, clc12, laplaceCorrection = False) :
   clc, clc2 = clc12

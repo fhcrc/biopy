@@ -37,10 +37,11 @@ parser.add_argument("--every", "-e", metavar="E", type = int,
                     i.e. %(default)d)""", default = 1)
 
 parser.add_argument("--sort-topologies-by", dest="sortby", metavar="METHOD", 
-                    choices=["highest-posterior", "conditional", "mcc"],
-                    default = "mcc",
+                    choices=["highest-posterior", "conditional", "mcc", "tcb"],
+                    default = "tcb",
                     help="""Try topologies in order determined by this""" +
-                    """ criteria. mcc,conditional,highest-posterior default %(default)s""")
+                    """ criteria. mcc better for likelihood, tcb for truth.""" +
+                    """tcb,mcc,conditional,highest-posterior default %(default)s""")
 
 parser.add_argument("--distance-method", dest="distance", metavar="METHOD", 
                     choices=["branch-score", "branch-score-2", "heights-score", "rooted-agreement"],
@@ -244,7 +245,14 @@ from math import log
 
 def sortTopologies(allTops, atMost) :
   trees = reduce(lambda x,y : x+y, [trs for top,trs in allTops])
-  if options.sortby == 'mcc' :
+  if options.sortby == 'tcb' :
+    cl = cladesInTreesSet(trees, func = lambda n : n.branchlength)
+    for k in cl :
+      cl[k] = sum(cl[k])
+    tcb = lambda (top,trs) : sum([cl[frozenset(c)]
+                                  for c,node in getTreeClades(trs[0], False)])
+    allTops.sort(key = tcb, reverse=1)
+  elif options.sortby == 'mcc' :
     cl = cladesInTreesSet(trees)
     mcc = lambda (top,trs) : sum([log(cl[frozenset(c)])
                                 for c,node in getTreeClades(trs[0], False)])
