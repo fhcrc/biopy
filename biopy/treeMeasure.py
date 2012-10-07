@@ -207,7 +207,8 @@ def treeArea(tree) :
   """
   return sum([_nodeBranchPop(tree, x) for x in tree.all_ids() if x != tree.root])
 
-def allPartitions(referenceTree, trees, func = None, withHeights = False) :
+def allPartitions(referenceTree, trees, func = None, withHeights = False,
+                  withRoot = False) :
   """ Clade information summary for a set of trees.
 
   Summerize clades from all trees in one mapping. All trees must be on the
@@ -215,12 +216,14 @@ def allPartitions(referenceTree, trees, func = None, withHeights = False) :
   the value is a sequence of (tree,node) pairs. If func is given, the values are
   the results of applying func to the (tree,node) pair.
   """
-  
+
+  if withRoot :
+    rootHeights = []
   taxa = referenceTree.get_taxa()
   p = dict()
   for tree in trees:
     p1 = dict()
-    _collectCladeTaxa(tree, tree.root, taxa, p1, withHeights)
+    h = _collectCladeTaxa(tree, tree.root, taxa, p1, withHeights)
     for k,nd in p1.iteritems() :
       pk = p.get(k)
       v = (tree, nd)
@@ -230,8 +233,10 @@ def allPartitions(referenceTree, trees, func = None, withHeights = False) :
         p[k] = [v]
       else :
         pk.append(v)
-
-  return p
+    if withRoot :
+      rootHeights.append(h)
+      
+  return (p,rootHeights) if withRoot else p
 
 def _parHeight(node) :
   br = node.data.branchlength

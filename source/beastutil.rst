@@ -17,15 +17,16 @@ starbeast_demog_log
 summary_tree
 ------------
 
-    Create a summary tree from posterior trees. The BEAST tree
-    annotator picks up a topology and assign a height to each internal
-    node independently. Sometimes this can be suboptimal -- in some
-    cases the generated tree may contain negative branchs.
-    summary_tree takes a more global approach and looks for a tree
-    which minimizes the overall distance to the whole set of posterior
-    trees, using a tree distance measure.
+    Generate a single summary tree from the posterior of a Bayesian
+    analysis. BEAST tree annotator selects a topology using the
+    "Maximum Clade Credibility" criterion and independently assigns a
+    height to each internal node. Sometimes, this can be suboptimal --
+    in some cases the generated tree may even contain negative branches.
+    *summary_tree* takes a more global approach and searches for a tree
+    which minimizes the mean distance to the whole set of posterior
+    trees, using a tree distance.
 
-    In addition, summary_tree can insure that a generated gene tree is
+    In addition, *summary_tree* can insure that a generated gene tree is
     compatibile with a given species tree. This can be useful when the
     two are plotted together.
 

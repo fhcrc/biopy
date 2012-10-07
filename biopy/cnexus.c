@@ -17,20 +17,19 @@
 
 static PyObject * cnexus_scanfile(PyObject *self, PyObject *args)
 {
-    PyObject *cleaninput;
     const char *input;
     char *scanned, *scanned_start;
     char t, quotelevel;
     int speciallevel, commlevel;
-
+    
     quotelevel=0;
     speciallevel=0;
     commlevel=0;
     
     if (!PyArg_ParseTuple(args, "s", &input))
-        return NULL;
+        return NULL;    
     if (!(scanned=malloc(strlen(input)+1)))
-        PyErr_NoMemory();
+        PyErr_NoMemory();    
     scanned_start=scanned;
     for(t=*input;(t=*input);input++) 
     {
@@ -94,12 +93,17 @@ static PyObject * cnexus_scanfile(PyObject *self, PyObject *args)
     }
     else
     {
-        *scanned=0; /* end of string */
-        cleaninput= Py_BuildValue("s",scanned_start);
-        free(scanned_start);
-        return cleaninput;
+      *scanned=0; /* end of string */
+      PyObject* cleaninput = PyString_FromString(scanned_start);
+      free(scanned_start);
+      if( ! cleaninput ) {
+	PyErr_NoMemory();
+      }
+	
+      return cleaninput;
     }
 }
+
 
 static PyMethodDef cNexusMethods[]=
 {

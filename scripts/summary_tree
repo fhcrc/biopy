@@ -37,16 +37,25 @@ parser.add_argument("--every", "-e", metavar="E", type = int,
                     i.e. %(default)d)""", default = 1)
 
 parser.add_argument("--sort-topologies-by", dest="sortby", metavar="METHOD", 
-                    choices=["highest-posterior", "conditional", "mcc", "tcb"],
+                    choices=["highest-posterior", "conditional", "mcc", "tcb",
+                             "mdtp-bs1","mdtp-bs2","mdtp-hs", "mdtp-ra"],
                     default = "tcb",
                     help="""Try topologies in order determined by this""" +
-                    """ criteria. mcc better for likelihood, tcb for truth.""" +
-                    """tcb,mcc,conditional,highest-posterior default %(default)s""")
+                    """ criteria. mcc better for likelihood, tcb for truth.
+                    mdtp: mean-distance-to-posterior. """ +
+                    """tcb,mcc,conditional,highest-posterior,mdtp-* default %(default)s""")
 
 parser.add_argument("--search", dest="serachTopologies",
                     help="""Search in topology space based on zero length""" +
                     """ present in optimized trees.""",
                     action="store_true", default = False)
+
+parser.add_argument("--method", dest="method", metavar="METHOD", 
+                    choices=["min-distance", "taxon-pairs", "median-heights",
+                             "taxon-partitions"],
+                    default = "min-distance",
+                    help="""method to use: min-distance,taxon-pairs,median-heights""" +
+                    """taxon-partitions (default min-distance)""")
 
 parser.add_argument("--distance-method", dest="distance", metavar="METHOD", 
                     choices=["branch-score", "branch-score-2", "heights-score", "rooted-agreement"],
@@ -118,100 +127,106 @@ if 0 < burnIn < 1 :
                         " given as a percent in the range zero to 100.")
 burnIn /= 100.0
 
+optimizingMethod = options.method == "min-distance"
+
 every = options.every
 ntops = options.ntops
 limit = options.limit
-useOnlyMatchingTopologies = options.matching
 
-if options.topology is not None :
-  if '(' not in options.topology:
-    print >> sys.stderr,"topology is not a tree? (contains no '(')"
-    sys.exit(1)
-  try :
-    options.topology = INexus.Tree(options.topology)
-  except Exception,e:
-    print >> sys.stderr, "Error in parsing tree:", e.message
-    sys.exit(1)
+if not optimizingMethod:
+  ntops = 1
 else :
-  if useOnlyMatchingTopologies:
-    print >> sys.stderr, """WARNING: Using --matching without --topology is\
- dubious. procceding anyway..."""
+  useOnlyMatchingTopologies = options.matching
 
-if options.compatible is not None :
-  if os.path.isfile(options.compatible) :
-    spTree = INexus.INexus(options.compatible).trees[0]
-  else :
-    try :
-      spTree = INexus.Tree(options.compatible)
-    except Exception,e:
-      print >> sys.stderr, "*** Error: failed to read tree: ",\
-            e.message,"[",options.compatible,"]"
+  if options.topology is not None :
+    if '(' not in options.topology:
+      print >> sys.stderr,"topology is not a tree? (contains no '(')"
       sys.exit(1)
-
-  if options.spmap is not None :
-    bd = {'species' : None}
-    bsps = beastXMLhelper.readBeastFile(options.spmap, bd)
-    speciesMapping = bd['species']['species']
-
-    def getSpeciesOf(name) :
-      for spName in speciesMapping :
-        if name in speciesMapping[spName] :
-          return spName
-      return None
-    
+    try :
+      options.topology = INexus.Tree(options.topology)
+    except Exception,e:
+      print >> sys.stderr, "Error in parsing tree:", e.message
+      sys.exit(1)
   else :
+    if useOnlyMatchingTopologies:
+      print >> sys.stderr, """WARNING: Using --matching without --topology is\
+   dubious. procceding anyway..."""
 
-    spTerms = spTree.get_terminals()
-    spNames = [spTree.node(x).data.taxon for x in spTerms]
-
-    def getSpeciesOf(name) :
-      b = [x in name for x in spNames]
-      if sum(b) == 1 :
-        sid = b.index(True)
-        return spNames[sid]
-      return None
-    
-  def _setSPS(tr, nid) :
-    """ Store the set of species spanned by the subtree in each node.
-
-    At the end, each node in tree 'tr' contains data.species whixh holds the set
-    species names as strings.
-    """
-    n = tr.node(nid)
-
-    if not len(n.succ) :
-      # leaf
-      s = getSpeciesOf(n.data.taxon)
-      assert s is not None, n.data.taxon
-      allsp = frozenset([s])
+  if options.compatible is not None :
+    if os.path.isfile(options.compatible) :
+      spTree = INexus.INexus(options.compatible).trees[0]
     else :
-      # internal node
-      l = [_setSPS(tr, x) for x in n.succ]
-      allsp = reduce(lambda x,y : x.union(y), l)
+      try :
+        spTree = INexus.Tree(options.compatible)
+      except Exception,e:
+        print >> sys.stderr, "*** Error: failed to read tree: ",\
+              e.message,"[",options.compatible,"]"
+        sys.exit(1)
 
-    n.data.species = allsp
-    return n.data.species
+    if options.spmap is not None :
+      bd = {'species' : None}
+      bsps = beastXMLhelper.readBeastFile(options.spmap, bd)
+      speciesMapping = bd['species']['species']
 
-  def getSPlimits(gtr, spt = spTree) :
-    """ Establish a mapping between each internal node of the gene tree 'gtr' and
-    its minimum height according to species tree 'spt'.
-    """
+      def getSpeciesOf(name) :
+        for spName in speciesMapping :
+          if name in speciesMapping[spName] :
+            return spName
+        return None
 
-    nh = nodeHeights(gtr, allTipsZero = False)
-    snh = nodeHeights(spt, allTipsZero = False)
+    else :
 
-    _setSPS(gtr, gtr.root)
-    for i in gtr.all_ids() :
-      n = gtr.node(i)
-      if len(n.succ) :
-        if len(n.data.species) > 1 :
-          stx = [spt.search_taxon(x) for x in n.data.species]        
-          k = getCommonAncesstor(spt, stx)
-          b = snh[k]
-        else :
-          b = 0
-        nh[i] = b 
-    return nh
+      spTerms = spTree.get_terminals()
+      spNames = [spTree.node(x).data.taxon for x in spTerms]
+
+      def getSpeciesOf(name) :
+        b = [x in name for x in spNames]
+        if sum(b) == 1 :
+          sid = b.index(True)
+          return spNames[sid]
+        return None
+
+    def _setSPS(tr, nid) :
+      """ Store the set of species spanned by the subtree in each node.
+
+      At the end, each node in tree 'tr' contains data.species whixh holds the set
+      species names as strings.
+      """
+      n = tr.node(nid)
+
+      if not len(n.succ) :
+        # leaf
+        s = getSpeciesOf(n.data.taxon)
+        assert s is not None, n.data.taxon
+        allsp = frozenset([s])
+      else :
+        # internal node
+        l = [_setSPS(tr, x) for x in n.succ]
+        allsp = reduce(lambda x,y : x.union(y), l)
+
+      n.data.species = allsp
+      return n.data.species
+
+    def getSPlimits(gtr, spt = spTree) :
+      """ Establish a mapping between each internal node of the gene tree 'gtr' and
+      its minimum height according to species tree 'spt'.
+      """
+
+      nh = nodeHeights(gtr, allTipsZero = False)
+      snh = nodeHeights(spt, allTipsZero = False)
+
+      _setSPS(gtr, gtr.root)
+      for i in gtr.all_ids() :
+        n = gtr.node(i)
+        if len(n.succ) :
+          if len(n.data.species) > 1 :
+            stx = [spt.search_taxon(x) for x in n.data.species]        
+            k = getCommonAncesstor(spt, stx)
+            b = snh[k]
+          else :
+            b = 0
+          nh[i] = b 
+      return nh
     
 if progress:
   print >> sys.stderr, "counting trees ...,",
@@ -243,6 +258,7 @@ if 1 :
       data = tree.node(nid).data
       if hasattr(data, "attributes") :
         del data.attributes
+
 
 from biopy.treeMeasure import cladesInTreesSet, conditionalCladeScore
 from biopy.treeutils import getTreeClades, treeHeight
@@ -307,7 +323,7 @@ def sortTopologies(allTops, atMost) :
     mcc = lambda (top,trs) : sum([log(cl[frozenset(c)])
                                 for c,node in getTreeClades(trs[0], False)])
     allTops.sort(key = mcc, reverse=1)
-  elif options.sortby ==  "highest-posterior":
+  elif options.sortby == "highest-posterior":
     # Sort by amount of support
     allTops.sort(reverse=1, key = lambda (top,trs) : len(trs))
 
@@ -327,12 +343,14 @@ def sortTopologies(allTops, atMost) :
     clc2 = cladesInTreesSet(trees, 1)
     lar = lambda (top,trs) : conditionalCladeScore(trs[0], clc2, options.correction)
     allTops.sort(key = lar, reverse=1)
+  elif options.sortby == "mdtp":
+    pass
   else :
-    raise
+    raise ValueError(options.sortby)
   
   return allTops
 
-if 1:
+if options.method != "taxon-partitions" :
   if progress:
     print >> sys.stderr, "collect topologies and sort ...,",
   topology = dict()
@@ -346,8 +364,22 @@ if 1:
   allt = topology.items()
   allt = sortTopologies(allt, ntops if limit <= 0 else len(allt))
   
-if ntops > len(allt) :
-  ntops = len(allt)
+  if ntops > len(allt) :
+    ntops = len(allt)
+
+if not optimizingMethod :
+  from biopy import treesSummaries
+  # "median-heights", "taxon-partitions"
+  if options.method == "taxon-pairs" :
+    stree = treesSummaries.summaryTreeUsingTaxonPairs(allt[0][1][0], trees)
+  elif options.method == "median-heights" :
+    stree = treesSummaries.summaryTreeUsingMedianHeights(allt[0][1][0], trees)
+  elif options.method == "taxon-partitions" :
+    stree = treesSummaries.taxaPartitionsSummaryTree(trees)
+  else :
+    raise ValueError( options.method )
+  print toNewick(stree)
+  sys.exit(0)
   
 if options.topology is not None :
   candidates = [options.topology]

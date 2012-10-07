@@ -220,7 +220,7 @@ def toNewick(tree, nodeId = None, topologyOnly = False, attributes = None) :
   Child nodes are sorted (via text), so representation is unique and does not
   depend on arbitrary children ordering.
   """
-  return tree.toNewick(nodeId, topologyOnly,attributes)
+  return tree.toNewick(nodeId, topologyOnly, attributes)
 
 
 def _getNodeHeight(tree, n, heights, w = 0):
