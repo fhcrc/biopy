@@ -4,6 +4,8 @@
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 #
 
+from __future__ import division
+
 """
 Tree posterior distance optimization
 ====================================
@@ -15,19 +17,22 @@ distances to all trees in the set under some tree distance.
 BRANCH_SCORE: 
 BRANCH_SCORE_2:
 HEIGHTS_SCORE:
+HEIGHTS_ONLY:
 ROOTED_AGREEMENT:
 
-Fixed target topology
+Fixed target topology.
 """
 
-__all__ = ["minDistanceTree", "BRANCH_SCORE" , "BRANCH_SCORE_2" , "HEIGHTS_SCORE" , "ROOTED_AGREEMENT" ]
 
-BRANCH_SCORE , BRANCH_SCORE_2 , HEIGHTS_SCORE , ROOTED_AGREEMENT = range(4)
+__all__ = ["minDistanceTree", "BRANCH_SCORE" , "BRANCH_SCORE_2" ,
+           "HEIGHTS_SCORE" , "ROOTED_AGREEMENT", "HEIGHTS_ONLY" ]
+
+BRANCH_SCORE , BRANCH_SCORE_2 , HEIGHTS_SCORE , ROOTED_AGREEMENT, HEIGHTS_ONLY = range(5)
 
 import scipy, scipy.optimize, copy, random
 from scipy.optimize import fminbound
 
-from numpy import array
+from numpy import array, median
 
 from treeMeasure import allPartitions
 from treeutils import treeHeight, nodeHeights, getPreOrder, getPostOrder
@@ -55,6 +60,21 @@ def _setTreeHeights(tree, opts) :
       assert node.data.branchlength >= 0
   return tree
 
+def _setTreeHeightsForTargets(tree, ftargets) :
+  for i,h in ftargets() :
+    tree.node(i).data.height = h
+  for i in tree.get_terminals() :
+     tree.node(i).data.height = 0
+
+  for n in tree.all_ids() :
+    node = tree.node(n)
+    if node.prev is not None:
+      p = tree.node(node.prev) 
+      node.data.branchlength = p.data.height - node.data.height
+      assert node.data.branchlength >= 0
+  for i in tree.all_ids() :
+    del tree.node(i).data.height
+  
 # Sort branches and pre-compute cumulative sum, so distance can be computed
 # in O(lg(n)), using a binary search, instead of O(n).
 
@@ -163,7 +183,7 @@ def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
   sr.append("h%d = x[0]" % nInOrder[0])
   if withInit:
     htox.append("x[0] = %.15g" % nh[nInOrder[0]])
-  
+
   if withDerivative:
     sr.append("d_h%d_x = [1] + [0]*%d" % (nInOrder[0],len(nInOrder)-1))
     sr.append("nDer = %d" % len(nInOrder))
@@ -217,7 +237,7 @@ def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
 
 def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
                     nodesMinHeight = None, withDerivative = True,
-                    initMethod = "opt", factr=1e7, warnings = True) :
+                    initMethod = "opt", factr=1e7, warnings = True, internals = False) :
   """ Find a branch length assignment for tree which minimizes the total
   distance to the set of trees.
 
@@ -239,16 +259,23 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
                       
   treeParts = allPartitions(tree, [tree])
 
+  hsOnly = method == "HEIGHTS_ONLY"
   if usesHeights:
-    func = lambda t,(n,h) : (h, t.node(n).data.branchlength)
+    if hsOnly :
+      func = lambda t,(n,h) : h
+    else :
+      func = lambda t,(n,h) : (h, t.node(n).data.branchlength)
   else :
     func = lambda t,n : t.node(n).data.branchlength
   
-  posteriorParts = allPartitions(tree, trees, func = func, withHeights = usesHeights)
-
+  posteriorParts = allPartitions(tree, trees, func = func,
+                                 withHeights = usesHeights, withRoot = hsOnly)
+  if hsOnly :
+    posteriorParts, rhs = posteriorParts
+    
   # For numerical stability in computing gradients, scale trees
   # to get a mean root height of 1 
-  fctr = len(trees)/ sum([treeHeight(x) for x in trees]) if norm else 1
+  fctr = len(trees) / sum([treeHeight(x) for x in trees]) if norm else 1
   if verbose: print fctr
   
   # Expression (as text) for computing the total distance. Variables are 
@@ -265,9 +292,12 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
   # Constant term of total distance (independent from branch lengths) 
   c0 = 0
 
-  # OPtimal length of branch according to BRANCH_SCORE. Used to get a quick and
+  # Optimal length of branch according to BRANCH_SCORE. Used to get a quick and
   # rough tarting point.
   optBranches = dict()
+
+  if hsOnly :
+    targets = "("
   
   for r,k in enumerate(treeParts) :
     # Node id
@@ -278,7 +308,10 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
 
       # Branchs/Heights from tree set for this clade
       if usesHeights :
-        br = [(h*fctr,b*fctr) for h,b in posteriorParts[k]]
+        if hsOnly :
+          hs = [h*fctr for h in posteriorParts[k]]
+        else :
+          br = [(h*fctr,b*fctr) for h,b in posteriorParts[k]]
       else :
         br = [b*fctr for b in posteriorParts[k]]
       
@@ -330,7 +363,19 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
 
           if a1 > 0 :
             ee += "+ %d * b%d" % (a1,nn)
-            
+
+      elif  method == HEIGHTS_ONLY :
+        
+        if not tree.node(nn).data.taxon  :
+          hTarget = median(hs)
+          if withDerivative :
+            pee += "  dv%d = 1 if bs%d > %.14f else -1\n" % (nn,nn,hTarget)
+            dee += "+(dv%d * d_h%d_x[k])" % (nn,nn)        
+
+          ee += "+ abs(bs%d - %.14f)" % (nn,hTarget)
+
+          targets += "(%d,%.14f)," % (nn,hTarget)
+        
       elif method == ROOTED_AGREEMENT :
         dt = '[' + ','.join(["(%.15g,%.15g)" % (h,h+b) for h,b in br]) + ']'
         if withDerivative :
@@ -393,8 +438,18 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
         optBranches[nn] = 0
         
     # Heights score need special treatment to include the root term.
-    if method == HEIGHTS_SCORE:
-      if tree.node(nn).prev == tree.root and not rootDone:
+    if (method == HEIGHTS_SCORE or hsOnly) and \
+           (tree.node(nn).prev == tree.root and not rootDone):
+      if hsOnly :
+        rTarget = median(rhs) * fctr
+        if withDerivative :
+          pee += "  dvroot = 1 if h0 > %.14f else -1" % rTarget
+          dee += "+(dvroot * (k==0) )"
+
+        ee += "+ abs(h0 - %.14f)" % (rTarget)
+
+        targets += "(%d,%.14f))" % (tree.root,rTarget)
+      else :  
         rhs = [(b+h)*fctr for h, b in posteriorParts[k]]
         vlsas,vls = _prepare(rhs, False)
         if withDerivative :
@@ -405,9 +460,9 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
 
         else :
           ee += "+ _absDiffBranch(h0,%s)" % vlsas
-          
-        rootDone = True
-      
+
+      rootDone = True
+
   # Total distance of branches terminating at a clade which is missing in tree.
   # This is (not necessarily good) lower bound on the total distance.
   z0 = 0
@@ -434,9 +489,18 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
   if z0 >= limit :
     return (None, 0.0)
 
-  if initMethod == "opt":
-    _setTreeHeights(tree, optBranches)
+  if hsOnly :
+    exec ("def ftargets():\n  return " + targets) in globals()
     
+  if initMethod == "opt":
+    if hsOnly :
+      _setTreeHeightsForTargets(tree, ftargets)
+    else : 
+      _setTreeHeights(tree, optBranches)
+  elif norm :
+    for n in tree.all_ids() :
+      tree.node(n).data.branchlength *= fctr
+      
   # Get code which transforms the heights encoding to branch lengths
   # A descendant height is specified as a fraction in [0,1] of its ancestor
   # height (but leading number is the root height).
@@ -473,19 +537,19 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
     print cod
 
   maxfun = 15000
-  if 1 :
-    # small protection against disasters
-    while True:
-      if initMethod != "random" :
-        x0 = htoxs()
-        if norm:
-          x0[0] = 1
-      else :
-        x0 = [1 if norm else treeHeight(tree)] + \
-             [random.random() for k in range(nx-1)]
 
-      initialVal = v1score(x0)     # assert x0[0] >= minRoot
-      
+  # small protection against disasters
+  while True:
+    if initMethod != "random" :
+      x0 = htoxs()
+    else :
+      x0 = [1 if norm else treeHeight(tree)] + \
+           [random.random() for k in range(nx-1)]
+
+    initialVal = v1score(x0)     # assert x0[0] >= minRoot
+    if withDerivative :
+      initialVal = initialVal[0]
+    if 1 :  
       sol = scipy.optimize.fmin_l_bfgs_b(v1score, x0,
                                         approx_grad=0 if withDerivative else 1,
                                         bounds = [[minRoot,None]] + [[0,1]]*(nx-1),
@@ -493,32 +557,31 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
                                         iprint=-1, maxfun=maxfun)
       if warnings and sol[2]['warnflag'] != 0 :
         print "WARNING:", sol[2]['task']
-        
-      finaleVal = v1score(sol[0])
-      
-      if finaleVal < initialVal :
-        break
-      
-      # try again from a random spot
-      initMethod = "random"
-      factr /= 10
-      if factr < 1e6 :
-        # failed, leave as is
-        sol = htox()
-        finaleVal = v1score(sol[0])
-        break
-  else :
-    sol = scipy.optimize.fmin_tnc(v1score,
-                                 [treeHeight(tree)*fctr] +
-                                 [random.uniform(.8,.9) for k in range(nx-1)],
-                                 #[.8 for k in range(nx-1)],
-                                 approx_grad=1,
-                                 bounds = [[minRoot,None]] + [[0,1]]*(nx-1),
-                                 maxfun=maxfun,
-                                 messages=0)
-    assert sol[2] == 1
+    else :
+      sol = scipy.optimize.fmin_tnc(v1score, x0,
+                                    approx_grad=0 if withDerivative else 1,
+                                    bounds = [[minRoot,None]] + [[0,1]]*(nx-1),
+                                    maxfun=maxfun,
+                                    messages=0)
+      assert sol[2] == 1
 
-  
+    finaleVal = v1score(sol[0])
+    if withDerivative :
+      finaleVal = finaleVal[0]
+
+    if finaleVal <= initialVal :
+      break
+
+    # try again from a random spot
+    initMethod = "random"
+    factr /= 10
+    if factr < 1e6 :
+      # failed, leave as is
+      sol = htox()
+      finaleVal = v1score(sol[0])
+      if withDerivative :
+        finaleVal = finaleVal[0]
+      break
 
   brs = code2branches(sol[0])
   for nn,br in brs:
@@ -526,11 +589,13 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
     tree.node(nn).data.branchlength = max(br/fctr, 0)
 
   val = finaleVal
-  if withDerivative :
-    val = val[0]
+  ## if withDerivative :
+  ##   val = val[0]
 
   # if norm under BRANCH_SCORE_2, there is no way to scale back
-  return (tree, val/fctr if (norm and method != BRANCH_SCORE_2) else val)
+  return (tree, val/fctr if (norm and method != BRANCH_SCORE_2) else val) + \
+         ((v1score, htoxs, code2branches, sol[0], fctr) if internals else tuple())
+
 
 
 

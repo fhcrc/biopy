@@ -536,7 +536,7 @@ class INexus(object):
     
     def read(self,input, sample = None):
         """Read and parse NEXUS input (filename, file-handle, string."""
-        
+
         # 1. Assume we have the name of a file in the execution dir
         # Note we need to add parsing of the path to dir/filename
         try:

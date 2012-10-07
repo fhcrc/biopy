@@ -539,21 +539,21 @@ class Tree(Nodes.Chain):
         return self.toNewick()
     #return self.to_string(plain=True)
 
-    def toNewick(self, nodeId = None, topologyOnly = False, attributes = None) :
+    def toNewick(self, nodeId = None, topologyOnly = False, attributes = None, includeStem=False) :
       """ BioPython tree or sub-tree to unique NEWICK format.
 
       Child nodes are sorted (via text), so representation is unique and does not
       depend on arbitrary children ordering.
       """
 
-      if not nodeId :
+      if nodeId is None:
         nodeId = self.root
       node = self.node(nodeId)
       data = node.data
       if data.taxon :
         rep = data.taxon
       else :
-        reps = [self.toNewick(n, topologyOnly, attributes) for n in node.succ]
+        reps = [self.toNewick(n, topologyOnly, attributes, True) for n in node.succ]
         reps.sort()
         rep = "(" + ",".join(reps) + ")"
 
@@ -566,7 +566,7 @@ class Tree(Nodes.Chain):
           s = s[:-1] + ']'
           rep += s
 
-      if not topologyOnly and nodeId != self.root and data.branchlength is not None:
+      if not topologyOnly and includeStem and data.branchlength is not None:
         rep = rep + (":%r" % data.branchlength)
       return rep
     
