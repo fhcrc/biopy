@@ -17,6 +17,8 @@ Unless explicitly specified, any tree is assumed to be Ultrametric
 """
 
 import operator, sys, os.path
+import random
+
 from genericutils import fileFromName
 
 # Bio.Nexus.Tree stuff
@@ -27,7 +29,8 @@ import Nodes
 __all__ = ["TreeBuilder", "TreeLogger", "getClade", "getTreeClades",
            "getCommonAncesstor", "countNexusTrees", "toNewick", "nodeHeights",
            "nodeHeight", "treeHeight", "setLabels", "convertDemographics",
-           "coalLogLike", "getPostOrder", "getPreOrder", "setSpeciesSimple"]
+           "coalLogLike", "getPostOrder", "getPreOrder", "setSpeciesSimple",
+           "resolveTree"]
 
 
 class TreeBuilder(object) :
@@ -470,3 +473,25 @@ def coalLogLike(tree, demog, condOnTree = False) :
   times = sorted([(t,nid not in terms) for nid,t in nh.items()])
 
   return coalescent.coalLogLike(demog, times, condOnTree)
+
+def resolveTree(tree) :
+  for n in getPostOrder(tree):
+    if len(n.succ) > 2 :
+      cans = [tree.node(x) for x in n.succ]
+      while len(cans) > 2 :
+        i,j = random.sample(range(len(cans)), 2)
+        if i > j :
+          i,j = j,i
+
+        nd = NodeData(branchlength=None)
+        node = Nodes.Node(nd)
+        node.set_succ([cans[i].id, cans[j].id])
+        nid = tree.add(node, n.id)
+        cans[i].set_prev(nid)
+        cans[j].set_prev(nid)
+        
+        cans[i] = node
+        del cans[j]
+      n.set_succ([x.id for x in cans])
+
+  return tree

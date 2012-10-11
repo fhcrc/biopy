@@ -54,14 +54,14 @@ parser.add_argument("--method", dest="method", metavar="METHOD",
                     choices=["min-distance", "taxon-pairs", "median-heights",
                              "taxon-partitions"],
                     default = "min-distance",
-                    help="""method to use: min-distance,taxon-pairs,median-heights""" +
+                    help="""method to use: min-distance,taxon-pairs,median-heights """ +
                     """taxon-partitions (default min-distance)""")
 
 parser.add_argument("--distance-method", dest="distance", metavar="METHOD", 
-                    choices=["branch-score", "branch-score-2", "heights-score", "rooted-agreement"],
+                    choices=["branch-score", "branch-score-2", "heights-score", "heights-only", "rooted-agreement"],
                     action = DistanceAction, default = biopy.treesPosterior.BRANCH_SCORE,
                     help="""Tree distance method to use: branch-score,branch-score-2,""" +
-                    """heights-score,rooted-agreement (default branch-score)""")
+                    """heights-score,heights-only,rooted-agreement (default branch-score)""")
 
 parser.add_argument("--ntops", "-n", metavar="N", type = int,
                     help="""Use the top N topologies from the posterior (default

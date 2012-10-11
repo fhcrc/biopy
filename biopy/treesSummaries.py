@@ -19,22 +19,41 @@ import copy
 from treeutils import getTreeClades, nodeHeights, getPostOrder, toNewick
 from treeMeasure import allPartitions
 from parseNewick import parseNewick
-from treePlotting import taxaDistance
 import mau
 
 # Should make this more efficient than O(#clades^2)
+# should handle (or check) for tip dates (all methods)
+
+def taxaDistance(tree, nid, distance) :
+  node = tree.node(nid)
+  if not node.succ:
+    return (1, [node.data.taxon])
+  else:
+    l,r = [taxaDistance(tree, x, distance) for x in node.succ]
+    n = l[0] + r[0]
+    for xl in l[1] :
+      for xr in r[1] :
+        key = (xl,xr) if xl < xr else (xr,xl)
+        distance[key] = n-1
+    return (n, l[1] + r[1])
+
+
 
 def summaryTreeUsingTaxonPairs(tree, xtrees, atz = False) :
   tree = copy.deepcopy(tree)
   
   sClades = getTreeClades(tree)
+  # Target clades in tree to set height of
   cladeSets = [frozenset(c) for c,n in sClades]
-  stats = [[0.0,0.0] for x in cladeSets]
+  #stats = [[0.0,0.0] for c in cladeSets]
+  stats = [[0.0] for c in cladeSets]
   NS = 0
 
   for t in xtrees:
     nhs = nodeHeights(t, allTipsZero = atz)
+    # Store height estimate from tree per target clade 
     h = [0.0]*len(cladeSets)
+    # We depend on those being in post order
     for c,n in getTreeClades(t) :
       c = frozenset(c)
       for k,x in enumerate(cladeSets) :
@@ -44,7 +63,7 @@ def summaryTreeUsingTaxonPairs(tree, xtrees, atz = False) :
     NS += 1
     for st,hk in zip(stats,h) :
       st[0] += hk
-      st[1] += hk**2
+      #st[1] += hk**2
 
   for (c,n),s in zip(sClades,stats) :
     n.data.hh = s[0]/NS
@@ -112,8 +131,9 @@ from numpy import mean
 import itertools
 
 # find a linear (on a line) order of tree taxa which is compatible with
-# as many trees (or parts of) as possible (compatible: can be ontained by
-# rotating internal nodes).
+# as many trees (or parts of) as possible. compatible: can be obtained by
+# rotating internal nodes. Simple approach, might get improvement if ties are
+# handled better.
 
 def _taxOrder(trees) :
   dtops = Counter(toNewick(tree, topologyOnly=1) for tree in trees)

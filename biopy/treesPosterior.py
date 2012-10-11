@@ -237,7 +237,7 @@ def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
 
 def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
                     nodesMinHeight = None, withDerivative = True,
-                    initMethod = "opt", factr=1e7, warnings = True, internals = False) :
+                    initMethod = "opt", factr=1e7, warnings = False, internals = False) :
   """ Find a branch length assignment for tree which minimizes the total
   distance to the set of trees.
 
@@ -259,7 +259,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
                       
   treeParts = allPartitions(tree, [tree])
 
-  hsOnly = method == "HEIGHTS_ONLY"
+  hsOnly = method == HEIGHTS_ONLY
   if usesHeights:
     if hsOnly :
       func = lambda t,(n,h) : h
@@ -316,7 +316,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
         br = [b*fctr for b in posteriorParts[k]]
       
       # Number of trees in set which do not have the clade 
-      a1 = len(trees) - len(br)
+      a1 = len(trees) - len(posteriorParts[k])
 
       if method == BRANCH_SCORE_2:
         # Expanded form of the non constant part of [sum_i (b_r - b_ri)**2], where
@@ -364,7 +364,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
           if a1 > 0 :
             ee += "+ %d * b%d" % (a1,nn)
 
-      elif  method == HEIGHTS_ONLY :
+      elif method == HEIGHTS_ONLY :
         
         if not tree.node(nn).data.taxon  :
           hTarget = median(hs)
@@ -411,7 +411,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
       else :
         raise RuntimeError("Invalid method %d" % method)
 
-      if initMethod == "opt" :
+      if initMethod == "opt" and not hsOnly :
         if method != BRANCH_SCORE :
           brx = [x[1] for x in br] if usesHeights else br
           vls = _prepare(brx, False)[1]
@@ -443,12 +443,11 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
       if hsOnly :
         rTarget = median(rhs) * fctr
         if withDerivative :
-          pee += "  dvroot = 1 if h0 > %.14f else -1" % rTarget
+          pee += "  dvroot = 1 if h0 > %.14f else -1\n" % rTarget
           dee += "+(dvroot * (k==0) )"
 
         ee += "+ abs(h0 - %.14f)" % (rTarget)
-
-        targets += "(%d,%.14f))" % (tree.root,rTarget)
+        targets += "(%d,%.14f)," % (tree.root,rTarget)
       else :  
         rhs = [(b+h)*fctr for h, b in posteriorParts[k]]
         vlsas,vls = _prepare(rhs, False)
@@ -466,19 +465,19 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
   # Total distance of branches terminating at a clade which is missing in tree.
   # This is (not necessarily good) lower bound on the total distance.
   z0 = 0
-  
-  for k in posteriorParts :
-    if k not in treeParts:
-      if method == BRANCH_SCORE_2:
-        f = lambda b : (b * fctr - 0)**2
-      elif usesHeights :
-        f = lambda (h,b) : b * fctr
-      else :
-        f = lambda b : b * fctr
-        
-      a0 = sum([f(x) for x in posteriorParts[k]])
-      c0 += a0
-      z0 += a0
+  if not hsOnly:
+    for k in posteriorParts :
+      if k not in treeParts:
+        if method == BRANCH_SCORE_2:
+          f = lambda b : (b * fctr - 0)**2
+        elif usesHeights :
+          f = lambda (h,b) : b * fctr
+        else :
+          f = lambda b : b * fctr
+
+        a0 = sum([f(x) for x in posteriorParts[k]])
+        c0 += a0
+        z0 += a0
 
   # Not used anymore, save memory now
   del posteriorParts ; posteriorParts = None
@@ -489,11 +488,10 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
   if z0 >= limit :
     return (None, 0.0)
 
-  if hsOnly :
-    exec ("def ftargets():\n  return " + targets) in globals()
-    
   if initMethod == "opt":
     if hsOnly :
+      print targets
+      exec ("def ftargets():\n  return " + targets + ')') in globals()
       _setTreeHeightsForTargets(tree, ftargets)
     else : 
       _setTreeHeights(tree, optBranches)

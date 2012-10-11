@@ -261,19 +261,7 @@ def getSpacing(trees, additional = 0) :
   return max((1+additional)*wd, spc)
 
 
-def taxaDistance(tree, nid, distance) :
-  node = tree.node(nid)
-  if not node.succ:
-    return (1, [node.data.taxon])
-  else:
-    l,r = [taxaDistance(tree, x, distance) for x in node.succ]
-    n = l[0] + r[0]
-    for xl in l[1] :
-      for xr in r[1] :
-        key = (xl,xr) if xl < xr else (xr,xl)
-        distance[key] = n-1
-    return (n, l[1] + r[1])
-
+from treesSummaries import taxaDistance
 
 def getAllSingleFlipTaxaOrders(tree, nid) :
   node = tree.node(nid)
