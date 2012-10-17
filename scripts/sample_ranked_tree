@@ -10,9 +10,15 @@ import random, copy
 from biopy.combinatorics import _prod as prod
 from biopy import INexus, __version__
 from biopy.birthDeath import yuleTimes
-from biopy.treeutils import toNewick, TreeLogger, resolveTree
+from biopy.treeutils import toNewick, TreeLogger
+# , resolveTree
 
-  
+
+def xx(l) :
+  s = sum([x[0] for x in l])+1
+  lr = (s, s * prod([x[1] for x in l]))
+  return lr
+
 def NHforest(z) :
   """ Number of labeled history forrests for this forrest."""
   u = [(n,k) for n,k in z if n > 0]
