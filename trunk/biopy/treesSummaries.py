@@ -11,7 +11,7 @@ Summary Tree from posterior trees
 =================================
 """
 
-__all__ = ["summaryTreeUsingTaxonPairs", "summaryTreeUsingMedianHeights", "taxaPartitionsSummaryTree"]
+__all__ = ["summaryTreeUsingCA", "summaryTreeUsingMedianHeights", "taxaPartitionsSummaryTree"]
 
 from numpy import median, mean
 import copy
@@ -39,7 +39,7 @@ def taxaDistance(tree, nid, distance) :
 
 
 
-def summaryTreeUsingTaxonPairs(tree, xtrees, atz = False) :
+def summaryTreeUsingCA(tree, xtrees, atz = False) :
   tree = copy.deepcopy(tree)
   
   sClades = getTreeClades(tree)

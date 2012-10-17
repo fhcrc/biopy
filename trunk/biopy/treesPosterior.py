@@ -269,9 +269,14 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
     func = lambda t,n : t.node(n).data.branchlength
   
   posteriorParts = allPartitions(tree, trees, func = func,
-                                 withHeights = usesHeights, withRoot = hsOnly)
-  if hsOnly :
+                                 withHeights = usesHeights, withRoot = usesHeights)
+
+  if usesHeights :
     posteriorParts, rhs = posteriorParts
+
+  if not all([k in posteriorParts for r,k in enumerate(treeParts)]) :
+    return (None, -1)
+    
     
   # For numerical stability in computing gradients, scale trees
   # to get a mean root height of 1 
@@ -449,8 +454,9 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
         ee += "+ abs(h0 - %.14f)" % (rTarget)
         targets += "(%d,%.14f)," % (tree.root,rTarget)
       else :  
-        rhs = [(b+h)*fctr for h, b in posteriorParts[k]]
-        vlsas,vls = _prepare(rhs, False)
+        #rhs = [(b+h)*fctr for h, b in posteriorParts[k]]
+        nrhs = [rh * fctr for rh in rhs]
+        vlsas,vls = _prepare(nrhs, False)
         if withDerivative :
           pee += "  vroot,dvroot = _absDiffBranchDer(h0,%s)\n" % vlsas
 
@@ -545,6 +551,10 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
            [random.random() for k in range(nx-1)]
 
     initialVal = v1score(x0)     # assert x0[0] >= minRoot
+    ## from treeMeasure import heightsScoreTreeDistance
+    ## ah = [heightsScoreTreeDistance(x, tree) for x in trees]
+    ## import pdb ; pdb.set_trace();
+    
     if withDerivative :
       initialVal = initialVal[0]
     if 1 :  

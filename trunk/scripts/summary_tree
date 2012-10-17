@@ -51,10 +51,10 @@ parser.add_argument("--search", dest="serachTopologies",
                     action="store_true", default = False)
 
 parser.add_argument("--method", dest="method", metavar="METHOD", 
-                    choices=["min-distance", "taxon-pairs", "median-heights",
+                    choices=["min-distance", "clade-ca", "median-heights",
                              "taxon-partitions"],
                     default = "min-distance",
-                    help="""method to use: min-distance,taxon-pairs,median-heights """ +
+                    help="""method to use: min-distance,clade-ca,median-heights """ +
                     """taxon-partitions (default min-distance)""")
 
 parser.add_argument("--distance-method", dest="distance", metavar="METHOD", 
@@ -107,6 +107,10 @@ parser.add_argument("-p", "--progress", dest="progress",
 
 parser.add_argument("--no-derivative", dest="derivative",
                     help="Do not use analytic derivative in optimization function",
+                    action="store_false", default = True)
+
+parser.add_argument("--no-norm", dest="norm",
+                    help="",
                     action="store_false", default = True)
 
 parser.add_argument('trees', metavar='FILE',  help="Trees file (NEXUS)")
@@ -370,8 +374,8 @@ if options.method != "taxon-partitions" :
 if not optimizingMethod :
   from biopy import treesSummaries
   # "median-heights", "taxon-partitions"
-  if options.method == "taxon-pairs" :
-    stree = treesSummaries.summaryTreeUsingTaxonPairs(allt[0][1][0], trees)
+  if options.method == "clade-ca" :
+    stree = treesSummaries.summaryTreeUsingCA(allt[0][1][0], trees)
   elif options.method == "median-heights" :
     stree = treesSummaries.summaryTreeUsingMedianHeights(allt[0][1][0], trees)
   elif options.method == "taxon-partitions" :
@@ -456,11 +460,15 @@ while len(candidates) :
   nh = getSPlimits(tree) if options.compatible is not None else None
 
   # Use normalization and init defaults 
-  norm = True
+  norm = bool(options.norm) # True
 
   tr, score = minDistanceTree(options.distance, tree, postTrees,
                               nodesMinHeight = nh, withDerivative =
                               options.derivative, norm = norm)
+
+  if tr is None :
+    # failed: incompatible
+    continue
   
   if options.distance == biopy.treesPosterior.BRANCH_SCORE_2 :
     # normalize score
@@ -495,8 +503,8 @@ while len(candidates) :
     timenow = time()
     if progress:
       print >> sys.stderr, \
-            ("%ds/%d (%g%s), " % (round(timenow - startTime),
-                                nCandidatesTried, bestScore, '*' if newBest else '')),
+            ("%ds/%d (%g/%g%s), " % (round(timenow - startTime),
+                                nCandidatesTried, score, bestScore, '*' if newBest else '')),
     if timenow - startTime >= limit > 0 :
       print >> sys.stderr, "time limit reached ...,",
       break
