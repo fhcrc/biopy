@@ -687,16 +687,17 @@ def _drawTreeOnly(tree, nid, xnode, nh, plotLinesAttr, keepPositions, txt) :
     pylab.text(xnode, nh[node.id], str(nid), fontsize = 11, va='top', ha='center')
   
   if not node.succ:
-    return
+    return getattr(node.data, 'color', None)
+  
   cInfo = node.data.cladeInfo
   myh = nh[node.id]
   for si in node.succ :
     chh =  nh[si]
+    
     if si == cInfo.lchild :
       a = (xnode - cInfo.lmid) / (myh - cInfo.lh)
       dx = a * (myh - chh)
       xchild = xnode - dx
-
     else :
       a = (cInfo.rmid - xnode) / (myh - cInfo.rh)
       dx = a * (myh - chh)
@@ -705,11 +706,20 @@ def _drawTreeOnly(tree, nid, xnode, nh, plotLinesAttr, keepPositions, txt) :
     # print node.id, xnode, si, si == cInfo.lchild, xchild, myh, chh, cInfo
     if keepPositions :
       node.data.x = xnode
-    pylab.plot([xnode, xchild], [myh, chh], **plotLinesAttr)
+
+    clr = _drawTreeOnly(tree, si, xchild, nh, plotLinesAttr, keepPositions, txt)
+    if clr is not None :
+      c = plotLinesAttr.get('color')
+      plotLinesAttr['color'] = clr
+      pylab.plot([xnode, xchild], [myh, chh], **plotLinesAttr)
+      if c :
+        plotLinesAttr['color'] = c
+    else :
+      pylab.plot([xnode, xchild], [myh, chh], **plotLinesAttr)
 
     #pylab.text(xnode, myh, str(nid), fontsize = 11, va='top', ha='center')
-    
-    _drawTreeOnly(tree, si, xchild, nh, plotLinesAttr, keepPositions, txt)
+
+  return getattr(node.data, 'color', None)
 
 def _embDrawTreeOnly(tree, nid, xnodeOrig, nh, plotLinesAttr, keepPositions, coalAttr, txt) :
   node = tree.node(nid)

@@ -550,8 +550,8 @@ class Tree(Nodes.Chain):
         nodeId = self.root
       node = self.node(nodeId)
       data = node.data
-      if data.taxon :
-        rep = data.taxon
+      if not node.succ :
+        rep = data.taxon if data.taxon is not None else ""
       else :
         reps = [self.toNewick(n, topologyOnly, attributes, True) for n in node.succ]
         reps.sort()

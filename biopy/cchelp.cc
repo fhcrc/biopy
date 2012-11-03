@@ -299,7 +299,7 @@ seqsMinDiff(PyObject*, PyObject* args)
 }
 
 
-
+#if 0
 static inline bool
 has(char const ch, const char* any) {
   for(/**/ ; *any; ++any) {
@@ -495,6 +495,9 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
 
   string nodeTxt;
   while( *txt ) {
+    if( has(*txt, "(),;") ) {
+      break;
+    }
     if( *txt == '[' ) {
       if( txt[1] == '&' ) {
 	vector<PyObject*> vs;
@@ -531,13 +534,9 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
 	}
       }
     } else {
-      if( isspace(*txt) || isdigit(*txt) || has(*txt, ":.+-Ee") ) {
-	nodeTxt.append(txt, 1);
-	txt += 1;
-	eat += 1;
-      } else {
-	break;
-      }
+      nodeTxt.append(txt, 1);
+      txt += 1;
+      eat += 1;
     }
   }
 
@@ -552,72 +551,29 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
   //std::cout << nodeTxt << std::endl;  
   const char* nTxt = nodeTxt.c_str();
   nTxt += skipSpaces(nTxt);
-  if( *nTxt && *nTxt == ':' ) {
-    int n1 = skipSpaces(nTxt+1);
-    nTxt += 1+n1;
-    
-    //std::cout << nTxt << std::endl;  
-    char* endp;
-    double const b = strtod(nTxt, &endp);
-    n1 = endp - nTxt;
-    if( n1 == 0 ) {
-      return -(1+strlen(txt));
+  if( *nTxt ) {
+    int const i = findIndex(nTxt, ':',"");
+    if( i != 0 ) {
+      int k = (i>0) ? i : strlen(nTxt);
+      PyList_SET_ITEM(nodeData, 0, trimString(string(nTxt,k)));
+      nTxt += k;
     }
+    if( i >= 0 ) {
+      int n1 = skipSpaces(nTxt+1);
+      nTxt += 1+n1;
     
-    branch = PyFloat_FromDouble(b);
-  } else {
-    Py_INCREF(Py_None);
-    branch = Py_None;
-  }
-
-  PyList_SET_ITEM(nodeData, 1, branch);
-  nodes.push_back(nodeData);
-
-  return eat;
-  
-#if 0
-  if( *txt && *txt == '[' && txt[1] == '&' ) {
-    vector<PyObject*> vs;
-    int n1 = parseAttributes(txt+2, vs);
-    if( n1 < 0 ) {
-      return -1;
-    }
-    n1 += 3;
-    n1 += skipSpaces(txt+n1);
-    eat += n1;
-    txt += n1;
-
-    if( vs.size() > 0 ) {
-      vals = PyTuple_New(vs.size());
-      for(unsigned int k = 0; k < vs.size(); ++k) {
-	PyTuple_SET_ITEM(vals, k, vs[k]);
+      //std::cout << nTxt << std::endl;  
+      char* endp;
+      double const b = strtod(nTxt, &endp);
+      n1 = endp - nTxt;
+      if( n1 == 0 ) {
+	return -(1+strlen(txt));
       }
+    
+      branch = PyFloat_FromDouble(b);
     }
   }
-  
-  if( ! vals ) {
-    Py_INCREF(Py_None);
-    vals = Py_None;
-  }
-  PyList_SET_ITEM(nodeData, 3, vals);
-
-  PyObject* branch = NULL;
-  if( *txt && *txt == ':' ) {
-    int n1 = skipSpaces(txt+1);
-    eat += n1 + 1;
-    txt += 1+n1;
-    
-    char* endp;
-    double b = strtod(txt, &endp);
-    n1 = endp - txt;
-    if( n1 == 0 ) {
-      return -1;
-    }
-    
-    branch = PyFloat_FromDouble(b);
-    txt += n1;
-    eat += n1;
-  } else {
+  if( branch == NULL ) {
     Py_INCREF(Py_None);
     branch = Py_None;
   }
@@ -626,7 +582,6 @@ readSubTree(const char* txt, vector<PyObject*>& nodes)
   nodes.push_back(nodeData);
 
   return eat;
-#endif
 }
 
 static PyObject*
@@ -657,7 +612,8 @@ parseSubTree(PyObject*, PyObject* args)
       int const where = txtLen+(nc+1);
       PyErr_Format(PyExc_ValueError, "failed parsing around %d (%10.10s ...).", where, treeTxt+where);
     } else {
-      PyErr_SetString(PyExc_ValueError, "extraneous characters at tree end");
+      PyErr_Format(PyExc_ValueError, "extraneous characters at tree end: '%s'",
+		   string(treeTxt+nc,std::max(5,txtLen-nc)).c_str());
     }
     return 0;
   }
@@ -669,6 +625,7 @@ parseSubTree(PyObject*, PyObject* args)
   
   return n;
 }
+#endif
 
 
 static PyObject*
@@ -897,8 +854,8 @@ static PyMethodDef cchelpMethods[] = {
    "Mimimum distance between all pairs of sequences from S1 x S2." 
    " Distance is total sum of mismatched characters."},
 
-  {"parsetree",  parseSubTree, METH_VARARGS,
-   ""},
+  // {"parsetree",  parseSubTree, METH_VARARGS,
+  //  ""},
 
   {"sumNonIntersect",  sumNonIntersect, METH_VARARGS,
    ""},

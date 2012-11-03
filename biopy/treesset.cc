@@ -19,6 +19,36 @@ using std::unordered_map;
 #include <cmath>
 #include <limits>
 
+template<typename T>
+PyObject*
+dvector2tuple(vector<T> const& v)
+{
+  if( &v ) {
+    PyObject* t = PyTuple_New(v.size());
+    for(uint k = 0; k < v.size(); ++k) {
+      PyTuple_SET_ITEM(t, k, PyFloat_FromDouble(v[k]));
+    }
+    return t;
+  }
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+template<typename T>
+PyObject*
+ivector2tuple(vector<T> const& v)
+{
+  if( &v ) {
+    PyObject* t = PyTuple_New(v.size());
+    for(uint k = 0; k < v.size(); ++k) {
+      PyTuple_SET_ITEM(t, k, PyInt_FromLong(v[k]));
+    }
+    return t;
+  }
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
 static inline bool
 areSame(double a, double b)
 {
@@ -114,7 +144,25 @@ trimString(string const& s)
 
 
 #ifndef PYINTERFACE
-typedef list< std::pair<string,string> > Attributes;
+// list
+typedef vector< std::pair<string,string> > Attributes;
+
+static PyObject*
+attributesAsPyObj(const Attributes* const attributes)
+{
+  if( attributes ) {
+    Attributes const& atr = *attributes;
+    PyObject* a = PyDict_New();
+    for(uint k = 0; k < atr.size(); ++k) {
+      auto const p = atr[k];
+      PyObject* const val = PyString_FromString(p.second.c_str());
+      PyDict_SetItemString(a, p.first.c_str(), val);
+    }
+    return a;
+  }
+  Py_INCREF(Py_None);
+  return Py_None;
+}
 
 class ParsedTreeNode {
 public:
@@ -132,6 +180,8 @@ public:
     taxon(o.taxon),
     sons(o.sons)
     {
+      // steal memebers from initializer. make sure he can't
+      // access them anymore.
       branch = o.branch;
       attributes = o.attributes;
       const_cast<ParsedTreeNode&>(o).branch = 0;
@@ -139,7 +189,7 @@ public:
     }
 
   PyObject* asPyObject(void) const;
-  
+
   string 		taxon;
   double* 		branch;
   std::vector<uint> 	sons;
@@ -174,13 +224,8 @@ ParsedTreeNode::asPyObject(void) const
   }
   PyList_SET_ITEM(nodeData, 2, psubs);
 
-  Py_INCREF(Py_None);
-  PyList_SET_ITEM(nodeData, 3, Py_None);
+  PyList_SET_ITEM(nodeData, 3, attributesAsPyObj(attributes));
 
-  // PyObject* o = PyTuple_New(2);
-  // PyTuple_SET_ITEM(o, 0, taxon);
-  // PyTuple_SET_ITEM(o, 1, trimString(v));
-  // vals.push_back(o);
   return nodeData;
 }
 
@@ -341,6 +386,9 @@ readSubTree(const char* txt, vector<returnType>& nodes)
 
   string nodeTxt;
   while( *txt ) {
+    if( has(*txt, "(),;") ) {
+      break;
+    }
     if( *txt == '[' ) {
       if( txt[1] == '&' ) {
 #ifdef PYINTERFACE
@@ -384,13 +432,13 @@ readSubTree(const char* txt, vector<returnType>& nodes)
 	}
       }
     } else {
-      if( isspace(*txt) || isdigit(*txt) || has(*txt, ":.+-Ee") ) {
-	nodeTxt.append(txt, 1);
-	txt += 1;
-	eat += 1;
-      } else {
-	break;
-      }
+      //if( isspace(*txt) || isdigit(*txt) || has(*txt, ":.+-Ee") ) {
+      nodeTxt.append(txt, 1);
+      txt += 1;
+      eat += 1;
+      // } else {
+      // 	break;
+      // }
     }
   }
 
@@ -407,30 +455,40 @@ readSubTree(const char* txt, vector<returnType>& nodes)
   //std::cout << nodeTxt << std::endl;  
   const char* nTxt = nodeTxt.c_str();
   nTxt += skipSpaces(nTxt);
-  if( *nTxt && *nTxt == ':' ) {
-    int n1 = skipSpaces(nTxt+1);
-    nTxt += 1+n1;
-    
-    //std::cout << nTxt << std::endl;  
-    char* endp;
-    double const b = strtod(nTxt, &endp);
-    n1 = endp - nTxt;
-    if( n1 == 0 ) {
-      return -1;
-    }
-#if PYINTERFACE    
-    branch = PyFloat_FromDouble(b);
+  if( *nTxt ) {
+    int const i = findIndex(nTxt, ':',"");
+    if( i != 0 ) {
+      int const k = (i>0) ? i : strlen(nTxt);
+#if PYINTERFACE
+      PyList_SET_ITEM(nodeData, 0, trimString(string(nTxt,k)));
 #else
-    nodeData.branch = new double(b);
+      nodeData.taxon = string(nTxt,k);
 #endif
-  } else {
-#if PYINTERFACE 
+      nTxt += k;
+    }
+    if( i >= 0 ) {
+      int n1 = skipSpaces(nTxt+1);
+      nTxt += 1+n1;
+    
+      //std::cout << nTxt << std::endl;  
+      char* endp;
+      double const b = strtod(nTxt, &endp);
+      n1 = endp - nTxt;
+      if( n1 == 0 ) {
+	return -1;
+      }
+#if PYINTERFACE    
+      branch = PyFloat_FromDouble(b);
+#else
+      nodeData.branch = new double(b);
+#endif
+    }
+  }
+#if PYINTERFACE
+  if( branch == NULL ) {
     Py_INCREF(Py_None);
     branch = Py_None;
-#endif
   }
-
-#if PYINTERFACE 
   PyList_SET_ITEM(nodeData, 1, branch);
 #endif
   nodes.push_back(nodeData);
@@ -440,9 +498,17 @@ readSubTree(const char* txt, vector<returnType>& nodes)
 
 template<typename T> class Packer {
 public:
-  // unpacked. can be
+  // Number of stored values. 
   virtual uint size(void) const = 0;
+  
+  // Stored values as a vector. Valid until next call to unpacked
+  // from any instantiation
   virtual vector<T> const&  unpacked(void) const = 0;
+  
+  // Stored values as a vector. Sets isPermanent to false if vector is transient
+  // (becomes invalid on the next call to unpacked from anywhere) and to true if
+  // the return value is safe to keep around.
+  
   virtual vector<T> const&  unpacked(bool& isPermanent) const = 0;
 };
 
@@ -583,33 +649,57 @@ FixedIntPacker::unpacked(bool& isPermanent) const
 
 class TreeRep {
 public:
-  virtual bool isCladogram(void) const = 0;
-  TreeRep(Packer<uint>* t) : ptopo(t) {}
-  virtual ~TreeRep() { delete ptopo; }
+  TreeRep(Packer<uint>& t, vector<const Attributes*>* atrbs);
+  virtual ~TreeRep();
 
-  uint nTaxa(void) const { return ptopo->size(); }
+  virtual bool isCladogram(void) const = 0;
+  
+  uint nTaxa(void) const { return ptopo.size(); }
   
   vector<uint> const& topology() const;
   vector<uint> const& topology(bool& permanent) const;
+
+  const vector<const Attributes*>* getAttributes(void) const {
+    return attributes;
+  }
+  
 protected:
-  Packer<uint>*   ptopo;
+  Packer<uint>&	ptopo;
+  vector<const Attributes*>*
+                attributes;
 };
+
+inline TreeRep::TreeRep(Packer<uint>& t, vector<const Attributes*>* atrbs) :
+  ptopo(t),
+  attributes(atrbs)
+{}
+
+TreeRep::~TreeRep()
+{
+  delete &ptopo;
+  if( attributes ) {
+    for(auto i = attributes->begin(); i < attributes->end(); ++i) {
+      delete *i;
+    }
+    delete attributes;
+  }
+}
 
 vector<uint> const&
 TreeRep::topology(void) const
 {
-  return ptopo->unpacked();
+  return ptopo.unpacked();
 }
 
 vector<uint> const&
 TreeRep::topology(bool& permanent) const
 { 
-  return ptopo->unpacked(permanent);
+  return ptopo.unpacked(permanent);
 }
 
 class CladogramRep : public TreeRep {
 public:
-  CladogramRep(Packer<uint>* t, Packer<uint>* h);
+  CladogramRep(Packer<uint>& t, Packer<uint>* h, vector<const Attributes*>* atrbs);
   ~CladogramRep();
  
   bool isCladogram(void) const { return true; }
@@ -621,8 +711,9 @@ private:
 };
 
 
-CladogramRep::CladogramRep(Packer<uint>* t, Packer<uint>* h) :
-  TreeRep(t),
+CladogramRep::CladogramRep(Packer<uint>& t, Packer<uint>* h,
+			   vector<const Attributes*>* atrbs) :
+  TreeRep(t, atrbs),
   pheights(h)
 {}
 
@@ -634,7 +725,8 @@ CladogramRep::~CladogramRep()
 template<typename T>
 class PhylogramRep : public TreeRep {
 public:
-  PhylogramRep(Packer<uint>* t, Packer<T>* h, Packer<T>* txh);
+  PhylogramRep(Packer<uint>& t, Packer<T>* h,
+	       Packer<T>* txh, vector<const Attributes*>* atrbs);
   ~PhylogramRep() {
     delete pheights;
     delete ptxheights;
@@ -648,17 +740,21 @@ public:
   } 
 
 private:
+  // Packed internal nodes heights 
   Packer<T>*	pheights;
+  // Packed taxa heights (if any - null means all zero.)
   Packer<T>* 	ptxheights;
 };
 
 template<typename T>
-PhylogramRep<T>::PhylogramRep(Packer<uint>* t, Packer<T>* h, Packer<T>* txh) :
-  TreeRep(t),
+PhylogramRep<T>::PhylogramRep(Packer<uint>& t, Packer<T>* h,
+			      Packer<T>* txh, vector<const Attributes*>* atrbs) :
+  TreeRep(t, atrbs),
   pheights(h),
   ptxheights(txh)
 {}
 
+// Tree should have been a nested class of Trees set
 class TreesSet;
 
 class Tree {
@@ -685,19 +781,21 @@ public:
   }
 
   struct Expanded {
-    Expanded(int itax,
-	     uint nSons,
-	     uint* sons,
-	     double* branch,
-	     double height,
-	     int    prev);
+    Expanded(int	itax,
+	     uint 	nSons,
+	     uint* 	sons,
+	     double* 	branch,
+	     double 	height,
+	     int    	prev,
+	     const Attributes* attributes);
     
-    int itax;
-    uint nSons;
-    uint* sons;
-    double* branch;
-    double height;
-    int    prev;
+    int 	itax;
+    uint 	nSons;
+    uint* 	sons;
+    double* 	branch;
+    double 	height;
+    int    	prev;
+    const Attributes* attributes;
   };
 
   bool isCladogram(void) const;
@@ -712,42 +810,42 @@ public:
   void toNewick(string& s, int nodeId, bool topoOnly, bool includeStem) const;
 
   TreesSet const& ts;
-  uint const nt;
+  uint const 	  nt;
 private:
   void setup() const;
+  
   void tostr(vector<string>& s, uint nodeId, bool topoOnly, bool includeStem) const;
   
   uint rep2treeInternal(vector<Expanded>& nodes,
-		      uint low, uint hi,
-		      vector<uint> const& tax,
-		      vector<double> const& htax,
-		      vector<double> const& hs,
-		      uint*& sonsBlock,
-		      uint* curiScratch,
-		      uint bleft) const;
+			uint low, uint hi,
+			vector<uint> const& tax,
+			vector<double> const& htax,
+			vector<double> const& hs,
+			const vector<const Attributes*>* atrbs,
+			uint*& sonsBlock,
+			uint* curiScratch,
+			uint bleft) const;
 
   // only after setup  
   mutable vector<Expanded>* internals;
+
+  // Number of taxa 
   mutable uint              nTaxa;
-  mutable uint*		sonsBlockSave;
+  
+  // one contiguous block for all sons indices
+  mutable uint*		    sonsBlockSave;
 };
 
 
 struct TreesSetObject;
+struct TreeNodeObject;
 
 struct TreeObject : PyObject {
-  void del(void) {
-    delete tr;
-    Py_XDECREF(taxa);
-  }
+  void del(void);
 
-  void init(TreesSetObject* _ts = NULL, Tree* t = NULL) {
-    tr = t;
-    ts = _ts;
-    taxa = 0;
-  }
+  void init(TreesSetObject* _ts = NULL, Tree* t = NULL);
 
-  PyObject* getTaxa(void);
+  PyObject* getTaxa(void) const;
 
   PyObject* getTerminals(void) const ;
   PyObject* allIds(void) const;
@@ -755,12 +853,47 @@ struct TreeObject : PyObject {
   PyObject* getNode(uint nt) const;
 
   PyObject* toNewick(int nodeId, bool topoOnly, bool includeStem) const;
+  void      getInOrder(bool preOrder, vector<int>& ids, int nodeId, bool includeTaxa);
   
+  void      setBranch(uint nid, double branch);
+
+  // public to be used in offsetof in type structure
+  PyObject*	  dict;
+
 private:
+  void      tostr(vector<string>& s, int nodeId,
+		  bool topoOnly, bool includeStem) const;
+  
   Tree* 	  tr;
   TreesSetObject* ts;
-  PyObject*       taxa;
+  mutable PyObject*       		taxa;
+  mutable vector<TreeNodeObject*>*	treeNodes;
 };
+
+//#include <iostream>
+
+void
+TreeObject::init(TreesSetObject* _ts, Tree* t)
+{
+  tr = t;
+  ts = _ts;
+  taxa = 0;
+  treeNodes = 0;
+}
+
+void
+TreeObject::del(void)
+{
+  delete tr;
+  Py_XDECREF(taxa);
+  if( treeNodes ) {
+    for( auto n = treeNodes->begin(); n != treeNodes->end(); ++n ) {
+      Py_XDECREF(*n);
+    }
+    Py_XDECREF(treeNodes);
+  }
+  Py_XDECREF(dict);
+}
 
 static void
 Tree_dealloc(TreeObject* self)
@@ -769,13 +902,14 @@ Tree_dealloc(TreeObject* self)
   self->ob_type->tp_free((PyObject*)self);
 }
 
-static TreeObject *
+static TreeObject*
 Tree_new(PyTypeObject* type, PyObject*, PyObject *)
 {
   TreeObject* self = (TreeObject *)type->tp_alloc(type, 0);
 
   if (self != NULL) {
     self->init();
+    self->dict = PyDict_New();
   }
 
   return self;
@@ -784,9 +918,11 @@ Tree_new(PyTypeObject* type, PyObject*, PyObject *)
 PyObject*
 Tree_getattr(TreeObject *self, PyObject* aname)
 {
-  const char* const name = PyString_AS_STRING(aname);
-  if( ! strcmp(name, "root") ) {
-    return PyInt_FromLong(self->getRootID());
+  if( PyString_Check(aname) ) {
+    const char* const name = PyString_AS_STRING(aname);
+    if( ! strcmp(name, "root") ) {
+      return PyInt_FromLong(self->getRootID());
+    }
   }
   return PyObject_GenericGetAttr(self, aname);
 }
@@ -816,15 +952,81 @@ tree_allIds(TreeObject* self)
 }
 
 PyObject*
+tree_xorder(TreeObject* self, PyObject* args, PyObject* kwds, bool pre)
+{
+  static const char *kwlist[] = {"node", "includeTaxa", static_cast<const char*>(0)};
+  int nodeId;
+  PyObject* incTax = 0;
+  if (! PyArg_ParseTupleAndKeywords(args, kwds, "i|O", (char**)kwlist,
+				    &nodeId,&incTax)) {
+    PyErr_SetString(PyExc_ValueError, "wrong args.");
+    return 0;
+  }
+  bool const incT = (!incTax || PyObject_IsTrue(incTax));
+  vector<int> ids;
+  self->getInOrder(pre, ids, nodeId, incT);
+
+  PyObject* r = ivector2tuple(ids);
+  // PyObject* r = PyTuple_New(ids.size());
+  // for(uint k = 0; k < ids.size(); ++k) {
+  //   PyTuple_SET_ITEM(r,k, PyInt_FromLong(ids[k]));
+  // }
+  return r;
+}
+
+PyObject*
+tree_postorder(TreeObject* self, PyObject* args, PyObject* kwds)
+{
+  return tree_xorder(self, args, kwds, false);
+}
+
+PyObject*
+tree_preorder(TreeObject* self, PyObject* args, PyObject* kwds)
+{
+  return tree_xorder(self, args, kwds, true);
+}
+
+PyObject*
 tree_node(TreeObject* self, PyObject* args)
 {
   int n;
   if( !PyArg_ParseTuple(args, "i", &n) ) {
-    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    PyErr_SetString(PyExc_ValueError, "wrong args.");
     return 0;
   }
   return self->getNode(n);
 }
+
+PyObject*
+tree_setBranch(TreeObject* self, PyObject* args)
+{
+  int n;
+  double br;
+  if( !PyArg_ParseTuple(args, "id", &n, &br) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args.");
+    return 0;
+  }
+  if( br < 0 ) {
+     PyErr_SetString(PyExc_ValueError, "negative branch length.");
+     return 0;
+  }
+  self->setBranch(n,br);
+  Py_RETURN_NONE;
+}
+
+// PyObject*
+// tree_setHeight(TreeObject* self, PyObject* args)
+// {
+//   int n;
+//   double h;
+//   if( !PyArg_ParseTuple(args, "id", &n,&h) ) {
+//     PyErr_SetString(PyExc_ValueError, "wrong args.");
+//     return 0;
+//   }
+//   self->setHeight(n,h);
+//   Py_RETURN_NONE;
+// }
+
 
 PyObject*
 tree_2newick(TreeObject* self, PyObject* args, PyObject* kwds)
@@ -884,11 +1086,22 @@ static PyMethodDef tree_methods[] = {
   {"all_ids", (PyCFunction)tree_allIds, METH_NOARGS,
    "get all tree ids."
   },
+  {"in_postorder", (PyCFunction)tree_postorder, METH_VARARGS|METH_KEYWORDS,
+   "get sub-tree in post-order."
+  },
+  {"in_preorder", (PyCFunction)tree_preorder, METH_VARARGS|METH_KEYWORDS,
+   "get sub-tree in post-order."
+  },
   {"node", (PyCFunction)tree_node, METH_VARARGS,
    "get tree node."
   },
-
-  {"toNewick", (PyCFunction)tree_2newick, METH_VARARGS,
+  {"setBranch", (PyCFunction)tree_setBranch, METH_VARARGS,
+   "."
+  },
+  // {"setHeight", (PyCFunction)tree_setHeight, METH_VARARGS,
+  //  "."
+  // },
+  {"toNewick", (PyCFunction)tree_2newick, METH_VARARGS|METH_KEYWORDS,
    "tree as string in NEWICK."
   },
   
@@ -931,7 +1144,7 @@ static PyTypeObject TreeType = {
     0,                         /* tp_dict */
     0,                         /* tp_descr_get */
     0,                         /* tp_descr_set */
-    0,                         /* tp_dictoffset */
+    offsetof(TreeObject,dict),  /* tp_dictoffset */
     0/*(initproc)Tree_init*/,      /* tp_init */
     0,                         /* tp_alloc */
     (newfunc)Tree_new,         /* tp_new */
@@ -940,11 +1153,56 @@ static PyTypeObject TreeType = {
 
 
 struct TreeNodeDataObject : PyObject {
+  bool hasBranch(void) const {
+    return branchlength != Py_None;
+  }
+  
+  double getBranch(void) const {
+    return hasBranch() ? PyFloat_AsDouble(branchlength) : 0;
+  }
+
+  // return previous branchlength
+  double setBranch(double newLen);
+  
+  bool hasHeight(void) const {
+    return height != Py_None;
+  }
+  
+  double adjustHeight(double dif);
+  
   PyObject* taxon;
   PyObject* branchlength;
   PyObject* height;
-  
+  PyObject* allData;
 };
+
+double
+TreeNodeDataObject::setBranch(double newLen)
+{
+  double const b = getBranch();
+  if( hasBranch() ) {
+    Py_DECREF(branchlength);
+    branchlength = PyFloat_FromDouble(newLen);
+  } else {
+    branchlength = PyFloat_FromDouble(newLen);
+  }
+  return b;
+}
+
+double
+TreeNodeDataObject::adjustHeight(double dif)
+{
+  if( ! hasHeight() ) {
+    height = PyFloat_FromDouble(dif);
+    return dif;
+  }
+    
+  double const h = PyFloat_AsDouble(height) + dif;
+  Py_DECREF(height);
+  height = PyFloat_FromDouble(h);
+  return h;
+}
+
 
 static PyMemberDef NodeData_members[] = {
   {(char*)"taxon", T_OBJECT_EX, offsetof(TreeNodeDataObject, taxon), 0,
@@ -964,13 +1222,17 @@ TreeNodeData_new(PyTypeObject* type, PyObject *args, PyObject *kwds)
   if (self != NULL) {
     self->taxon = NULL;
     self->branchlength = NULL;
+    self->height = NULL;
+    self->allData = PyDict_New();
   }
 
   return self;
 }
 
-static void
-TreeNodeData_init(TreeNodeDataObject* self, const char* taxon, const double* branchlength, const double* height)
+static int
+TreeNodeData_init(TreeNodeDataObject* self, const char* taxon,
+		  const double* branchlength, const double* height,
+		  const Attributes* attributes)
 {
   if( taxon ) {
     self->taxon = PyString_FromString(taxon);
@@ -989,7 +1251,14 @@ TreeNodeData_init(TreeNodeDataObject* self, const char* taxon, const double* bra
   } else {
     Py_INCREF(Py_None);
     self->height = Py_None;
-  } 
+  }
+  if( attributes ) {
+    int o = PyDict_SetItemString(self->allData, "attributes", attributesAsPyObj(attributes));
+    if( o == -1 ) {
+      return -1;
+    }
+  }
+  return 0;
 }
 
 static void
@@ -997,7 +1266,36 @@ TreeNodeData_dealloc(TreeNodeDataObject* self)
 {
   Py_XINCREF(self->taxon);
   Py_XINCREF(self->branchlength);
+  Py_XINCREF(self->height);
+  Py_XINCREF(self->allData);
   self->ob_type->tp_free((PyObject*)self);
+}
+
+PyObject*
+TreeNodeData_getattr(TreeNodeDataObject* self, PyObject* aname)
+{
+  PyObject* item = PyDict_GetItem(self->allData, aname);
+  if( item ) {
+    Py_INCREF(item);
+    return item;
+  }
+    
+  // const char* const name = PyString_AS_STRING(aname);
+  // if( ! strcmp(name, "root") ) {
+  //   return PyInt_FromLong(self->getRootID());
+  // }
+  return PyObject_GenericGetAttr(self, aname);
+}
+
+int
+TreeNodeData_setattr(TreeObject* self, PyObject* name, PyObject* value)
+{
+  const char* const cname = PyString_AS_STRING(name);
+  if( ! strcmp(cname, "branchlength") || ! strcmp(cname, "height") ) {
+    PyErr_SetString(PyExc_RuntimeError, "Please set node branchlength/height via tree method.") ;
+    return -1;
+  }
+  return PyObject_GenericSetAttr(self, name, value);
 }
 
 static PyTypeObject TreeNodeDataType = {
@@ -1018,8 +1316,8 @@ static PyTypeObject TreeNodeDataType = {
   0,				/* tp_hash        */
   0,				/* tp_call        */
   0,				/* tp_str         */
-  0,				/* tp_getattro    */
-  PyObject_GenericSetAttr,	/* tp_setattro    */
+  0/*TreeNodeData_getattr*/,		/* tp_getattro    */
+  (setattrofunc)TreeNodeData_setattr,		/* tp_setattro    */
   0,				/* tp_as_buffer   */
   Py_TPFLAGS_DEFAULT,		/* tp_flags       */
   "tree Node data.",		/* tp_doc         */
@@ -1029,15 +1327,15 @@ static PyTypeObject TreeNodeDataType = {
   0,		               /* tp_weaklistoffset */
   0,		               /* tp_iter */
   0,		               /* tp_iternext */
-  0,             			/* tp_methods */
-  NodeData_members,                  /* tp_members */
+  0,             		/* tp_methods */
+  NodeData_members,             /* tp_members */
   0,                         /* tp_getset */
   0,                         /* tp_base */
   0,                         /* tp_dict */
   0,                         /* tp_descr_get */
   0,                         /* tp_descr_set */
-  0,                         /* tp_dictoffset */
-  0/*(initproc)TreeNode_init*/,      /* tp_init */
+  offsetof(TreeNodeDataObject,allData),  /* tp_dictoffset */
+  0,                         /* tp_init */
   0,                         /* tp_alloc */
   (newfunc)TreeNodeData_new,         /* tp_new */
 };
@@ -1047,7 +1345,6 @@ struct TreeNodeObject : PyObject {
   PyObject* prev;
   PyObject* succ;
   PyObject* data;
-  /*TreeNodeDataObject*/
 };
 
 static PyMemberDef Node_members[] = {
@@ -1075,7 +1372,6 @@ TreeNode_new(PyTypeObject* type, PyObject *args, PyObject *kwds)
 
 static void
 TreeNode_init(TreeNodeObject* self, uint prev, uint nSons, uint* sons, PyObject* data)
-// , const char* taxon const double* branch, const double* height)
 {
   if( prev >= 0 ) {
     self->prev = PyInt_FromLong(prev);
@@ -1153,24 +1449,11 @@ static PyTypeObject TreeNodeType = {
 
 class TreesSet {
 public:
-  TreesSet(bool c, uint p, bool s) :
-    compressed(c),
-    store(s),
-    precision(p)
-    {}
+  TreesSet(bool isCompressed, uint _precision, bool s);
+  ~TreesSet();
 
-  ~TreesSet() {
-    for(auto t = trees.begin(); t != trees.end(); ++t) {
-      delete *t;
-    }
-  }
-
-  int add(const char* txt);
-
-  string const& taxonString(uint k) const {
-    assert(k < taxaList.size());
-    return taxaList[k];
-  }
+  // Add a tree from text NEWICK format .
+  int add(const char* txt, PyObject* kwds);
   
   uint nTrees(void) const { return trees.size(); }
   
@@ -1179,52 +1462,64 @@ public:
     return *trees[i];
   }
   
-  void getHeights(uint nt, vector<double>& hs, vector<double>& txhs) const {
-    TreeRep const& r = getTree(nt);
-    if( r.isCladogram() ) {
-      CladogramRep const& c = static_cast<CladogramRep const&>(r);
-      vector<uint> const& h = c.heights();
-      hs.assign(h.begin(), h.end());
-    } else {
-      if( precision == 8 ) {
-	hs = static_cast<PhylogramRep<double> const&>(r).heights();
-	auto tx = static_cast<PhylogramRep<double> const&>(r).txheights();
-	if( tx ) {
-	  txhs = *tx;
-	}
-      } else {
-	auto const& h = static_cast<PhylogramRep<float> const&>(r).heights();
-	hs.assign(h.begin(), h.end());
-	auto tx = static_cast<PhylogramRep<float> const&>(r).txheights();
-	if( tx ) {
-	  txhs.assign(tx->begin(), tx->end());
-	}
-      }
-    }
+  // taxon name (existing,string) from internal index.
+  string const& taxonString(uint k) const {
+    assert(k < taxaList.size());
+    return taxaList[k];
   }
-    
+
+  // Populate hs/txhs with internal node/taxa heights for nt'th tree.
+  void getHeights(uint nt, vector<double>& hs, vector<double>& txhs) const;
+
+  void setTreeAttributes(uint nt, TreeObject* to) const;
+  
+  // Compressed/non-Compressed tree
   bool const compressed : 8;
   bool const store : 8;
+  // floating point precision (float or double)
   uint const precision : 8;
 
   vector< vector<ParsedTreeNode> > asNodes;
   
 private:
-  TreeRep*		nodes2rep(vector<ParsedTreeNode>& nodes);
+  // Encodes a parsed tree 
+  TreeRep*	nodes2rep(vector<ParsedTreeNode>& nodes);
+
+  // taxon index (inserts new ones). 
+  uint 		getTaxon(string const& taxon);
+
+  // All trees
+  vector<TreeRep*>		trees;
+
+  vector<PyObject*>		treesAttributes;
   
-  vector<TreeRep*>	trees;
-  
-  unordered_map<string,uint>	taxaDict;
+  // taxa across all trees
   vector<string>		taxaList;
-  
-  uint getTaxon(string const& taxon);
+  // mapping from taxon to its position in taxaList 
+  unordered_map<string,uint>	taxaDict;
 };
 
+TreesSet::TreesSet(bool isCompressed, uint _precision, bool s) :
+  compressed(isCompressed),
+  store(s),
+  precision(_precision)
+{}
+
+TreesSet::~TreesSet()
+{
+  for(auto t = trees.begin(); t != trees.end(); ++t) {
+    delete *t;
+  }
+  
+  for(auto a = treesAttributes.begin(); a != treesAttributes.end(); ++a) {
+    Py_XDECREF(*a);
+  }
+}
 
 uint
 TreesSet::getTaxon(string const& taxon)
 {
-  auto i = taxaDict.find(taxon);
+  auto const i = taxaDict.find(taxon);
   if( i == taxaDict.end() ) {
     int const k = taxaList.size();
     taxaList.push_back(taxon);
@@ -1234,31 +1529,79 @@ TreesSet::getTaxon(string const& taxon)
   return i->second;
 }
 
+void
+TreesSet::getHeights(uint nt, vector<double>& hs, vector<double>& txhs) const
+{
+  TreeRep const& r = getTree(nt);
+  if( r.isCladogram() ) {
+    CladogramRep const& c = static_cast<CladogramRep const&>(r);
+    vector<uint> const& h = c.heights();
+    hs.assign(h.begin(), h.end());
+  } else {
+    if( precision == 8 ) {
+      hs = static_cast<PhylogramRep<double> const&>(r).heights();
+      auto tx = static_cast<PhylogramRep<double> const&>(r).txheights();
+      if( tx ) {
+	txhs = *tx;
+      }
+    } else {
+      auto const& h = static_cast<PhylogramRep<float> const&>(r).heights();
+      hs.assign(h.begin(), h.end());
+      auto tx = static_cast<PhylogramRep<float> const&>(r).txheights();
+      if( tx ) {
+	txhs.assign(tx->begin(), tx->end());
+      }
+    }
+  }
+}
+
+void
+TreesSet::setTreeAttributes(uint nt, TreeObject* to) const
+{
+  PyObject* a = treesAttributes[nt];
+  if( a && PyDict_Size(a) > 0 ) {
+    PyDict_Update(to->dict, a);
+  }
+}
+
 TreeRep*
 TreesSet::nodes2rep(vector<ParsedTreeNode>& nodes)
 {
+  // tree taxa (as indices into global table)
   vector<uint> taxa;
   bool cladogram = true;
+  bool hasAttributes = false;
   uint maxTaxaIndex = 0;
   
   for(auto n = nodes.begin(); n != nodes.end() ; ++n) {
-    if( n->taxon.length() ) {
-      uint k = getTaxon(n->taxon);
+    if( n->sons.size() == 0 ) {
+      // can have un-named taxon
+      uint const k = getTaxon(n->taxon);
       maxTaxaIndex = std::max(maxTaxaIndex, k);
       taxa.push_back(k);
     }
     if( n->branch ) {
       cladogram = false;
     }
+    if( n->attributes ) {
+      hasAttributes = true;
+    }
   }
+
+  uint const nTaxa = taxa.size();
   
-  vector<double> heights(taxa.size()-1);
+  // heights of internal nodes (between taxa)
+  vector<double> heights(nTaxa-1);
+  // if nodes[x] is a tip, locs[x]+1 is the ordinal number of the tip in the
+  // array of tips. For internal nodes, locs[x] is the ordinal number of the
+  // node in the heights array.
   vector<int> locs(nodes.size());
   uint iloc = 0;
+  // taxa heights (when tips are not contemporaneous) 
   vector<double>* taxaHeights = 0;
   
   for(auto n = nodes.begin(); n != nodes.end() ; ++n) {
-    if( n->taxon.length() ) {
+    if( n->sons.size() == 0 ) {
       if( ! n->branch ) {
 	n->branch = new double(1);
       }
@@ -1267,8 +1610,10 @@ TreesSet::nodes2rep(vector<ParsedTreeNode>& nodes)
       locs[iloc] = iloc == 0 ? -1 : locs[iloc-1]+1;
       ++iloc;
     } else {
+      // node own height
       double h = -1;
       for(auto s = n->sons.begin(); s != n->sons.end(); ++s) {
+	// After processing the node, we use the branch to store the height.
 	h = std::max(*nodes[*s].branch, h);
       }
       if( ! cladogram ) {
@@ -1277,19 +1622,17 @@ TreesSet::nodes2rep(vector<ParsedTreeNode>& nodes)
 	  double const dh = h - h1;
 	  if( dh > 0 && !areSame(h,h1) ) {
 	    if( ! taxaHeights ) {
-	      taxaHeights = new vector<double>(taxa.size());
-	      std::fill(taxaHeights->begin(), taxaHeights->end(), 0.0);
+	      taxaHeights = new vector<double>(nTaxa, 0.0);
+	      //std::fill(taxaHeights->begin(), taxaHeights->end(), 0.0);
 	    }
 	    std::stack<uint> hp;
 	    hp.push(*s); 
 	    while( ! hp.empty() ) {
 	      uint const x = hp.top(); hp.pop();
-	      if( nodes[x].taxon.length() ) {
+	      if( nodes[x].sons.size() == 0 ) {
 		(*taxaHeights)[locs[x]+1] += dh;
 	      } else {
 		heights[locs[x]] += dh;
-		//assert( nodes[x].branch ) ;
-		//*(nodes[x].branch) += dh;
 		auto const& b = nodes[x].sons;
 		for(auto a = b.begin(); a != b.end(); ++a) {
 		  hp.push(*a);
@@ -1299,18 +1642,18 @@ TreesSet::nodes2rep(vector<ParsedTreeNode>& nodes)
 	  }
 	}
       }
+      // node height stored between all sons
       for(auto s = n->sons.begin(); s != n->sons.end()-1; ++s) {
 	uint const i = locs[*s]+1;            assert( 0 <= i && i < heights.size() );
 	heights[i] = h;
       }
-      assert( 0 < iloc && iloc < locs.size() );
-      
+                                              assert( 0 < iloc && iloc < locs.size() );
       locs[iloc] = locs[iloc-1]; ++iloc;
-      h += (n->branch ? *n->branch : 1);
+      // Use the branch to store the node height
       if( n->branch ) {
-	*n->branch = h;
-      } else {
-	n->branch = new double(h);
+	*n->branch += h;
+      } else if( n+1 != nodes.end() ) {
+	n->branch = new double(h+1);
       }
     }
   }
@@ -1323,7 +1666,30 @@ TreesSet::nodes2rep(vector<ParsedTreeNode>& nodes)
   } else {
     top = new SimplePacker<uint>(taxa);
   }
-    
+
+  vector<const Attributes*>* atrs = 0;
+  if( hasAttributes ) {
+    atrs = new vector<const Attributes*>(nodes.size(),0);
+    for(auto n = nodes.begin(); n != nodes.end() ; ++n) {
+      if( n->attributes ) {
+	int l = locs[n - nodes.begin()];
+	if( n->taxon.length() ) {
+	  l += 1;
+	} else {
+	  l += nTaxa;
+	}
+	// steal
+	(*atrs)[l] = n->attributes;
+	n->attributes = 0;
+      }
+	// auto const& atr = *n->attributes;
+	// for(auto patr = atr.begin(); patr != atr.end(); ++patr) {
+	//   int const n = attributeIndex(patr.first);
+	//   const char* v = attributePtr(patr.second);
+	//   atrNames[l] = n;
+    }
+  }
+  
   if( cladogram ) {
     vector<uint> hs(heights.size());
     for(uint i = 0; i < hs.size(); ++i) {
@@ -1337,35 +1703,59 @@ TreesSet::nodes2rep(vector<ParsedTreeNode>& nodes)
     } else {
       hsb = new SimplePacker<uint>(hs);
     }
-    return new CladogramRep(top, hsb);
+    return new CladogramRep(*top, hsb, atrs);
   } else {
+    TreeRep* r;
     if( precision == 8 ) {
       SimplePacker<double>* hsb = new SimplePacker<double>(heights);
       SimplePacker<double>* txhs = 0;
       if( taxaHeights ) {
 	txhs = new SimplePacker<double>(*taxaHeights);
       }
-      return new PhylogramRep<double>(top, hsb, txhs);
+      r = new PhylogramRep<double>(*top, hsb, txhs, atrs);
     } else {
       SimplePacker<float>* hsb = new SimplePacker<float>(heights);
       SimplePacker<float>* txhs = 0;
       if( taxaHeights ) {
 	txhs = new SimplePacker<float>(*taxaHeights);
       }
-      return new PhylogramRep<float>(top, hsb, txhs);
+      r = new PhylogramRep<float>(*top, hsb, txhs, atrs);
     }
+    if( taxaHeights ) {
+      delete taxaHeights;
+    }
+    return r;
   }
 }
 
 int
-TreesSet::add(const char* treeTxt)
+TreesSet::add(const char* treeTxt, PyObject* kwds)
 {
   vector<ParsedTreeNode> nodes;
-  if( readSubTree(treeTxt, nodes) < 0 ) {
-    PyErr_SetString(PyExc_ValueError, "failed parsing.") ;
+
+  int const txtLen = strlen(treeTxt);
+  int nc = readSubTree(treeTxt, nodes);
+
+  if( nc > 0 ) {
+    nc += skipSpaces(treeTxt + nc);
+  }
+  
+  if( ! (nc == txtLen || (nc+1 == txtLen && treeTxt[nc] == ';')) ) {
+    if( nc < 0) {
+      int const where = txtLen+(nc+1);
+      PyErr_Format(PyExc_ValueError, "failed parsing around %d (%10.10s ...).", where, treeTxt+where);
+    } else {
+      PyErr_Format(PyExc_ValueError, "extraneous characters at tree end: '%s'",
+		   string(treeTxt+nc,std::max(5,txtLen-nc)).c_str());
+    }
     return -1;
   }
 
+  if( kwds ) {
+    Py_INCREF(kwds);
+  }
+  treesAttributes.push_back(kwds);
+  
   if( store ) {
     asNodes.push_back(nodes);
     return asNodes.size()-1;
@@ -1380,13 +1770,15 @@ Tree::Expanded::Expanded(int _itax,
 			 uint* _sons,
 			 double* _branch,
 			 double _height,
-			 int    _prev) :
+			 int    _prev,
+			 const Attributes* _attributes) :
   itax(_itax),
   nSons(_nSons),
   sons(_sons),
   branch(_branch),
   height(_height),
-  prev(_prev)
+  prev(_prev),
+  attributes(_attributes)
 {}
   
 
@@ -1395,14 +1787,15 @@ uint Tree::rep2treeInternal(vector<Expanded>& nodes,
 			    vector<uint> const& tax,
 			    vector<double> const& htax,
 			    vector<double> const& hs,
+			    const vector<const Attributes*>* atrbs,
 			    uint*& sonsBlock,
 			    uint* curiScratch,
 			    uint bleft) const
 {
   if( low == hi ) {
-    nodes.push_back(Expanded(tax[low],0,0,0,htax[low],-1));
+    nodes.push_back(Expanded(tax[low],0,0,0,htax[low],-1, atrbs ? (*atrbs)[low] : 0));
   } else {
-    uint* curi;
+    uint* curi = 0;
     double curh = -1;
     for(uint k = low; k < hi; ++k) {
       double const h = hs[k];
@@ -1423,27 +1816,24 @@ uint Tree::rep2treeInternal(vector<Expanded>& nodes,
     uint* sons = sonsBlock;
     uint nSons = 1 + nSplits;
     sonsBlock += nSons;
-
-    assert( bleft > 0 );
+                                                           assert( bleft > 0 );
     *curi = hi; ++curi; --bleft;
     
-    //uint xlow = low;
     for(uint* x = curiScratch; x < curi; ++x) {
-      uint const k = rep2treeInternal(nodes, low, *x, tax, htax, hs, sonsBlock, curi, bleft);
+      uint const k = rep2treeInternal(nodes, low, *x, tax, htax,
+				      hs, atrbs, sonsBlock, curi, bleft);
       double const hs = nodes[k].height;
       nodes[k].branch = new double(curh - hs);
       *sons = k; ++sons;
       low = *x+1;
     }
-    // uint k = rep2treeInternal(nodes, xlow, hi, tax, htax, hs, sonsBlock, curi, bleft);
-    // double hs = nodes[k].height;
-    // nodes[k].branch = new double(curh - hs);
-    // *sons = k; ++sons;
+
     sons -= nSons;
     for(uint* s = sons; s < sons+nSons; ++s) {
       nodes[*s].prev = nodes.size();
     }
-    nodes.push_back(Expanded(-1, nSons,sons,0,curh,-1));
+    nodes.push_back(Expanded(-1, nSons, sons, 0, curh, -1,
+			     atrbs ? (*atrbs)[*curiScratch + tax.size()] : 0));
   }
   return nodes.size()-1;
 }
@@ -1472,7 +1862,8 @@ void Tree::setup(void) const {
   sonsBlockSave = new uint[2*nTaxa];  // allocate in one contiguous block 
   uint block[2*nTaxa];     // scratch only
   uint* s = sonsBlockSave; // keep sonsBlockSave safe
-  rep2treeInternal(*internals, 0, hs.size(), tax, txhs, hs, s, block, 2*nTaxa);
+  rep2treeInternal(*internals, 0, hs.size(), tax, txhs, hs,
+		   rep.getAttributes(), s, block, 2*nTaxa);
 
   if( rep.isCladogram() ) {
     for(auto i = internals->begin(); i != internals->end(); ++i) {
@@ -1523,8 +1914,12 @@ void
 Tree::tostr(vector<string>& s, uint nodeId, bool topoOnly, bool includeStem) const
 {
   Expanded const& n = (*internals)[nodeId];
-  if( n.itax >= 0 ) {
-    s.push_back(ts.taxonString(n.itax));
+  if( n.nSons == 0 ) {
+    if( n.itax >= 0 ) {
+      s.push_back(ts.taxonString(n.itax));
+    } else {
+      s.push_back("");
+    }
   } else {
     for(uint i = 0; i < n.nSons; ++i) {
       tostr(s, n.sons[i], topoOnly, true);
@@ -1561,41 +1956,49 @@ Tree::toNewick(string& s, int nodeId, bool topoOnly, bool includeStem) const
 
 struct TreesSetObject : PyObject {
   TreesSet* ts;
-  //PyTypeObject* data;
   
-  void del(void) {
-    delete ts;
-    for(auto s = taxa->begin(); s != taxa->end(); ++s) {
-      Py_XDECREF(*s);
-    }
-    delete taxa;
-  }
-
-  void init(void) {
-    ts = NULL;
-    taxa = new vector<PyObject*>();
-  }
-
-  PyObject* taxon(uint k) {
-    if( taxa->size() <= k ) {
-      taxa->resize(k+1, 0);
-    }
-    if( (*taxa)[k] == 0 ) {
-      string const& s = ts->taxonString(k);
-      (*taxa)[k] = PyString_FromString(s.c_str());
-    }
-    
-    PyObject* s = (*taxa)[k];
-    Py_INCREF(s);
-    return s;
-  }
-
+  void del(void);
+  void init(void);
+  PyObject* taxon(uint k);
   PyObject* newNodeData(const char* tx, const double* branch, const double *height);
 
 private:
   vector<PyObject*>* taxa;
 };
 
+
+void
+TreesSetObject::del(void)
+{
+  delete ts;
+  for(auto s = taxa->begin(); s != taxa->end(); ++s) {
+    Py_XDECREF(*s);
+  }
+  delete taxa;
+}
+
+void
+TreesSetObject::init(void)
+{
+  ts = NULL;
+  taxa = new vector<PyObject*>();
+}
+
+PyObject*
+TreesSetObject::taxon(uint k)
+{
+  if( taxa->size() <= k ) {
+    taxa->resize(k+1, 0);
+  }
+  if( (*taxa)[k] == 0 ) {
+    string const& s = ts->taxonString(k);
+    (*taxa)[k] = PyString_FromString(s.c_str());
+  }
+    
+  PyObject* s = (*taxa)[k];
+  Py_INCREF(s);
+  return s;
+}
 
 static void
 TreesSet_dealloc(TreesSetObject* self)
@@ -1623,7 +2026,6 @@ TreesSet_init(TreesSetObject* self, PyObject* args, PyObject* kwds)
 				 static_cast<const char*>(0)};
   PyObject* comp = 0;
   PyObject* sto = 0;
-  //PyObject* data = 0;
   int precision = 4;
   
   if (! PyArg_ParseTupleAndKeywords(args, kwds, "|OiO", (char**)kwlist,
@@ -1640,7 +2042,6 @@ TreesSet_init(TreesSetObject* self, PyObject* args, PyObject* kwds)
   bool const store = (sto && PyObject_IsTrue(sto));
   
   self->ts = new TreesSet(compressed, precision, store);
-  //self->data = (PyTypeObject*)data;
   return 0;
 }
 
@@ -1653,20 +2054,6 @@ TreesSet_len(TreesSetObject* self)
   return self->ts->nTrees();
 }
 
-template<typename T>
-PyObject*
-vector2tuple(vector<T> const& v)
-{
-  if( &v ) {
-    PyObject* t = PyTuple_New(v.size());
-    for(uint k = 0; k < v.size(); ++k) {
-      PyTuple_SET_ITEM(t, k, PyFloat_FromDouble(v[k]));
-    }
-    return t;
-  }
-  Py_INCREF(Py_None);
-  return Py_None;
-}
 
 PyObject*
 TreesSet_getItemInternals(TreesSetObject* self, uint i)
@@ -1686,7 +2073,7 @@ TreesSet_getItemInternals(TreesSetObject* self, uint i)
     return 0;
   }
   TreeRep const& r = ts.getTree(i);
-  PyObject* n = PyTuple_New(4);
+  PyObject* n = PyTuple_New(5);
   bool const isc = r.isCladogram();
   PyTuple_SET_ITEM(n, 0, PyBool_FromLong(isc));
   vector<uint> const& topo = r.topology();
@@ -1714,16 +2101,27 @@ TreesSet_getItemInternals(TreesSetObject* self, uint i)
       typedef PhylogramRep<float> T;
       
       T const& p = static_cast<T const&>(r);
-      PyTuple_SET_ITEM(n, 2, vector2tuple(p.heights()));
-      PyTuple_SET_ITEM(n, 3, vector2tuple(*p.txheights()));
+      PyTuple_SET_ITEM(n, 2, dvector2tuple(p.heights()));
+      PyTuple_SET_ITEM(n, 3, dvector2tuple(*p.txheights()));
     } else {
       typedef PhylogramRep<double> T;
       
       T const& p = static_cast<T const&>(r);
-      PyTuple_SET_ITEM(n, 2, vector2tuple(p.heights()));
-      PyTuple_SET_ITEM(n, 3, vector2tuple(*p.txheights()));
+      PyTuple_SET_ITEM(n, 2, dvector2tuple(p.heights()));
+      PyTuple_SET_ITEM(n, 3, dvector2tuple(*p.txheights()));
     }
-  }  
+  }
+  auto a = r.getAttributes();
+  if( a ) {
+    PyObject* ap = PyTuple_New(a->size());
+    for(uint k = 0; k < a->size(); ++k) {
+      PyTuple_SET_ITEM(ap, k, attributesAsPyObj((*a)[k]));
+    }
+    PyTuple_SET_ITEM(n, 4,ap);
+  } else {
+    Py_INCREF(Py_None);
+    PyTuple_SET_ITEM(n, 4, Py_None);
+  }
   return n;
 }
 
@@ -1743,14 +2141,14 @@ TreesSet_getItem(TreesSetObject* self, Py_ssize_t i)
     return 0;
   }
   TreeObject* to = Tree_new(&TreeType,0,0);
-  to->init(self, new Tree(*self->ts, nt));
+  to->init(self, new Tree(ts, nt));
+  ts.setTreeAttributes(nt, to);
   return to;
 }
 
 
-
 PyObject*
-TreeObject::getTaxa(void)
+TreeObject::getTaxa(void) const
 {
   if( taxa == 0 ) {
     auto const& topo = tr->topology();
@@ -1798,6 +2196,16 @@ TreeObject::getNode(uint nt) const
     return 0;
   }
   
+  if( treeNodes ) {
+    TreeNodeObject* n = (*treeNodes)[nt];
+    if( n ) {
+      Py_INCREF(n);
+      return n;
+    }
+  } else {
+    treeNodes = new vector<TreeNodeObject*>(tr->nNodes(),0);
+  } 
+  
   Tree::Expanded const& e = tr->getNode(nt);
 
   const char* tx = 0;
@@ -1807,34 +2215,146 @@ TreeObject::getNode(uint nt) const
   bool const isc = tr->isCladogram();
   TreeNodeObject* node = TreeNode_new(&TreeNodeType, 0, 0);
 
-  //TreeNode_init(node, tx, e.prev, e.nSons, e.sons, isc ? 0 : e.branch, isc ? 0 : &e.height);
-  // PyObject* d = ts->newNodeData(tx, isc ? 0 : e.branch, isc ? 0 : &e.height); 
-  // self->data = d;
-
   TreeNodeDataObject* d = TreeNodeData_new(&TreeNodeDataType, 0, 0);
-  TreeNodeData_init(d, tx, isc ? 0 : e.branch, isc ? 0 : &e.height);
- 
+  int succ = TreeNodeData_init(d, tx, isc ? 0 : e.branch, isc ? 0 : &e.height, e.attributes);
+  if( succ == -1 ) {
+    // leaks, not expected to happen
+    PyErr_SetString(PyExc_RuntimeError, "memory error.") ;
+    return 0;
+  }
+  
   TreeNode_init(node, e.prev, e.nSons, e.sons, d);
+
+  // keep it around
+  Py_INCREF(node);
+  (*treeNodes)[nt] = node;
   
   return node;
+}
+
+
+void
+TreeObject::getInOrder(bool preOrder, vector<int>& ids,
+		       int nodeId, bool includeTaxa)
+{
+  uint nSons;
+  if( treeNodes && (*treeNodes)[nodeId] ) {
+    TreeNodeObject const& no = *(*treeNodes)[nodeId];
+    nSons = no.succ == Py_None ? 0 : PySequence_Size(no.succ);
+    if( nSons > 0 && preOrder ) {
+      ids.push_back(nodeId);
+    }
+    for(uint i = 0; i < nSons; ++i) {
+      int d = PyLong_AsLong(PySequence_GetItem(no.succ, i));
+      getInOrder(preOrder,ids, d,includeTaxa);
+    }
+  } else {
+    Tree::Expanded const& no = tr->getNode(nodeId);
+    nSons = no.nSons;
+    if( nSons > 0 && preOrder ) {
+      ids.push_back(nodeId);
+    }
+    for(uint i = 0; i < nSons; ++i) {
+      getInOrder(preOrder, ids, no.sons[i], includeTaxa);
+    }
+  }
+  if( (nSons > 0 && !preOrder) || (nSons == 0 && includeTaxa) ) {
+    ids.push_back(nodeId);
+  }
+}
+
+void
+TreeObject::setBranch(uint const nodeId, double const newBranchLen)
+{
+  TreeNodeObject& no = *static_cast<TreeNodeObject*>(getNode(nodeId));
+
+  TreeNodeDataObject& data = *static_cast<TreeNodeDataObject*>(no.data);
+
+  double const brlen = data.setBranch(newBranchLen);
+  
+  double const dif = newBranchLen - brlen;
+  if( dif == 0 ) {
+    return; // None??
+  }
+  double minNewHeight = PyFloat_GetMax();
+  vector<int> subt;
+  getInOrder(false, subt, nodeId, true);
+  for(auto n = subt.begin(); n != subt.end(); ++n) {
+    TreeNodeObject& x = *static_cast<TreeNodeObject*>(getNode(*n));
+    TreeNodeDataObject& d = *static_cast<TreeNodeDataObject*>(x.data);
+    if( d.hasHeight() ) {
+      double const h = d.adjustHeight(-dif);
+      minNewHeight = std::min(h, minNewHeight);
+    }
+  }
+  if( minNewHeight < 0 ) {
+    uint const n = tr->nNodes();
+    for(uint k = 0; k < n; ++k) {
+      TreeNodeObject& x = *static_cast<TreeNodeObject*>(getNode(k));
+      TreeNodeDataObject& d = *static_cast<TreeNodeDataObject*>(x.data);
+      if( d.hasHeight() ) {
+	d.adjustHeight(-minNewHeight);
+      }
+    }
+  }
+}
+
+void
+TreeObject::tostr(vector<string>& s, int nodeId, bool topoOnly, bool includeStem) const
+{
+  TreeNodeObject* np = (*treeNodes)[nodeId];
+  if( ! np ) {
+    // shall we delete this before returning??
+    np = static_cast<TreeNodeObject*>(getNode(nodeId));
+  }
+  TreeNodeObject const& no = *np;
+  uint const nSons = no.succ == Py_None ? 0 : PySequence_Size(no.succ);
+  if( nSons == 0 ) {
+    char* t = PyString_AsString(static_cast<TreeNodeDataObject*>(no.data)->taxon);
+    s.push_back(t);
+  } else {
+    for(uint i = 0; i < nSons; ++i) {
+      int d = PyLong_AsLong(PySequence_GetItem(no.succ, i));
+      tostr(s, d, topoOnly, true);
+    }
+    auto first = s.end() - nSons;
+    std::sort(first, s.end());
+    first->insert(first->begin(),'(');
+    for(uint i = 1; i < nSons; ++i) {
+      first->append(",").append(*(first + i));
+    }
+    first->append(")");
+    s.erase(first+1, s.end());
+  }
+
+  PyObject* br = static_cast<TreeNodeDataObject*>(no.data)->branchlength;
+  
+  if( ! topoOnly && br != Py_None && includeStem ) {
+    char* const b = PyOS_double_to_string(PyFloat_AsDouble(br), 'r', 0, Py_DTSF_ADD_DOT_0, 0);
+    (s.end()-1)->append(":").append(b);
+    PyMem_Free(b);
+  }
 }
 
 PyObject*
 TreeObject::toNewick(int nodeId, bool topoOnly, bool includeStem) const
 {
   string s;
-  tr->toNewick(s, nodeId, topoOnly, includeStem);
+  if( ! treeNodes ) {
+    tr->toNewick(s, nodeId, topoOnly, includeStem);
+  } else {
+    // go through node, in case node was changed
+    if( nodeId == -1 ) {
+      nodeId = tr->getRootID();
+    }
+    vector<string> c;
+    tostr(c, nodeId, topoOnly, includeStem);
+    s.assign(*c.begin());
+  }
   return PyString_FromString(s.c_str());
-  //  return 0;
 }
 
 static PyMemberDef treesSet_members[] = {
-  // {"name", T_OBJECT_EX, offsetof(TreeObject, name), 0,
-  //  "tree name"},
-  // {"weight", T_OBJECT_EX, offsetof(TreeObject, weight), 0,
-  //  "tree weight"},
-  // {"rooted", T_OBJECT_EX, offsetof(TreeObject, rooted), 0,
-  //  "rooted/unrooted"},
     {NULL}  /* Sentinel */
 };
 
@@ -1850,7 +2370,7 @@ treesSet_treei(TreesSetObject* self, PyObject* args)
 }
 
 static PyObject *
-treesSet_add(TreesSetObject* self, PyObject* args)
+treesSet_add(TreesSetObject* self, PyObject* args, PyObject* kwds)
 {
   const char* treeTxt;
 
@@ -1859,12 +2379,12 @@ treesSet_add(TreesSetObject* self, PyObject* args)
     return 0;
   }
 
-  int const k = self->ts->add(treeTxt);
+  int const k = self->ts->add(treeTxt, kwds);
   if( k < 0 ) {
     return 0;
   }
   
-  return PyLong_FromLong(k);
+  return PyInt_FromLong(k);
 }
 
 // static PyObject*
@@ -1906,19 +2426,15 @@ treesSet_add(TreesSetObject* self, PyObject* args)
 // }
 
 static PyMethodDef treesSet_methods[] = {
-     {"add", (PyCFunction)treesSet_add, METH_VARARGS,
-      "Add a tree to set."
-     },
+  {"add", (PyCFunction)treesSet_add, METH_VARARGS|METH_KEYWORDS,
+   "Add a tree to set."
+  },
 
-     {"treei", (PyCFunction)treesSet_treei, METH_VARARGS,
-      "Internals of tree."
-     },
-
-     // {"dat", (PyCFunction)treesSet_dat, METH_NOARGS,
-     //  "Add a tree to set."
-     // },
+  {"treei", (PyCFunction)treesSet_treei, METH_VARARGS,
+   "Internals of tree."
+  },
      
-     {NULL}  /* Sentinel */
+  {NULL}  /* Sentinel */
 };
 
 
@@ -1971,8 +2487,47 @@ static PyTypeObject TreesSetType = {
     TreesSet_new,                 /* tp_new */
 };
 
+static PyObject*
+parseTree(PyObject*, PyObject* args)
+{
+  const char* treeTxt;
+
+  if( !PyArg_ParseTuple(args, "s", &treeTxt) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    return 0;
+  }
+
+  vector<ParsedTreeNode> nodes;
+
+  int const txtLen = strlen(treeTxt);
+  int nc = readSubTree(treeTxt, nodes);
+
+  if( nc > 0 ) {
+    nc += skipSpaces(treeTxt + nc);
+  }
+  
+  if( ! (nc == txtLen || (nc+1 == txtLen && treeTxt[nc] == ';')) ) {
+    if( nc < 0) {
+      int const where = txtLen+(nc+1);
+      PyErr_Format(PyExc_ValueError, "failed parsing around %d (%10.10s ...).", where, treeTxt+where);
+    } else {
+      PyErr_Format(PyExc_ValueError, "extraneous characters at tree end: '%s'",
+		   string(treeTxt+nc,std::max(5,txtLen-nc)).c_str());
+    }
+    return 0;
+  }
+
+  PyObject* n = PyTuple_New(nodes.size());
+  for(uint k = 0; k < nodes.size(); ++k) {
+    PyTuple_SET_ITEM(n, k, nodes[k].asPyObject());
+  }
+  return n;
+}
+
 static PyMethodDef module_methods[] = {
-     {NULL}  /* Sentinel */
+  {"parsetree", parseTree, METH_VARARGS, ""},
+  
+  {NULL}  /* Sentinel */
 };
 
 #ifndef PyMODINIT_FUNC	/* declarations for DLL import/export */

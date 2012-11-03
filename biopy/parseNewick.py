@@ -8,7 +8,8 @@ from treeutils import TreeBuilder
 
 __all__ = ["parseNewick"]
 
-from cchelp import parsetree
+#from cchelp import parsetree
+from treesset import parsetree
 
 # Reference implementation in python - supposed to be the same as the C version
 # in cchelp.
@@ -111,6 +112,8 @@ def _readSubTree(txt, nodesList) :
   nodeTxt = ""
   while len(txt):
     # we will break when done
+    if txt[0] in "(),;" :
+      break
     if txt[0] == '[':
       if txt[1] == '&':
         n1, vals = _parseAttributes(txt[2:])
@@ -127,33 +130,114 @@ def _readSubTree(txt, nodesList) :
         e = _getStuff(txt[1:], ']')
         txt = txt[e+2:]
         n += e+2
-    elif txt[0].isspace() or txt[0] in ":.0123456789+-Ee":
+    else:
       nodeTxt = nodeTxt + txt[0]
       txt = txt[1:]
       n += 1
-    else :
-      break
 
   nodeTxt = nodeTxt[_skipSpaces(nodeTxt):]
-  if len(nodeTxt) and nodeTxt[0] == ':' :
-    n1 = _skipSpaces(nodeTxt[1:])
-    nodeTxt = nodeTxt[1+n1:]
-    n1 = 0
-    while n1 < len(nodeTxt) and nodeTxt[n1] in ".0123456789+-Ee" :
-      n1 += 1
-    b = float(nodeTxt[:n1])
-    nodeTxt = nodeTxt[n1:]
-    nodesList[-1][1] = b
+  if len(nodeTxt) :
+    i = _findIndex(nodeTxt, ':', [])
+    if i != 0:
+      # text is name/support
+      k = i if i > 0 else len(nodeTxt)
+      nodesList[-1][0] = nodeTxt[:k].strip()
+      nodeTxt = nodeTxt[k:].strip()
+    if i >= 0 :  
+      n1 = _skipSpaces(nodeTxt[1:])
+      nodeTxt = nodeTxt[1+n1:]
+      n1 = 0
+      while n1 < len(nodeTxt) and nodeTxt[n1] in ".0123456789+-Ee" :
+        n1 += 1
+      b = float(nodeTxt[:n1])
+      nodeTxt = nodeTxt[n1:]
+      nodesList[-1][1] = b
     # for now, ignore anything but the branch length (number after first ':')
     
   return n
 
+## def _readSubTree(txt, nodesList) :
+##   n = _skipSpaces(txt)
+##   txt = txt[n:]
+##   if txt[0] == '(' :
+##     subs = []
+##     while True:
+##       n1 = _readSubTree(txt[1:], nodesList)
+##       n += 1 + n1
+##       txt = txt[1+n1:]
+##       subs.append(len(nodesList)-1)
+
+##       n1 = _skipSpaces(txt)
+##       n += n1
+##       txt = txt[n1:]
+##       if txt[0] == ',' :
+##         continue
+##       if txt[0] == ')' :
+##         nodesList.append([None, None, subs, None])
+##         n += 1
+##         txt = txt[1:]
+##         break
+##       raise RuntimeError("error")
+##   else :
+##     # a terminal
+##     n1 = 0
+##     while not txt[n1].isspace() and txt[n1] not in ":[,()]":
+##       n1 += 1
+##     nodesList.append([txt[:n1], None, None, None])
+##     n += n1
+##     txt = txt[n1:]
+
+##   n1 = _skipSpaces(txt)
+##   txt = txt[n1:]
+##   n += n1
+
+##   nodeTxt = ""
+##   while len(txt):
+##     # we will break when done
+##     if txt[0] == '[':
+##       if txt[1] == '&':
+##         n1, vals = _parseAttributes(txt[2:])
+##         n1 += 3
+##         n1 += _skipSpaces(txt[n1:])
+##         n += n1
+##         txt = txt[n1:]
+##         if nodesList[-1][3] is None:
+##           nodesList[-1][3] = tuple(vals)
+##         else :
+##           nodesList[-1][3] = nodesList[-1][3] + tuple(vals)
+##       else :
+##         # skip over comment, a ']' in comment need escaping
+##         e = _getStuff(txt[1:], ']')
+##         txt = txt[e+2:]
+##         n += e+2
+##     elif txt[0].isspace() or txt[0] in ":.0123456789+-Ee":
+##       nodeTxt = nodeTxt + txt[0]
+##       txt = txt[1:]
+##       n += 1
+##     else :
+##       break
+##   import pdb; pdb.set_trace()
+##   nodeTxt = nodeTxt[_skipSpaces(nodeTxt):]
+##   if len(nodeTxt) and nodeTxt[0] == ':' :
+##     n1 = _skipSpaces(nodeTxt[1:])
+##     nodeTxt = nodeTxt[1+n1:]
+##     n1 = 0
+##     while n1 < len(nodeTxt) and nodeTxt[n1] in ".0123456789+-Ee" :
+##       n1 += 1
+##     b = float(nodeTxt[:n1])
+##     nodeTxt = nodeTxt[n1:]
+##     nodesList[-1][1] = b
+##     # for now, ignore anything but the branch length (number after first ':')
+    
+##   return n
+
 
 def _build(nodes, weight=1.0, rooted=True, name='') :
+  # name/support ignored
   tb = TreeBuilder(weight=weight, rooted = rooted, name=name)
   t = [None]*len(nodes)
   for k, x in enumerate(nodes):
-    if x[0] is not None :
+    if x[2] is None or len(x[2]) == 0:
       t[k] = tb.createLeaf(x[0])
     else :
       t[k] = tb.mergeNodes([ [t[l], nodes[l][1]] for l in x[2]])
@@ -164,10 +248,12 @@ def _build(nodes, weight=1.0, rooted=True, name='') :
 def _parseNewickPython(txt, weight=1.0, rooted=True, name='') :
   nodes = []
   nr = _readSubTree(txt, nodes)
-  if nr != len(txt) and not txt[nr:].isspace() :
-    raise RuntimeError("extraneous characters at tree end: '" + txt[nr:] + "'")
+  left = txt[nr:].strip()
+
+  if len(left) and not left == ';':
+    raise ValueError("extraneous characters at tree end: '" + left[:5] + "'")
   return _build(nodes, weight=weight, rooted = rooted, name=name)
 
 def parseNewick(txt, weight=1.0, rooted=True, name='') :
   nodes = parsetree(txt)
-  return _build(nodes, weight=weight, rooted = rooted, name=name)
+  return _build(nodes, weight = weight, rooted = rooted, name = name)

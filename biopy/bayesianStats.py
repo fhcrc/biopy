@@ -23,6 +23,7 @@ def hpd(data, level) :
   :param data: sequence of real values
   :param level: (0 < level < 1)
   """ 
+  assert (0 < level < 1)
   
   d = list(data)
   d.sort()

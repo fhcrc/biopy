@@ -18,6 +18,7 @@ import operator
 
 __all__ = [
   "branchScoreTreeDistance", "treeScoreDistance", "heightsScoreTreeDistance",
+  "heightsScoreTreeDistanceAll",
   "allPartitions", "treeLength", "treeLengthNormed", "treeArea", "vdistance",
   "rootedAgreementScore", "conditionalCladeScore", "cladesInTreesSet",
   "setTreeClades"
@@ -103,6 +104,24 @@ def branchScoreTreeDistance(tree1, tree2, distanceMetric = vdistance) :
   
   return distanceMetric(d1,d2)
 
+def _hs_score(tree1,tree2,h1,h2,p1,p2) :
+  sd = abs(h1 - h2)
+
+  notin2 = dict.fromkeys(p2)
+  for p in p1 :
+    if p in p2 :
+      sd += abs(p1[p][1] - p2[p][1])
+      del notin2[p]
+    else :
+      sd += tree1.node(p1[p][0]).data.branchlength
+
+  for c in notin2 :
+    sd += tree2.node(p2[c][0]).data.branchlength
+  ## for n,h in p2.itervalues() :
+  ##   sd += tree2.node(n).data.branchlength
+
+  return sd
+  
 def heightsScoreTreeDistance(tree1, tree2) :
   """ Hybrid Heights/Branch score tree distance.
 
@@ -115,19 +134,51 @@ def heightsScoreTreeDistance(tree1, tree2) :
   h1 = _collectCladeTaxa(tree1, tree1.root, taxa, p1, True)
   h2 = _collectCladeTaxa(tree2, tree2.root, taxa, p2, True)
 
-  sd = abs(h1 - h2)
-  
-  for p in p1 :
-    if p in p2 :
-      sd += abs(p1[p][1] - p2[p][1])
-      del p2[p]
-    else :
-      sd += tree1.node(p1[p][0]).data.branchlength
+  if 0 :
+    sd = _hs_score(tree1,tree2,h1,h2,p1,p2)
+  else :
+    sd = abs(h1 - h2)
 
-  for n,h in p2.itervalues() :
-    sd += tree2.node(n).data.branchlength
+    for p in p1 :
+      if p in p2 :
+        sd += abs(p1[p][1] - p2[p][1])
+        del p2[p]
+      else :
+        sd += tree1.node(p1[p][0]).data.branchlength
+
+    for n,h in p2.itervalues() :
+      sd += tree2.node(n).data.branchlength
 
   return sd
+
+def heightsScoreTreeDistanceAll(tree, trees1) :
+  taxa = trees1[0].get_taxa()
+  ptrees1 = [dict() for x in trees1]
+  hs1 = [_collectCladeTaxa(t, t.root, taxa, d, True)
+         for t,d in zip(trees1, ptrees1)]
+  if tree is None :
+    res = []
+    for nk,(tree1,h1,p1) in enumerate(zip(trees1,hs1,ptrees1)) :
+      res.append([0]*(nk+1) + [_hs_score(tree1,trees1[k],h1,hs1[k],p1,ptrees1[k])
+                               for k in range(nk+1,len(trees1))])
+    for k in range(len(trees1)) :
+      for i in range(k) :
+        res[k][i] = res[i][k]
+    return res
+  else:
+    if isinstance(tree, (list, tuple)) :
+      trees2 = tree
+      ptrees2 = [dict() for x in trees2]
+    else :
+      trees2 = [tree]
+      ptrees2 = [dict()]
+    hs2 = [_collectCladeTaxa(t, t.root, taxa, d, True) for t,d in zip(trees2, ptrees2)]
+
+    res = []
+    for tree2,h2,p2 in zip(trees2,hs2,ptrees2) :
+      res.append([_hs_score(tree1,tree2,h1,h2,p1,p2) for tree1,h1,p1 in
+                  zip(trees1,hs1,ptrees1)])
+    return res if len(res) > 1 else res[0]
 
 def treeScoreDistance(tree1, tree2, norm = vdistance, consistencyCheck = True) :
   """ Tree distance when taking into account both branch length and population

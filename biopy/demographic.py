@@ -1,15 +1,37 @@
-## This file is part of biopy.
+# This file is part of biopy.
 ## Copyright (C) 2010 Joseph Heled
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 #
 
 """
-Demographic functions
+Demographic Functions
 =====================
 
 A demographic function is a function of the effective population size over
 time.
+
+In addition to :math:`N(t)`, the (positive) population size at time t, the
+demographic provides the integral of the population inverse, :math:`g(x) =
+\int_0^x \\frac{1}{N(t)} dt`, and a draw of the next coalescent time, starting
+with k individuals at time t. 
+
+Starting with k lineages, the rate of coalescence as a function of t is
+:math:`r(k,t) = \\binom{k}{2}/N(t)`, and the density at time t is
+:math:`\\frac{1}{r(k,t)} e^{-r(k,t)}`. So, the cumulative density between time 0
+and x is :math:`c(x) = 1 - e^{\int_0^x -r(k,t) dt} = 1 - e^{-\\binom{k}{2} g(x)}`.
+
+:math:`g(x)` is useful for calculating the density of coalescing: To coalesce at
+t, no event happened between 0 and t (:math:`c(x)`), followed by a coalescence
+(density :math:`r(k,t)`).
+
+To draw a random time to coalesce, we sample r in [0,1] (uniform over cumulative
+density) and solve :math:`g(x) = -\log(1-r)/\\binom{k}{2}` for x.
+
+If we start at :math:`t_0` we need to solve :math:`-log(1-r)/\\binom{k}{2} + g(t_0) = g(x)`.
+
+The integral on the interval can be defined in terms of g, :math:`g(x,y) = g(y)
+- g(x)`, but some instances may provide a (computationally) cheaper version.
 """
 
 from __future__ import division
@@ -123,7 +145,11 @@ class Demographic(object) :
       nLineages += n
       
   # tests and validations
-  
+
+  def integrate(self, e) :
+    """ Integrate :math:`1/N(t)` over :math:`0 \le t \le e`"""
+    raise RuntimeError("not implemented")
+                       
   def numerical(self, low, high) :
     """ Integrate 1/N(t) numerically in the range [low,high]."""
     return quad(lambda x : 1/self.population(x) ,low ,high)[0]
@@ -150,7 +176,7 @@ class Demographic(object) :
 class ConstantPopulation(Demographic) :
   """ Constant population size."""
   def __init__(self, N) :
-    """ population(t) = N """
+    """ N(t) = N """
     self.pop = float(N)
     
   def __str__(self) :
@@ -166,18 +192,18 @@ class ConstantPopulation(Demographic) :
     return self.pop
 
   def integrate(self, e) :
-    """ Integrate 1/N(t) over 0 <= t <= e """
+    """ Integrate :math:`1/N(t)` over :math:`0 \le t \le e`"""
 
     return e/self.pop
 
   def integrateExpression(self, e) :
-    """ Integration expression for 1/N(t) over 0 <= t <= e """
+    """ Integration expression for :math:`1/N(t)` over :math:`0 \le t \le e` """
 
     return e + "/" + str(self.pop)
 
   def timeToNextCoalescent(self, nLineages, t) :
-    """ Randomly draw the time interval where any 2 lineages from the initial
-    nLineages coalesce, starting from time t."""
+    """ Randomly draw the time to wait, starting at t, until 2 lineages from the initial
+    nLineages coalesce."""
     
     return random.expovariate((nLineages * (nLineages-1)) / (2.0 * self.population(t)))
 
@@ -191,9 +217,9 @@ class StepFunctionPopulation(Demographic) :
   """ Stepwise Constant population size."""
 
   def __init__(self, vals, xvals) :
-    """ population(t) = vals[k] for xvals[k-1] <= t < xvals[k]
+    """ N(t) = vals[k] for xvals[k-1] <= t < xvals[k]
 
-    where xvals[-1] is implicitly 0
+    Where xvals[-1] is implicitly 0.
     """
     assert len(vals) == len(xvals) + 1, (vals,xvals)
     
@@ -294,9 +320,15 @@ class StepFunctionPopulation(Demographic) :
 from cchelp import demoLPintegrate, demoLPpopulation
 
 class LinearPiecewisePopulation(Demographic) :
+  """ Linear Piecewise """
   # population = vals[k] at xvals[k-1] and linear between.
   # xvals[-1] is implicitly 0
   def __init__(self, vals, xvals) :
+    """ N(t) = linear between vals[k] and vals[k+1] for xvals[k-1] <= t < xvals[k].
+    
+    xvals[-1] is implicitly 0.
+    """
+    
     assert len(vals) == len(xvals) + 1, (vals,xvals)
     self.vals = [float(x) for x in vals]
     self.xvals = [float(x) for x in xvals]
@@ -452,9 +484,11 @@ class LinearPiecewisePopulation(Demographic) :
 
 
 class SinusoidalPopulation(Demographic) :
-  """ Sinusoidal between amplitude and amplitude*base (both positive)
-  N(t) = amp * ((1-base) * ((1+cos(t0 + t * x))/2) + base)
-  max is on -t0/tscale, min on (pi-t0)/tscale """
+  """ Sinusoidal between amplitude and amplitude*base (*A* and *A B* both
+  positive).
+
+  :math:`N(t) = A ((1-B) ((1+\cos(t_0 + t_S t))/2) + B)`.
+  max is on :math:`-t_0/t_S`, min on :math:`(\pi-t_0)/t_S`."""
   
   def __init__(self, amplitude, base, tscale = 1, t0 = 0) :
     
@@ -611,9 +645,8 @@ class ExponentialGrowthPopulation(Demographic) :
   def __repr__(self) :
     return "%g exp(-%g t)" % (self.pop0,self.rate)
 
-  def graphPoints(self, xmax) :
-    N = 100
-    xs = [k * xmax/100.0 for k in range(N)]
+  def graphPoints(self, xmax, N = 100) :
+    xs = [k * xmax/N for k in range(N)]
     return (xs, [self.population(x) for x in xs])
   
   def population(self, t) :
@@ -640,6 +673,53 @@ class ExponentialGrowthPopulation(Demographic) :
 
   def scale(self, factor) :
     return ExponentialGrowthPopulation(self.population(0) * factor, self.rate)    
+
+class ExponentialGrowthBoundedPopulation(Demographic) :
+  """ c + N0 * exp(-rt)"""
+  def __init__(self, N, rate, c0) :
+    self.pop0 = float(N)
+    self.rate = rate
+    self.c0 = c0
+    
+  def __repr__(self) :
+    return "%g + %g exp(-%g t)" % (self.c0,self.pop0,self.rate)
+
+  def graphPoints(self, xmax, N = 100) :
+    xs = [k * xmax/N for k in range(N)]
+    return (xs, [self.population(x) for x in xs])
+  
+  def population(self, t) :
+    return self.c0 + self.pop0 * exp(-self.rate * t)
+
+  def integrate(self, e) :
+    """ Integrate 1/N(t) for  0 <= t <= e """
+    r = self.rate
+    c = self.c0
+    return e/c + (log(self.pop0*exp(-r*e) + c) - log(self.pop0 + c))/(c*r)
+
+  def timeToNextCoalescent(self, nLineages, t) :
+    """ time to next coalescent event for nLineages lineages starting at t. """
+    ko2 = (nLineages*(nLineages-1))/2.0
+    rr = random.random()
+    ival = -log(1-rr)/ko2
+
+    if t > 0 :
+      ival += self.integrate(t)
+      
+    r = self.rate
+    c = self.c0
+    a = self.pop0
+    x = log(((a + c)*exp(c*r*ival) - a)/c)/r
+    # 1-rr == exp(ko2 * -self.integrate(x))/exp(ko2 * -self.integrate(t))
+    # self.integrate(x) == ival
+    #import pdb ; pdb.set_trace()
+    return x - t
+
+  def naturalLimit(self) :
+    return None
+
+  def scale(self, factor) :
+    raise ""
 
 class ScaledDemographic(object) :
   def __init__(self, dfunc, factor) :
