@@ -63,8 +63,14 @@ def _setTreeHeights(tree, opts) :
 def _setTreeHeightsForTargets(tree, ftargets) :
   for i,h in ftargets() :
     tree.node(i).data.height = h
-  for i in tree.get_terminals() :
-     tree.node(i).data.height = 0
+
+  order = getPostOrder(tree)
+  for node in order :
+    if not node.succ:
+      node.data.height = 0
+    else :
+      node.data.height = max([node.data.height]+
+                             [tree.node(x).data.height for x in node.succ])
 
   for n in tree.all_ids() :
     node = tree.node(n)
@@ -496,7 +502,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
 
   if initMethod == "opt":
     if hsOnly :
-      print targets
+      #print targets
       exec ("def ftargets():\n  return " + targets + ')') in globals()
       _setTreeHeightsForTargets(tree, ftargets)
     else : 

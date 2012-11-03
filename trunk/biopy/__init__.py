@@ -24,6 +24,12 @@ A small collection of bioinformatic scripts.
 .. automodule:: biopy.treeMeasure
   :members: 
 
+.. automodule:: biopy.demographic
+
+.. autoclass:: biopy.demographic.ConstantPopulation
+.. autoclass:: biopy.demographic.StepFunctionPopulation
+.. autoclass:: biopy.demographic.LinearPiecewisePopulation
+  
 """
 
 __version__ = '0.1.8'
