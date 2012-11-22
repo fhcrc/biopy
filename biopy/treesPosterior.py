@@ -42,11 +42,13 @@ from cchelp import sumNonIntersect as _sumNonIntersect, sumNonIntersectDer as _s
 verbose = False
 
 
-def _setTreeHeights(tree, opts) :
+def _setTreeHeights(tree, opts,fctr) :
   order = getPostOrder(tree)
+  nhs = nodeHeights(tree, allTipsZero = False)
+
   for node in order :
     if not node.succ:
-      node.data.height = 0
+      node.data.height = nhs[node.id]*fctr
     else :
       hs = [tree.node(x).data.height for x in node.succ]
       mn = sum([h + opts[x] for x,h in zip(node.succ,hs)])/len(hs)
@@ -58,16 +60,19 @@ def _setTreeHeights(tree, opts) :
       p = tree.node(node.prev) 
       node.data.branchlength = p.data.height - node.data.height
       assert node.data.branchlength >= 0
+
   return tree
 
-def _setTreeHeightsForTargets(tree, ftargets) :
+def _setTreeHeightsForTargets(tree, ftargets, fctr) :
   for i,h in ftargets() :
     tree.node(i).data.height = h
+
+  nhs = nodeHeights(tree, allTipsZero = False)
 
   order = getPostOrder(tree)
   for node in order :
     if not node.succ:
-      node.data.height = 0
+      node.data.height = nhs[node.id]*fctr
     else :
       node.data.height = max([node.data.height]+
                              [tree.node(x).data.height for x in node.succ])
@@ -148,6 +153,7 @@ def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
   """ nodesMinHeight: minimum height (lower bound) for internal nodes
   paranoid: add internal consistency checks
   """
+  # tree should be scaled by fctr already
   
   allid = set(tree.all_ids())
   # taxa
@@ -172,11 +178,11 @@ def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
 
   if nodesMinHeight is not None :
     for n in nodesMinHeight:
-      mh[n] = max(mh[n], nodesMinHeight[n])
+      mh[n] = max(mh[n], nodesMinHeight[n]*fctr)
 
-  if fctr != 1 :
-    for n in mh :
-      mh[n] = mh[n] * fctr
+  #if fctr != 1 :
+  #  for n in mh :
+  #    mh[n] = mh[n] * fctr
     
   # x[0] is root
   if withInit :
@@ -204,7 +210,7 @@ def _treeBranchAssignmentExprs(tree, clades, fctr, nodesMinHeight = None,
     else :
       sr.append("h%d = x[%d] * h%d" % (k, i+1, h))
       if withInit:
-        htox.append("x[%d] = %.15g" % (i+1,  hs2ratio(nh[k], nh[h], 0)))
+        htox.append("x[%d] = %.15g" % (i+1, hs2ratio(nh[k], nh[h], 0)))
       
     if withDerivative:
       sr.append("d_h%d_x = [%s]" % (k,der(i+1, len(nInOrder), h)))
@@ -283,7 +289,6 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
   if not all([k in posteriorParts for r,k in enumerate(treeParts)]) :
     return (None, -1)
     
-    
   # For numerical stability in computing gradients, scale trees
   # to get a mean root height of 1 
   fctr = len(trees) / sum([treeHeight(x) for x in trees]) if norm else 1
@@ -359,7 +364,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
         ee += "+ %d * b%d" % (a1,nn)
         
       elif method == HEIGHTS_SCORE :
-        if not tree.node(nn).data.taxon  :
+        if tree.node(nn).succ  :
           vlsas = _prepare([x[0] for x in br])
           if withDerivative :
             pee += "  v%d,dv%d = _absDiffBranchDer(bs%d,%s)\n" % (nn,nn,nn,vlsas)
@@ -377,7 +382,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
 
       elif method == HEIGHTS_ONLY :
         
-        if not tree.node(nn).data.taxon  :
+        if tree.node(nn).succ :
           hTarget = median(hs)
           if withDerivative :
             pee += "  dv%d = 1 if bs%d > %.14f else -1\n" % (nn,nn,hTarget)
@@ -438,7 +443,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
 
         if withDerivative:
           dee += "+(%d * 2 * b%d * d_b%d_x[k])" % (len(trees), nn, nn)
-      else :
+      elif  method != HEIGHTS_ONLY:
         # all linear distances add the missing branches as is
         ee += "+(%d * b%d)" % (len(trees), nn)
 
@@ -504,13 +509,15 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
     if hsOnly :
       #print targets
       exec ("def ftargets():\n  return " + targets + ')') in globals()
-      _setTreeHeightsForTargets(tree, ftargets)
-    else : 
-      _setTreeHeights(tree, optBranches)
+      _setTreeHeightsForTargets(tree, ftargets, fctr)
+    else :
+      _setTreeHeights(tree, optBranches, fctr)
   elif norm :
     for n in tree.all_ids() :
       tree.node(n).data.branchlength *= fctr
-      
+
+  if verbose: print fctr,"tr:",str(tree)
+  
   # Get code which transforms the heights encoding to branch lengths
   # A descendant height is specified as a fraction in [0,1] of its ancestor
   # height (but leading number is the root height).
@@ -555,6 +562,7 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
     else :
       x0 = [1 if norm else treeHeight(tree)] + \
            [random.random() for k in range(nx-1)]
+    if verbose: print "x0:",x0
 
     initialVal = v1score(x0)     # assert x0[0] >= minRoot
     ## from treeMeasure import heightsScoreTreeDistance
@@ -591,12 +599,14 @@ def minDistanceTree(method, tree, trees, limit = scipy.inf, norm = True,
     factr /= 10
     if factr < 1e6 :
       # failed, leave as is
-      sol = htox()
+      sol = htoxs()
       finaleVal = v1score(sol[0])
       if withDerivative :
         finaleVal = finaleVal[0]
       break
 
+  if verbose: print "sol",sol[0],v1score(sol[0])[0]/fctr
+  
   brs = code2branches(sol[0])
   for nn,br in brs:
     # numerical instability : don't permit negative branches

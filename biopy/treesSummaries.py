@@ -194,13 +194,13 @@ def _taxOrder(trees) :
   otaxa = groups[0]
   return otaxa
 
-def _getCladeEstimates(tree, txp, hs) :
+def _getCladeEstimates(tree, txp, hs, nhsd) :
   po = getPostOrder(tree)
   for n in po:
     data = n.data
-    if data.taxon :
+    if not n.succ :
       data.clade = ([txp[data.taxon]], True)
-      data.pheight = data.branchlength
+      data.pheight = data.branchlength + (nhsd[data.taxon] if nhsd else 0)
     else :
       sc = [tree.node(s).data.clade for s in n.succ]
       svalid = all([s[1] for s in sc])
@@ -220,46 +220,88 @@ def _getCladeEstimates(tree, txp, hs) :
       if n.id != tree.root :
         data.pheight = nh + data.branchlength
         data.clade = (sc[0] + sc[1], valid)
-        
-def taxaPartitionsSummaryTree(trees, summaryType = "median") :
+
+def _adjustTips(tree, refTree) :
+  nhs = nodeHeights(refTree, allTipsZero = False)
+  nhsd = dict([(refTree.node(i).data.taxon,nhs[i])
+               for i in nhs if not refTree.node(i).succ])
+  for ni in tree.get_terminals():
+    node = tree.node(ni)
+    h = nhsd[node.data.taxon]
+    if h > 0 :
+      node.data.branchlength -= h
+      if node.data.branchlength < 0 :
+        #node branch too short for adjustment.
+        #chop branches on the path to root. 
+        #import pdb; pdb.set_trace()
+        while node.id != tree.root :
+          pr = tree.node(node.prev)
+          b = node.data.branchlength
+          node.data.branchlength = 0
+          pr.data.branchlength += b
+          # Other descendants should keep their height
+          for i in pr.succ :
+            if i != node.id :
+              tree.node(i).data.branchlength -= b
+          if pr.data.branchlength >= 0 :
+            break
+          node = pr
+  
+def taxaPartitionsSummaryTree(trees, summaryType = "median", atz = False) :
   if summaryType not in ["mean", "median", "both"] :
     raise ValueError("summaryType should be one of mean, median, both")
   
   torder = _taxOrder(trees)
   hs = [list() for k in torder[:-1]]
 
+  nhsd = None
+  if not atz:
+    tree = trees[0]
+    nhs = nodeHeights(tree, allTipsZero = False)
+    nhsd = [(tree.node(i).data.taxon, nhs[i])
+            for i in nhs if not tree.node(i).succ]
+    if any([h > 1e-13 for t,h in nhsd]) :
+      nhsd = dict(nhsd)
+    else :
+      nhsd = None
+
   txp = dict(zip(torder,itertools.count()))
   for t in trees :
-    _getCladeEstimates(t, txp, hs)
+    _getCladeEstimates(t, txp, hs, nhsd)
 
   if summaryType in ["median","both"] :
     md = mau.mau2Tree((torder, [median(x) if len(x) else 0  for x in hs],
                              [(0,False) for x in hs]))
+    if not atz :
+      _adjustTips(md, trees[0])
+               
   if summaryType in ["mean","both"] :
     mn = mau.mau2Tree((torder, [mean(x) if len(x) else 0 for x in hs],
                              [(0,False) for x in hs]))
+    if not atz :
+      _adjustTips(mn, trees[0])
     
   return (mn,md) if summaryType=="both" else mn if summaryType == "mean" else md
 
 
-def taxaPartitionsSummaryTreeX(trees, summaryType = "median") :
-  if summaryType not in ["mean", "median", "both"] :
-    raise ValueError("summaryType should be one of mean, median, both")
+## def taxaPartitionsSummaryTreeX(trees, summaryType = "median") :
+##   if summaryType not in ["mean", "median", "both"] :
+##     raise ValueError("summaryType should be one of mean, median, both")
   
-  torder = _taxOrder(trees)
-  hs = [list() for k in torder[:-1]]
+##   torder = _taxOrder(trees)
+##   hs = [list() for k in torder[:-1]]
 
-  txp = dict(zip(torder,itertools.count()))
-  for t in trees :
-    _getCladeEstimates(t, txp, hs)
+##   txp = dict(zip(torder,itertools.count()))
+##   for t in trees :
+##     _getCladeEstimates(t, txp, hs)
 
-  if summaryType in ["median","both"] :
-    md = mau.mau2Tree((torder, [median(x) if len(x) else 0  for x in hs],
-                             [(0,False) for x in hs]))
-  if summaryType in ["mean","both"] :
-    mn = mau.mau2Tree((torder, [mean(x) if len(x) else 0 for x in hs],
-                             [(0,False) for x in hs]))
+##   if summaryType in ["median","both"] :
+##     md = mau.mau2Tree((torder, [median(x) if len(x) else 0  for x in hs],
+##                              [(0,False) for x in hs]))
+##   if summaryType in ["mean","both"] :
+##     mn = mau.mau2Tree((torder, [mean(x) if len(x) else 0 for x in hs],
+##                              [(0,False) for x in hs]))
     
-  return ((mn,md) if summaryType=="both" else (mn,) if summaryType == "mean" else
-          (md,)) + ((torder, hs))
+##   return ((mn,md) if summaryType=="both" else (mn,) if summaryType == "mean" else
+##           (md,)) + ((torder, hs))
 
