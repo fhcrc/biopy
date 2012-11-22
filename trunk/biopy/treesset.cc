@@ -358,11 +358,20 @@ readSubTree(const char* txt, vector<returnType>& nodes)
       return -1; // error
     }
   } else {
-    // a terminal
     const char* s = txt;
-    while( ! isspace(*s) && *s != ':' && *s != '[' && *s != ','
-	   && *s != '(' && *s != ')' && *s != ']' ) {
-      ++s;
+    assert( ! isspace(*s) ) ;
+    // a terminal
+    if( *s == '\'' || *s == '"' ) {
+      int const e = _getStuff(s+1, *s);
+      if( e < 0 ) {
+	return -1;
+      }
+      s += e+2;
+    } else {
+      while( ! isspace(*s) && *s != ':' && *s != '[' && *s != ','
+	     && *s != '(' && *s != ')' && *s != ']' ) {
+	++s;
+      }
     }
     int const n1 = s - txt;
 #ifdef PYINTERFACE
@@ -1673,7 +1682,7 @@ TreesSet::nodes2rep(vector<ParsedTreeNode>& nodes)
     for(auto n = nodes.begin(); n != nodes.end() ; ++n) {
       if( n->attributes ) {
 	int l = locs[n - nodes.begin()];
-	if( n->taxon.length() ) {
+	if( n->sons.size() == 0 ) {
 	  l += 1;
 	} else {
 	  l += nTaxa;
@@ -1698,7 +1707,7 @@ TreesSet::nodes2rep(vector<ParsedTreeNode>& nodes)
     Packer<uint>* hsb;
     // single leaf trees has no heights
     if( compressed && heights.size() > 0 ) {
-      int nbitsStoreH = lg2i(*std::max_element(heights.begin(),heights.end())) + 1;
+      int const nbitsStoreH = lg2i(*std::max_element(hs.begin(),hs.end())) + 1;
       hsb = new FixedIntPacker(nbitsStoreH, hs.begin(), hs.end());
     } else {
       hsb = new SimplePacker<uint>(hs);
@@ -1783,13 +1792,13 @@ Tree::Expanded::Expanded(int _itax,
   
 
 uint Tree::rep2treeInternal(vector<Expanded>& nodes,
-			    uint low, uint hi,
+			    uint low, uint const hi,
 			    vector<uint> const& tax,
 			    vector<double> const& htax,
 			    vector<double> const& hs,
-			    const vector<const Attributes*>* atrbs,
+			    const vector<const Attributes*>* const atrbs,
 			    uint*& sonsBlock,
-			    uint* curiScratch,
+			    uint* const curiScratch,
 			    uint bleft) const
 {
   if( low == hi ) {

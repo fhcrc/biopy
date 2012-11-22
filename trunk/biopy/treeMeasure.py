@@ -16,6 +16,8 @@ import numpy, numpy.linalg
 from collections import defaultdict
 import operator
 
+from treeutils import nodeHeights, getPostOrder
+
 __all__ = [
   "branchScoreTreeDistance", "treeScoreDistance", "heightsScoreTreeDistance",
   "heightsScoreTreeDistanceAll",
@@ -62,6 +64,23 @@ def _collectCladeTaxa(tree, nodeId, taxa, partitions, withHeights) :
   else :
     partitions[frozenset(p)] = nodeId
     return p
+
+def _collectCladeTaxaNonATZ(tree, taxa, partitions) :
+  nhs = nodeHeights(tree, allTipsZero = False)
+  for n in getPostOrder(tree):
+    data = n.data
+    if not n.succ:
+      data.clade = [taxa.index(data.taxon),]
+    else :
+      p = []
+      for s in n.succ :
+        d = tree.node(s).data
+        p.extend(d.clade)
+        del d.clade
+      data.clade = p
+      
+    partitions[frozenset(data.clade)] = (n.id, nhs[n.id])
+  return nhs[tree.root]
 
 def vdistance(a1, a2, order = 2) :
   """ Vector norm {||v||_2}"""
@@ -271,10 +290,20 @@ def allPartitions(referenceTree, trees, func = None, withHeights = False,
   if withRoot :
     rootHeights = []
   taxa = referenceTree.get_taxa()
+  ultrametric = True
+  if withHeights :
+    nhs = nodeHeights(referenceTree, allTipsZero = False)
+    nhsd = [(referenceTree.node(i).data.taxon, nhs[i])
+            for i in nhs if not referenceTree.node(i).succ]
+    ultrametric = all([h <= 1e-13 for t,h in nhsd])
+    
   p = dict()
   for tree in trees:
     p1 = dict()
-    h = _collectCladeTaxa(tree, tree.root, taxa, p1, withHeights)
+    if ultrametric :
+      h = _collectCladeTaxa(tree, tree.root, taxa, p1, withHeights)
+    else :
+      h = _collectCladeTaxaNonATZ(tree, taxa, p1)
     for k,nd in p1.iteritems() :
       pk = p.get(k)
       v = (tree, nd)

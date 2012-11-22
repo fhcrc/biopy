@@ -327,7 +327,8 @@ def nodeHeight(tree, nid) :
 
 def treeHeight(tree) :
   """ Height of tree. """
-  return _getNodeHeight(tree, tree.node(tree.root), dict())
+  return nodeHeight(tree, tree.root)
+  # _getNodeHeight(tree, tree.node(tree.root), dict())
 
 
 def setLabels(trees) :
