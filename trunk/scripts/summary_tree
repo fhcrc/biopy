@@ -37,13 +37,12 @@ parser.add_argument("--every", "-e", metavar="E", type = int,
                     i.e. %(default)d)""", default = 1)
 
 parser.add_argument("--sort-topologies-by", dest="sortby", metavar="METHOD", 
-                    choices=["highest-posterior", "conditional", "mcc", "tcb",
-                             "mdtp-bs1","mdtp-bs2","mdtp-hs", "mdtp-ra"],
-                    default = "tcb",
+                    choices=["highest-posterior", "conditional", "mcc", "tcb"],
+                    default = "mcc",
                     help="""Try topologies in order determined by this""" +
                     """ criteria. mcc better for likelihood, tcb for truth.
                     mdtp: mean-distance-to-posterior. """ +
-                    """tcb,mcc,conditional,highest-posterior,mdtp-* default %(default)s""")
+                    """tcb,mcc,conditional,highest-posterior default %(default)s""")
 
 parser.add_argument("--search", dest="serachTopologies",
                     help="""Search in topology space based on zero length""" +
@@ -100,6 +99,10 @@ parser.add_argument("--species-mapping", dest="spmap", metavar="FILE",
                           " scheme of looking for the species name inside the gene" +
                           " name is used."),
                     default = None)
+
+parser.add_argument("--annotate", "-a", dest="annotate",
+                    help="Add support metadata",
+                    action="store_true", default = False)
 
 parser.add_argument("-p", "--progress", dest="progress",
                     help="Print out progress messages to terminal (standard error)",
@@ -347,8 +350,6 @@ def sortTopologies(allTops, atMost) :
     clc2 = cladesInTreesSet(trees, 1)
     lar = lambda (top,trs) : conditionalCladeScore(trs[0], clc2, options.correction)
     allTops.sort(key = lar, reverse=1)
-  elif options.sortby == "mdtp":
-    pass
   else :
     raise ValueError(options.sortby)
   
@@ -382,141 +383,151 @@ if not optimizingMethod :
     stree = treesSummaries.taxaPartitionsSummaryTree(trees)
   else :
     raise ValueError( options.method )
-  print toNewick(stree)
-  sys.exit(0)
-  
-if options.topology is not None :
-  candidates = [options.topology]
-  limit = -1
-elif limit <= 0 :
+#  print toNewick(stree)
+#  sys.exit(0)
+else :  
+  if options.topology is not None :
+    candidates = [options.topology]
+    limit = -1
+  elif limit <= 0 :
+    if progress:
+      pPost = sum([len(x[1]) for x in allt[:ntops]]) / len(trees)
+      print >> sys.stderr, """using top %d topologies out of %d, covering %.1f%% of\
+   posterior topologies...,""" % \
+            (min(ntops, len(allt)), len(allt), 100*pPost),
+
+    k = ntops-1
+    lLast = len(allt[k][1])
+    while k < len(allt) and lLast == len(allt[k][1]) :
+      k += 1
+    if k > ntops :
+       print >> sys.stderr
+       print >> sys.stderr, """*** WARNING ***:  %d additional topologies have the \
+  same support as the %dth one (%d trees, %.3f%%)""" % (k - ntops, ntops, lLast, lLast/len(trees))
+
+    candidates = [x[1][0] for x in allt[:ntops]]
+  else :
+    if 0 :
+      import random
+
+      candidates = []
+      while len(candidates) < len(allt) :
+        l = []
+        k = len(candidates)
+        lFirst = len(allt[k][1])
+        while k < len(allt) and lFirst == len(allt[k][1]) :
+          l.append(allt[k][1][0])
+          k += 1
+        random.shuffle(l)
+        # print len(candidates), len(l), lFirst
+        candidates.extend(l)
+
+    candidates = [x[1][0] for x in allt]
+    #for x in candidates:
+    #  print toNewick(x, None, topologyOnly=1)
+    print >> sys.stderr, """trying in order %d topologies (time permitting) ...""" \
+          % len(candidates),
+
+  bestTree, bestScore = None, float('infinity')
+
   if progress:
-    pPost = sum([len(x[1]) for x in allt[:ntops]]) / len(trees)
-    print >> sys.stderr, """using top %d topologies out of %d, covering %.1f%% of\
- posterior topologies...,""" % \
-          (min(ntops, len(allt)), len(allt), 100*pPost),
+    print >> sys.stderr, "searching ...,",
 
-  k = ntops-1
-  lLast = len(allt[k][1])
-  while k < len(allt) and lLast == len(allt[k][1]) :
-    k += 1
-  if k > ntops :
-     print >> sys.stderr
-     print >> sys.stderr, """*** WARNING ***:  %d additional topologies have the \
-same support as the %dth one (%d trees, %.3f%%)""" % (k - ntops, ntops, lLast, lLast/len(trees))
-       
-  candidates = [x[1][0] for x in allt[:ntops]]
-else :
-  if 0 :
-    import random
-  
-    candidates = []
-    while len(candidates) < len(allt) :
-      l = []
-      k = len(candidates)
-      lFirst = len(allt[k][1])
-      while k < len(allt) and lFirst == len(allt[k][1]) :
-        l.append(allt[k][1][0])
-        k += 1
-      random.shuffle(l)
-      # print len(candidates), len(l), lFirst
-      candidates.extend(l)
+  nCandidatesTried = 0
 
-  candidates = [x[1][0] for x in allt]
-  #for x in candidates:
-  #  print toNewick(x, None, topologyOnly=1)
-  print >> sys.stderr, """trying in order %d topologies (time permitting) ...""" \
-        % len(candidates),
-  
-bestTree, bestScore = None, float('infinity')
+  if limit > 0 or progress :
+    startTime = time()
 
-if progress:
-  print >> sys.stderr, "searching ...,",
+  postTrees = trees
+  toposTried = dict()
+  lesserCans = []
 
-nCandidatesTried = 0
-
-if limit > 0 or progress :
-  startTime = time()
-
-postTrees = trees
-toposTried = dict()
-lesserCans = []
-
-while len(candidates) :
-  tree = candidates.pop(0)
-  treeTop = toNewick(tree, topologyOnly=1)
-  if treeTop in toposTried:
-    continue
-  
-  if useOnlyMatchingTopologies:
-    k = treeTop
-    if k not in topology :
-      # no such trees, skip topology
-      print >> sys.stderr, "*** skip %s, no posterior trees" % k
+  while len(candidates) :
+    tree = candidates.pop(0)
+    treeTop = toNewick(tree, topologyOnly=1)
+    if treeTop in toposTried:
       continue
-    postTrees = topology[k]
-    print >> sys.stderr, "Using %d posterior trees (out of %d) for %s" \
-          % (len(postTrees), len(trees), k) 
 
-  nh = getSPlimits(tree) if options.compatible is not None else None
+    if useOnlyMatchingTopologies:
+      k = treeTop
+      if k not in topology :
+        # no such trees, skip topology
+        print >> sys.stderr, "*** skip %s, no posterior trees" % k
+        continue
+      postTrees = topology[k]
+      print >> sys.stderr, "Using %d posterior trees (out of %d) for %s" \
+            % (len(postTrees), len(trees), k) 
 
-  # Use normalization and init defaults 
-  norm = bool(options.norm) # True
+    nh = getSPlimits(tree) if options.compatible is not None else None
 
-  tr, score = minDistanceTree(options.distance, tree, postTrees,
-                              nodesMinHeight = nh, withDerivative =
-                              options.derivative, norm = norm)
+    # Use normalization and init defaults 
+    norm = bool(options.norm) # True
 
-  if tr is None :
-    # failed: incompatible
-    continue
-  
-  if options.distance == biopy.treesPosterior.BRANCH_SCORE_2 :
-    # normalize score
-    score = (score / len(postTrees)) ** 0.5
-    
-  #print 
-  #print score,toNewick(tr)
+    tr, score = minDistanceTree(options.distance, tree, postTrees,
+                                nodesMinHeight = nh, withDerivative =
+                                options.derivative, norm = norm)
 
-  newBest = False
-  if score < bestScore:
-    bestScore = score
-    bestTree = tr
-    newBest = True
+    if tr is None :
+      # failed: incompatible
+      continue
+
+    if options.distance == biopy.treesPosterior.BRANCH_SCORE_2 :
+      # normalize score
+      score = (score / len(postTrees)) ** 0.5
+
+    #print 
+    #print score,toNewick(tr)
+
+    newBest = False
+    if score < bestScore:
+      bestScore = score
+      bestTree = tr
+      newBest = True
+
+      if options.serachTopologies :
+        cn = getNNIcandidates(tr)
+        if len(cn) :
+          # Try the major topology (with all zero-branch NNI applied) next
+          candidates = cn[0:1] + candidates
+          lesserCans = cn[1:] + lesserCans
 
     if options.serachTopologies :
-      cn = getNNIcandidates(tr)
-      if len(cn) :
-        # Try the major topology (with all zero-branch NNI applied) next
-        candidates = cn[0:1] + candidates
-        lesserCans = cn[1:] + lesserCans
+      toposTried[treeTop] = True
+      # Some hackish criteria: start injecting lesser topologies after 10 main
+      # ones between 4 main ones
 
-  if options.serachTopologies :
-    toposTried[treeTop] = True
-    # Some hackish criteria: start injecting lesser topologies after 10 main
-    # ones between 4 main ones
+      if lesserCans and len(toposTried) > 10 and (len(toposTried)) % 4 == 0 :
+        candidates.insert(0,lesserCans.pop(0))
 
-    if lesserCans and len(toposTried) > 10 and (len(toposTried)) % 4 == 0 :
-      candidates.insert(0,lesserCans.pop(0))
-      
-  nCandidatesTried += 1
-  if limit > 0 or progress :
-    timenow = time()
-    if progress:
-      print >> sys.stderr, \
-            ("%ds/%d (%g/%g%s), " % (round(timenow - startTime),
-                                nCandidatesTried, score, bestScore, '*' if newBest else '')),
-    if timenow - startTime >= limit > 0 :
-      print >> sys.stderr, "time limit reached ...,",
-      break
-if limit > 0:
-  print >> sys.stderr, "examined %d topologies in %.1f seconds," \
-        % (nCandidatesTried, time() - startTime),
+    nCandidatesTried += 1
+    if limit > 0 or progress :
+      timenow = time()
+      if progress:
+        print >> sys.stderr, \
+              ("%ds/%d (%g/%g%s), " % (round(timenow - startTime),
+                                  nCandidatesTried, score, bestScore, '*' if newBest else '')),
+      if timenow - startTime >= limit > 0 :
+        print >> sys.stderr, "time limit reached ...,",
+        break
+  if limit > 0:
+    print >> sys.stderr, "examined %d topologies in %.1f seconds," \
+          % (nCandidatesTried, time() - startTime),
+
+
+  if progress or limit > 0 and (not options.annotate):
+    print >>  sys.stderr, "done." 
+
+  if options.score:
+    print '[&W %g]' % bestScore,
+
+  stree = bestTree
   
-if progress or limit > 0:
-  print >>  sys.stderr, "done." 
-
-if options.score:
-  print '[&W %g]' % bestScore,
-
-if bestTree:
-  print toNewick(bestTree)
+if stree:
+  if options.annotate :
+    if progress :
+       print >>  sys.stderr, "annotating ...," 
+    from biopy import treesSummaries
+    treesSummaries.annotateTree(stree, trees)
+    print >>  sys.stderr, "done."
+    
+print toNewick(stree, attributes="attributes" if options.annotate else None)

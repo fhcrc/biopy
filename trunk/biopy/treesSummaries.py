@@ -11,12 +11,14 @@ Summary Tree from posterior trees
 =================================
 """
 
-__all__ = ["summaryTreeUsingCA", "summaryTreeUsingMedianHeights", "taxaPartitionsSummaryTree"]
+__all__ = ["summaryTreeUsingCA", "summaryTreeUsingMedianHeights",
+           "taxaPartitionsSummaryTree", "annotateTree"]
 
 from numpy import median, mean
 import copy
 
 from treeutils import getTreeClades, nodeHeights, getPostOrder, toNewick
+from bayesianStats import hpd
 from treeMeasure import allPartitions
 from parseNewick import parseNewick
 import mau
@@ -95,7 +97,7 @@ def summaryTreeUsingMedianHeights(tree, xtrees) :
                                      withHeights = True, withRoot = True)
   treeParts = allPartitions(tree, [tree])
 
-  for r,k in enumerate(treeParts) :
+  for k in treeParts :
     # Node id
     nn = treeParts[k][0][1]
     
@@ -283,6 +285,35 @@ def taxaPartitionsSummaryTree(trees, summaryType = "median", atz = False) :
     
   return (mn,md) if summaryType=="both" else mn if summaryType == "mean" else md
 
+def _addAnnotation(node, heights, N) :
+  data = node.data
+  if not hasattr(data, "attributes") :
+    data.attributes = dict()
+  if not heights:
+    sup = 0.0
+  else :
+    sup = len(heights)/N
+  data.attributes['posterior'] = sup
+  if heights :
+    data.attributes['height_95%_HPD'] = ("%f,%f" % hpd(heights, 0.95))
+  
+def annotateTree(tree, trees) :
+  """ Two important annotations: clade posterior frequency and 95% HPD height"""
+  func = lambda t,(n,h) : h
+  posteriorParts,rhs = allPartitions(tree, trees, func = func,
+                                     withHeights = True, withRoot = True)
+  treeParts = allPartitions(tree, [tree])
+  
+  for k in treeParts :
+    # Node id
+    nn = treeParts[k][0][1]
+    nd = tree.node(nn)
+    if not nd.succ :
+      continue
+
+    _addAnnotation(nd, posteriorParts[k], len(trees))
+
+  _addAnnotation(tree.node(tree.root), rhs, len(trees))
 
 ## def taxaPartitionsSummaryTreeX(trees, summaryType = "median") :
 ##   if summaryType not in ["mean", "median", "both"] :

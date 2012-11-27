@@ -284,7 +284,8 @@ def allPartitions(referenceTree, trees, func = None, withHeights = False,
   Summerize clades from all trees in one mapping. All trees must be on the
   same taxa as the reference tree. Return a mapping whose key is the clade, and
   the value is a sequence of (tree,node) pairs. If func is given, the values are
-  the results of applying func to the (tree,node) pair.
+  the results of applying func to the (tree,node) pair. The clade is a (frozen)
+  set of integers, each integer is the index of the taxon in the reference tree.
   """
 
   if withRoot :
