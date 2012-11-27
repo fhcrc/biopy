@@ -562,7 +562,10 @@ class Tree(Nodes.Chain):
         if attrs is not None and len(attrs) :
           s = '[&'
           for a in attrs:
-            s += (a+'='+str(attrs[a])+",")
+            vl = str(attrs[a])
+            if vl[0] != '{' and ',' in vl :
+                vl = '{' + vl + '}'
+            s += (a + '=' + vl + ",")
           s = s[:-1] + ']'
           rep += s
 

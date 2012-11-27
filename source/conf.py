@@ -215,3 +215,5 @@ man_pages = [
     ('index', 'biopy', u'biopy Documentation',
      [u'Joseph Heled'], 1)
 ]
+
+autoclass_content = 'both'
