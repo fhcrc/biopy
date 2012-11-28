@@ -294,7 +294,7 @@ def _addAnnotation(node, heights, N) :
   else :
     sup = len(heights)/N
   data.attributes['posterior'] = sup
-  if heights :
+  if heights and len(heights)>2:
     data.attributes['height_95%_HPD'] = ("%f,%f" % hpd(heights, 0.95))
   
 def annotateTree(tree, trees) :
@@ -311,7 +311,7 @@ def annotateTree(tree, trees) :
     if not nd.succ :
       continue
 
-    _addAnnotation(nd, posteriorParts[k], len(trees))
+    _addAnnotation(nd, posteriorParts.get(k), len(trees))
 
   _addAnnotation(tree.node(tree.root), rhs, len(trees))
 
