@@ -162,20 +162,61 @@ def _simplify(dls, x1) :
   pops = [sum([d.population(x) for d in dls]) for x in xs]
   return demographic.LinearPiecewisePopulation(pops, xs[1:])
 
-def _dcombine(tls, dls) :
+def _simplifyc(dls, x1) :
+  """ Create a demographic on [0,x1] eqvivalent to the sum of all dls's."""
+  if len(dls) == 1 :
+    return dls[0]
+  xs = _getXsList(dls, 0, x1)
+  # for const/step, use middle 
+  pops = [sum([d.population((x+y)/2) for d in dls]) for x,y in zip(xs[:-1], xs[1:])]
+  if len(pops) == 1 or len(pops) == 2 and pops[0] == pops[1] :
+    return demographic.ConstantPopulation(pops[0])
+  return demographic.StepFunctionPopulation(pops, xs[1:-1])
+
+def _aa(x, tls, dls) :
+  assert x <= tls[-1]
+  k = 0
+  if x > tls[0] :
+    k = 1
+    while k < len(tls) :
+      if tls[k-1] < x <= tls[k] :
+        break
+  return sum([d.population(x) for d in dls[k]])
+
+def _dcombine(tls, dls, isStep) :
   """ 0 - tls[0]   sum(dls[0])
      tls[1] - tls[0]  sum(dls[1])
      ...
   """
-  sdls = [_simplify(d, x1-x0) for x0,x1,d in zip([0] + tls[:-1], tls, dls)]
-  xs = []
-  ys = [sdls[0].population(0)]
-  for x0,x1,d in zip([0] + tls[:-1], tls, sdls) :
-    xs.extend([x0 + x for x in d.xvals])
-    ys.extend(d.vals[1:])
-    
-  return demographic.LinearPiecewisePopulation(ys, xs)
+  if isStep :
+    #import pdb; pdb.set_trace()
+    sdls = [_simplifyc(d, x1-x0) for x0,x1,d in zip([0] + tls[:-1], tls, dls)]
+    xs = []
+    ys = []
+    for x0,x1,d in zip([0] + tls[:-1], tls, sdls) :
+      if isinstance(d, demographic.ConstantPopulation) :
+        ys.append(d.population(0))
+      else :
+        xs.extend([x0 + x for x in d.xvals])
+        ys.extend(d.vals)
+      xs.append(x1)
+    xs = xs[:-1]
+    if len(xs) :
+      demo = demographic.StepFunctionPopulation(ys, xs)
+    else :
+      demo = demographic.ConstantPopulation(ys[0])
+  else :
+    sdls = [_simplify(d, x1-x0) for x0,x1,d in zip([0] + tls[:-1], tls, dls)]
+    xs = []
+    ys = [sdls[0].population(0)]
+    for x0,x1,d in zip([0] + tls[:-1], tls, sdls) :
+      xs.extend([x0 + x for x in d.xvals])
+      ys.extend(d.vals[1:])
 
+    demo = demographic.LinearPiecewisePopulation(ys, xs)
+
+  #import pdb; pdb.set_trace()  
+  return demo
 
 class LineageInfo(object) :
   """ Gene subtrees of one sp (extant or ancestral) """
@@ -211,6 +252,16 @@ class GeneTreeSimulator(object) :
   def __init__(self, tree) :
     self.tree = tree
     self.nhts = nodeHeights(tree)
+    assert all([isinstance(tree.node(n).data.demographic,
+                          (demographic.StepFunctionPopulation,
+                           demographic.ConstantPopulation,
+                           demographic.LinearPiecewisePopulation))
+                for n in tree.all_ids()])
+    
+    nlp = sum([isinstance(tree.node(n).data.demographic,demographic.LinearPiecewisePopulation)
+               for n in tree.all_ids()])
+    assert nlp == 0 or nlp == len(tree.all_ids())
+    self.isStepDemographic = nlp == 0
 
   def _startup(self, nodeId) :
     #def _startup(self, nodeId, tipNameFunc) :
@@ -248,11 +299,12 @@ class GeneTreeSimulator(object) :
       nh = self.nhts[node.id]
       #from treeutils import toNewick
       #assert nh == nodeHeight(tree, node.id), (nh, node.id, nodeHeight(tree,
-    # node.id), toNewick(tree),  nodeHeights(tree), [(x,nodeHeight(tree,x),tree.node(x).data.branchlength) for x in tree.all_ids()])
+      # node.id), toNewick(tree),  nodeHeights(tree),
+      # [(x,nodeHeight(tree,x),tree.node(x).data.branchlength) for x in tree.all_ids()])
       br = node.data.branchlength
       #print ([nh, nh+br], [[s1[1][-1][2], s2[1][-1][2]], [node.data.demographic]])
       #dms = dcombine([nh, nh+br], [[s1[1][-1][2], s2[1][-1][2]], [node.data.demographic]])
-      dms = _dcombine([nh, nh+br], [ [s1[3], s2[3]], [node.data.demographic] ])
+      dms = _dcombine([nh, nh+br], [ [s1[3], s2[3]], [node.data.demographic] ], self.isStepDemographic)
       #print dms
       mp = s1[1] + s2[1] + [((s1[2],s2[2]), node.data.ima, (s1[3], s2[3]))]
 
@@ -291,6 +343,7 @@ class GeneTreeSimulator(object) :
       cwt,cnk = min(atimes)
       
       itimes = []
+      #import pdb; pdb.set_trace()
       for nk, ((linLeft,linRight), (pLeft, pRight), (dLeft, dRight)) in enumerate(mp) :
 
         if not _isZero(pRight, t, cwt) :

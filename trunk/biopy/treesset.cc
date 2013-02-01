@@ -546,7 +546,7 @@ private:
 
 class FixedIntPacker : public Packer<uint> {
 public:
-  FixedIntPacker(uint nBitsPerValue, vector<uint>::iterator from, vector<uint>::iterator to);
+  FixedIntPacker(uint nBitsPerValue, vector<uint>::const_iterator from, vector<uint>::const_iterator to);
   ~FixedIntPacker() {
     delete [] bits;
   }
@@ -579,8 +579,8 @@ inline T upperNbits(uint n) {
 }
 
 FixedIntPacker::FixedIntPacker(uint _nBitsPerValue,
-			       vector<uint>::iterator from,
-			       vector<uint>::iterator to) :
+			       vector<uint>::const_iterator from,
+			       vector<uint>::const_iterator to) :
   nBitsPerValue(_nBitsPerValue),
   len(to-from)
 {
@@ -658,34 +658,42 @@ FixedIntPacker::unpacked(bool& isPermanent) const
 
 class TreeRep {
 public:
-  TreeRep(Packer<uint>& t, vector<const Attributes*>* atrbs);
+  // steals attributes
+  TreeRep(Packer<uint>& t, Packer<uint>* l, vector<const Attributes*>* atrbs);
   virtual ~TreeRep();
 
   virtual bool isCladogram(void) const = 0;
   
-  uint nTaxa(void) const { return ptopo.size(); }
+  uint nTaxa(void) const { return ptips.size(); }
   
-  vector<uint> const& topology() const;
-  vector<uint> const& topology(bool& permanent) const;
+  vector<uint> const& tips() const;
+  vector<uint> const& tips(bool& permanent) const;
 
+  vector<uint>* labels(void) const;
+  
   const vector<const Attributes*>* getAttributes(void) const {
     return attributes;
   }
   
 protected:
-  Packer<uint>&	ptopo;
-  vector<const Attributes*>*
-                attributes;
+  Packer<uint>&	ptips;
+  Packer<uint>*	plabels;
+  vector<const Attributes*>* attributes;
 };
 
-inline TreeRep::TreeRep(Packer<uint>& t, vector<const Attributes*>* atrbs) :
-  ptopo(t),
+inline
+TreeRep::TreeRep(Packer<uint>& t, Packer<uint>* l, vector<const Attributes*>* atrbs) :
+  ptips(t),
+  plabels(l),
   attributes(atrbs)
 {}
 
 TreeRep::~TreeRep()
 {
-  delete &ptopo;
+  delete &ptips;
+  if( plabels ) {
+    delete plabels;
+  }
   if( attributes ) {
     for(auto i = attributes->begin(); i < attributes->end(); ++i) {
       delete *i;
@@ -695,23 +703,35 @@ TreeRep::~TreeRep()
 }
 
 vector<uint> const&
-TreeRep::topology(void) const
+TreeRep::tips(void) const
 {
-  return ptopo.unpacked();
+  return ptips.unpacked();
 }
 
 vector<uint> const&
-TreeRep::topology(bool& permanent) const
+TreeRep::tips(bool& permanent) const
 { 
-  return ptopo.unpacked(permanent);
+  return ptips.unpacked(permanent);
+}
+
+vector<uint>*
+TreeRep::labels(void) const
+{
+  if( ! plabels ) {
+    return 0;
+  }
+  vector<uint> const& l = plabels->unpacked();
+  return new vector<uint>(l);
 }
 
 class CladogramRep : public TreeRep {
 public:
-  CladogramRep(Packer<uint>& t, Packer<uint>* h, vector<const Attributes*>* atrbs);
-  ~CladogramRep();
+  // Steals atrbs
+  CladogramRep(Packer<uint>& t, Packer<uint>* l,
+	       Packer<uint>* h, vector<const Attributes*>* atrbs);
+  virtual ~CladogramRep();
  
-  bool isCladogram(void) const { return true; }
+  virtual bool isCladogram(void) const { return true; }
  
   vector<uint> const& heights() const { return pheights->unpacked(); }
 
@@ -719,10 +739,10 @@ private:
   Packer<uint>*   pheights;
 };
 
-
-CladogramRep::CladogramRep(Packer<uint>& t, Packer<uint>* h,
+inline
+CladogramRep::CladogramRep(Packer<uint>& t, Packer<uint>* l, Packer<uint>* h,
 			   vector<const Attributes*>* atrbs) :
-  TreeRep(t, atrbs),
+  TreeRep(t, l, atrbs),
   pheights(h)
 {}
 
@@ -734,14 +754,12 @@ CladogramRep::~CladogramRep()
 template<typename T>
 class PhylogramRep : public TreeRep {
 public:
-  PhylogramRep(Packer<uint>& t, Packer<T>* h,
+  // Steals atrbs
+  PhylogramRep(Packer<uint>& t, Packer<uint>* l, Packer<T>* h,
 	       Packer<T>* txh, vector<const Attributes*>* atrbs);
-  ~PhylogramRep() {
-    delete pheights;
-    delete ptxheights;
-  }
+  virtual ~PhylogramRep();
 
-  bool isCladogram(void) const { return false; }
+  virtual bool isCladogram(void) const { return false; }
   
   vector<T> const& heights() const { return pheights->unpacked(); } 
   vector<T> const* txheights() const {
@@ -756,31 +774,28 @@ private:
 };
 
 template<typename T>
-PhylogramRep<T>::PhylogramRep(Packer<uint>& t, Packer<T>* h,
+PhylogramRep<T>::PhylogramRep(Packer<uint>& t, Packer<uint>* l, Packer<T>* h,
 			      Packer<T>* txh, vector<const Attributes*>* atrbs) :
-  TreeRep(t, atrbs),
+  TreeRep(t, l, atrbs),
   pheights(h),
   ptxheights(txh)
 {}
+
+template<typename T>
+PhylogramRep<T>::~PhylogramRep() {
+  delete pheights;
+  delete ptxheights;
+}
 
 // Tree should have been a nested class of Trees set
 class TreesSet;
 
 class Tree {
 public:
-  Tree(TreesSet const& _ts, uint _nt) :
-    ts(_ts),
-    nt(_nt),
-    internals(0),
-    sonsBlockSave(0)
-    {}
-
-  ~Tree() {
-    delete internals;
-    delete [] sonsBlockSave;
-  }
+  Tree(TreesSet const& _ts, uint _nt);
+  ~Tree();
   
-  vector<uint> const& topology() const;
+  vector<uint> const& tips() const;
   
   void getTerminals(vector<uint>& terms) const;
   
@@ -816,14 +831,14 @@ public:
     return (*internals)[n];
   }
 
-  void toNewick(string& s, int nodeId, bool topoOnly, bool includeStem) const;
+  void toNewick(string& s, int nodeId, bool topoOnly, bool includeStem, bool withAttribute) const;
 
   TreesSet const& ts;
   uint const 	  nt;
 private:
   void setup() const;
   
-  void tostr(vector<string>& s, uint nodeId, bool topoOnly, bool includeStem) const;
+  void tostr(vector<string>& s, uint nodeId, bool topoOnly, bool includeStem, bool withAttributes) const;
   
   uint rep2treeInternal(vector<Expanded>& nodes,
 			uint low, uint hi,
@@ -831,6 +846,7 @@ private:
 			vector<double> const& htax,
 			vector<double> const& hs,
 			const vector<const Attributes*>* atrbs,
+			const vector<uint>* const labels,
 			uint*& sonsBlock,
 			uint* curiScratch,
 			uint bleft) const;
@@ -844,6 +860,19 @@ private:
   // one contiguous block for all sons indices
   mutable uint*		    sonsBlockSave;
 };
+
+inline
+Tree::Tree(TreesSet const& _ts, uint _nt) :
+  ts(_ts),
+  nt(_nt),
+  internals(0),
+  sonsBlockSave(0)
+{}
+
+Tree::~Tree() {
+  delete internals;
+  delete [] sonsBlockSave;
+}
 
 
 struct TreesSetObject;
@@ -861,7 +890,7 @@ struct TreeObject : PyObject {
   uint      getRootID(void) { return tr->getRootID(); }
   PyObject* getNode(uint nt) const;
 
-  PyObject* toNewick(int nodeId, bool topoOnly, bool includeStem) const;
+  PyObject* toNewick(int nodeId, bool topoOnly, bool includeStem, bool withAttributes) const;
   void      getInOrder(bool preOrder, vector<int>& ids, int nodeId, bool includeTaxa);
   
   void      setBranch(uint nid, double branch);
@@ -871,7 +900,7 @@ struct TreeObject : PyObject {
 
 private:
   void      tostr(vector<string>& s, int nodeId,
-		  bool topoOnly, bool includeStem) const;
+		  bool topoOnly, bool includeStem, bool withAttributes) const;
   
   Tree* 	  tr;
   TreesSetObject* ts;
@@ -912,7 +941,7 @@ Tree_dealloc(TreeObject* self)
 }
 
 static TreeObject*
-Tree_new(PyTypeObject* type, PyObject*, PyObject *)
+Tree_new(PyTypeObject* type, PyObject*, PyObject*)
 {
   TreeObject* self = (TreeObject *)type->tp_alloc(type, 0);
 
@@ -939,22 +968,22 @@ Tree_getattr(TreeObject *self, PyObject* aname)
 PyObject*
 Tree_str(TreeObject *self)
 {
-  return self->toNewick(-1, false, false);
+  return self->toNewick(-1, false, false, false);
 }
 
-PyObject *
+PyObject*
 tree_getTaxa(TreeObject* self)
 {
   return self->getTaxa();
 }
 
-PyObject *
+PyObject*
 tree_getTerminals(TreeObject* self)
 {
   return self->getTerminals();
 }
 
-PyObject *
+PyObject*
 tree_allIds(TreeObject* self)
 {
   return self->allIds();
@@ -976,10 +1005,6 @@ tree_xorder(TreeObject* self, PyObject* args, PyObject* kwds, bool pre)
   self->getInOrder(pre, ids, nodeId, incT);
 
   PyObject* r = ivector2tuple(ids);
-  // PyObject* r = PyTuple_New(ids.size());
-  // for(uint k = 0; k < ids.size(); ++k) {
-  //   PyTuple_SET_ITEM(r,k, PyInt_FromLong(ids[k]));
-  // }
   return r;
 }
 
@@ -1056,8 +1081,9 @@ tree_2newick(TreeObject* self, PyObject* args, PyObject* kwds)
   // 
   bool const topoOnly = (topo && PyObject_IsTrue(topo));
   bool const incS = (incStem && PyObject_IsTrue(incStem));
+  bool const attrs = (attr && PyObject_IsTrue(attr));
   
-  return self->toNewick(nodeId, topoOnly, incS);
+  return self->toNewick(nodeId, topoOnly, incS, attrs);
 }
 
 #if 0
@@ -1107,9 +1133,6 @@ static PyMethodDef tree_methods[] = {
   {"setBranch", (PyCFunction)tree_setBranch, METH_VARARGS,
    "."
   },
-  // {"setHeight", (PyCFunction)tree_setHeight, METH_VARARGS,
-  //  "."
-  // },
   {"toNewick", (PyCFunction)tree_2newick, METH_VARARGS|METH_KEYWORDS,
    "tree as string in NEWICK."
   },
@@ -1371,7 +1394,7 @@ TreeNode_new(PyTypeObject* type, PyObject *args, PyObject *kwds)
 {
   TreeNodeObject* self = (TreeNodeObject *)type->tp_alloc(type, 0);
 
-  if (self != NULL) {
+  if( self != NULL ) {
     self->succ = NULL;
     self->prev = NULL;
   }
@@ -1399,10 +1422,6 @@ TreeNode_init(TreeNodeObject* self, uint prev, uint nSons, uint* sons, PyObject*
   }
 
   self->data = data;
-  
-  // TreeNodeDataObject* d = TreeNodeData_new(&TreeNodeDataType, 0, 0);
-  // TreeNodeData_init(d, taxon, branch, height);
-  // self->data = d;
 }
 
 static void
@@ -1417,9 +1436,9 @@ static PyTypeObject TreeNodeType = {
   PyObject_HEAD_INIT(NULL)
   0,				/* ob_size        */
   "treesset.Node",		/* tp_name        */
-  sizeof(TreeNodeObject),		/* tp_basicsize   */
+  sizeof(TreeNodeObject),	/* tp_basicsize   */
   0,				/* tp_itemsize    */
-  (destructor)TreeNode_dealloc,		/* tp_dealloc     */
+  (destructor)TreeNode_dealloc,	/* tp_dealloc     */
   0,				/* tp_print       */
   0,				/* tp_getattr     */
   0,				/* tp_setattr     */
@@ -1435,7 +1454,7 @@ static PyTypeObject TreeNodeType = {
   0,				/* tp_setattro    */
   0,				/* tp_as_buffer   */
   Py_TPFLAGS_DEFAULT,		/* tp_flags       */
-  "Simple objects are simple.",	/* tp_doc         */
+  "Tree Node.",	                /* tp_doc         */
   0,		               /* tp_traverse */
   0,		               /* tp_clear */
   0,		               /* tp_richcompare */
@@ -1466,17 +1485,19 @@ public:
   
   uint nTrees(void) const { return trees.size(); }
   
-  TreeRep const& getTree(uint i) const {
-    assert( i < nTrees() );
+  TreeRep const& getTree(uint const i) const {
+                                 assert( i < nTrees() );
     return *trees[i];
   }
   
   // taxon name (existing,string) from internal index.
-  string const& taxonString(uint k) const {
-    assert(k < taxaList.size());
+  string const& taxonString(uint const k) const {
+                                 assert(k < taxaList.size());
     return taxaList[k];
   }
 
+  int hasTaxon(const char* taxon) const;
+  
   // Populate hs/txhs with internal node/taxa heights for nt'th tree.
   void getHeights(uint nt, vector<double>& hs, vector<double>& txhs) const;
 
@@ -1489,8 +1510,18 @@ public:
   uint const precision : 8;
 
   vector< vector<ParsedTreeNode> > asNodes;
-  
+
+  void add(TreesSet const& ts, uint const nt, vector<uint> const& filteredTaxa);
+
 private:
+  TreeRep*  repFromData(bool const cladogram,
+			vector<uint> const& taxa,
+			uint const maxTaxaIndex,
+			vector<double> const& heights,
+			vector<double>* const taxaHeights,
+			vector<uint>* const labels,
+			vector<const Attributes*>* atrs);
+  
   // Encodes a parsed tree 
   TreeRep*	nodes2rep(vector<ParsedTreeNode>& nodes);
 
@@ -1523,6 +1554,15 @@ TreesSet::~TreesSet()
   for(auto a = treesAttributes.begin(); a != treesAttributes.end(); ++a) {
     Py_XDECREF(*a);
   }
+}
+
+int
+TreesSet::hasTaxon(const char* taxon) const {
+  auto const i = taxaDict.find(taxon);
+  if( i == taxaDict.end() ) {
+    return -1;
+  }
+  return i->second;
 }
 
 uint
@@ -1574,12 +1614,73 @@ TreesSet::setTreeAttributes(uint nt, TreeObject* to) const
 }
 
 TreeRep*
+TreesSet::repFromData(bool const cladogram,
+		      vector<uint> const& taxa,
+		      uint const maxTaxaIndex,
+		      vector<double> const& heights,
+		      vector<double>* const taxaHeights,
+		      vector<uint>* const labels,
+		      vector<const Attributes*>* atrs)
+{
+  Packer<uint>* top = 0;
+  
+  if( compressed ) {
+    int nbitsStoreTaxa = lg2i(maxTaxaIndex) + 1;
+    top = new FixedIntPacker(nbitsStoreTaxa, taxa.begin(), taxa.end());
+  } else {
+    top = new SimplePacker<uint>(taxa);
+  }
+
+  FixedIntPacker* lb = 0;
+  if( labels ) {
+    int const nbitsStoreH = lg2i(*std::max_element(labels->begin(),labels->end())) + 1;
+    lb = new FixedIntPacker(nbitsStoreH, labels->begin(), labels->end());
+  }
+
+  TreeRep* r;
+  
+  if( cladogram ) {
+    vector<uint> hs(heights.size());
+    for(uint i = 0; i < hs.size(); ++i) {
+      hs[i] = static_cast<uint>(heights[i] + 0.5);
+    }
+    Packer<uint>* hsb;
+    // single leaf trees has no heights
+    if( compressed && heights.size() > 0 ) {
+      int const nbitsStoreH = lg2i(*std::max_element(hs.begin(),hs.end())) + 1;
+      hsb = new FixedIntPacker(nbitsStoreH, hs.begin(), hs.end());
+    } else {
+      hsb = new SimplePacker<uint>(hs);
+    }
+    r = new CladogramRep(*top, lb, hsb, atrs);
+  } else {
+    if( precision == 8 ) {
+      SimplePacker<double>* hsb = new SimplePacker<double>(heights);
+      SimplePacker<double>* txhs = 0;
+      if( taxaHeights ) {
+	txhs = new SimplePacker<double>(*taxaHeights);
+      }
+      r = new PhylogramRep<double>(*top, lb, hsb, txhs, atrs);
+    } else {
+      SimplePacker<float>* hsb = new SimplePacker<float>(heights);
+      SimplePacker<float>* txhs = 0;
+      if( taxaHeights ) {
+	txhs = new SimplePacker<float>(*taxaHeights);
+      }
+      r = new PhylogramRep<float>(*top, lb, hsb, txhs, atrs);
+    }
+  }
+  return r;
+}
+
+TreeRep*
 TreesSet::nodes2rep(vector<ParsedTreeNode>& nodes)
 {
   // tree taxa (as indices into global table)
   vector<uint> taxa;
   bool cladogram = true;
   bool hasAttributes = false;
+  bool hasInternalLabels = false;
   uint maxTaxaIndex = 0;
   
   for(auto n = nodes.begin(); n != nodes.end() ; ++n) {
@@ -1588,6 +1689,8 @@ TreesSet::nodes2rep(vector<ParsedTreeNode>& nodes)
       uint const k = getTaxon(n->taxon);
       maxTaxaIndex = std::max(maxTaxaIndex, k);
       taxa.push_back(k);
+    } else if( n->taxon.size() ) {
+      hasInternalLabels = true;
     }
     if( n->branch ) {
       cladogram = false;
@@ -1600,7 +1703,7 @@ TreesSet::nodes2rep(vector<ParsedTreeNode>& nodes)
   uint const nTaxa = taxa.size();
   
   // heights of internal nodes (between taxa)
-  vector<double> heights(nTaxa-1);
+  vector<double> heights(nTaxa-1, -1);
   // if nodes[x] is a tip, locs[x]+1 is the ordinal number of the tip in the
   // array of tips. For internal nodes, locs[x] is the ordinal number of the
   // node in the heights array.
@@ -1632,28 +1735,36 @@ TreesSet::nodes2rep(vector<ParsedTreeNode>& nodes)
 	  if( dh > 0 && !areSame(h,h1) ) {
 	    if( ! taxaHeights ) {
 	      taxaHeights = new vector<double>(nTaxa, 0.0);
-	      //std::fill(taxaHeights->begin(), taxaHeights->end(), 0.0);
 	    }
+	    // Add 'dh' to the clade: increase all taxa and internal node heights
 	    std::stack<uint> hp;
-	    hp.push(*s); 
+	    hp.push(*s);
+	    // a clade is consecutive
+	    int lo = 4*nTaxa,hi = -1;
 	    while( ! hp.empty() ) {
 	      uint const x = hp.top(); hp.pop();
 	      if( nodes[x].sons.size() == 0 ) {
-		(*taxaHeights)[locs[x]+1] += dh;
+		int const l = locs[x]+1;
+		lo = std::min(l, lo);
+		hi = std::max(l, hi);
+		(*taxaHeights)[l] += dh;
 	      } else {
-		heights[locs[x]] += dh;
 		auto const& b = nodes[x].sons;
 		for(auto a = b.begin(); a != b.end(); ++a) {
 		  hp.push(*a);
 		}
 	      }
 	    }
+	    while( lo < hi ) {
+	      heights[lo] += dh;
+	      ++lo;
+	    }
 	  }
 	}
       }
       // node height stored between all sons
       for(auto s = n->sons.begin(); s != n->sons.end()-1; ++s) {
-	uint const i = locs[*s]+1;            assert( 0 <= i && i < heights.size() );
+	uint const i = locs[*s]+1;            assert( 0 <= i && i < heights.size() && heights[i] == -1);
 	heights[i] = h;
       }
                                               assert( 0 < iloc && iloc < locs.size() );
@@ -1667,74 +1778,83 @@ TreesSet::nodes2rep(vector<ParsedTreeNode>& nodes)
     }
   }
 
-  Packer<uint>* top = 0;
-  
-  if( compressed ) {
-    int nbitsStoreTaxa = lg2i(maxTaxaIndex) + 1;
-    top = new FixedIntPacker(nbitsStoreTaxa, taxa.begin(), taxa.end());
-  } else {
-    top = new SimplePacker<uint>(taxa);
-  }
-
   vector<const Attributes*>* atrs = 0;
-  if( hasAttributes ) {
-    atrs = new vector<const Attributes*>(nodes.size(),0);
+  vector<uint>* labels = 0;
+  if( hasAttributes || hasInternalLabels ) {
+    atrs = hasAttributes ? new vector<const Attributes*>(nodes.size(),0) : 0;
+    labels = hasInternalLabels ? new vector<uint>(nodes.size() - nTaxa, 0) : 0;
+
     for(auto n = nodes.begin(); n != nodes.end() ; ++n) {
+      bool const isTip = n->sons.size() == 0;
+    
       if( n->attributes ) {
-	int l = locs[n - nodes.begin()];
-	if( n->sons.size() == 0 ) {
-	  l += 1;
-	} else {
-	  l += nTaxa;
-	}
+	int const l = isTip ? locs[n - nodes.begin()]+1 : locs[n->sons[0]]+1+nTaxa;
+	assert( atrs->at(l) == 0 );
 	// steal
 	(*atrs)[l] = n->attributes;
 	n->attributes = 0;
       }
-	// auto const& atr = *n->attributes;
-	// for(auto patr = atr.begin(); patr != atr.end(); ++patr) {
-	//   int const n = attributeIndex(patr.first);
-	//   const char* v = attributePtr(patr.second);
-	//   atrNames[l] = n;
+      
+      if( n->sons.size() > 0 && n->taxon.size() ) {
+	uint const k = getTaxon(n->taxon);
+	int const l = locs[n->sons[0]]+1;
+	assert( labels->at(l) == 0 );
+	(*labels)[l] = k+1;
+      }
     }
+  
+#if 0
+    int nTipsSeen = 0;
+    int nInternalSeen = 0;
+    for(auto n = nodes.begin(); n != nodes.end() ; ++n) {
+      bool const isTip = n->sons.size() == 0;
+      
+      if( n->attributes ) {
+	int const l = isTip ? nTipsSeen : nInternalSeen + nTaxa;
+	// steal
+	(*atrs)[l] = n->attributes;
+	n->attributes = 0;
+      }
+      if( ! isTip && n->taxon.size() ) {
+	uint const k = getTaxon(n->taxon);
+	(*labels)[nInternalSeen] = k+1;
+      }
+      if( isTip ) {
+	++nTipsSeen;
+      } else {
+	++nInternalSeen;
+      }
+    }
+#endif
+    //   if( n->attributes ) {
+    // 	int l = locs[n - nodes.begin()];
+    // 	if( n->sons.size() == 0 ) {
+    // 	  l += 1;
+    // 	} else {
+    // 	  l += nTaxa;
+    // 	}
+    // 	// steal
+    // 	(*atrs)[l] = n->attributes;
+    // 	n->attributes = 0;
+    //   }
+    //   if( n->sons.size() > 0 && n->taxon.size() ) {
+    // 	uint const k = getTaxon(n->taxon);
+    // 	int l = locs[n - nodes.begin()];
+    // 	(*labels)[l] = k+1;
+    //   }
+    // }
+  }
+
+  TreeRep* r = repFromData(cladogram, taxa, maxTaxaIndex, heights, taxaHeights, labels, atrs);
+  if( taxaHeights ) {
+    delete taxaHeights;
   }
   
-  if( cladogram ) {
-    vector<uint> hs(heights.size());
-    for(uint i = 0; i < hs.size(); ++i) {
-      hs[i] = static_cast<uint>(heights[i] + 0.5);
-    }
-    Packer<uint>* hsb;
-    // single leaf trees has no heights
-    if( compressed && heights.size() > 0 ) {
-      int const nbitsStoreH = lg2i(*std::max_element(hs.begin(),hs.end())) + 1;
-      hsb = new FixedIntPacker(nbitsStoreH, hs.begin(), hs.end());
-    } else {
-      hsb = new SimplePacker<uint>(hs);
-    }
-    return new CladogramRep(*top, hsb, atrs);
-  } else {
-    TreeRep* r;
-    if( precision == 8 ) {
-      SimplePacker<double>* hsb = new SimplePacker<double>(heights);
-      SimplePacker<double>* txhs = 0;
-      if( taxaHeights ) {
-	txhs = new SimplePacker<double>(*taxaHeights);
-      }
-      r = new PhylogramRep<double>(*top, hsb, txhs, atrs);
-    } else {
-      SimplePacker<float>* hsb = new SimplePacker<float>(heights);
-      SimplePacker<float>* txhs = 0;
-      if( taxaHeights ) {
-	txhs = new SimplePacker<float>(*taxaHeights);
-      }
-      r = new PhylogramRep<float>(*top, hsb, txhs, atrs);
-    }
-    if( taxaHeights ) {
-      delete taxaHeights;
-    }
-    return r;
+  if( labels ) {
+    delete labels;
   }
+
+  return r;  
 }
 
 int
@@ -1774,6 +1894,63 @@ TreesSet::add(const char* treeTxt, PyObject* kwds)
   }
 }
 
+void
+TreesSet::add(TreesSet const& ts, uint const nt, vector<uint> const& filteredTaxa)
+{
+  vector<double> hs;
+  vector<double> txhs;
+
+  TreeRep const& rep = ts.getTree(nt);
+  bool isp;
+  vector<uint> const& t = rep.tips(isp);
+  vector<uint> const& tax = isp ? t : vector<uint>(t);
+  
+  uint const nTaxa = tax.size();
+  ts.getHeights(nt, hs, txhs);
+  bool hasTXheights = txhs.size() > 0;
+
+  vector<double> newhs;
+  vector<double> newtxhs;
+  vector<uint>   newTopo;
+  
+  for(uint k = 0; k < nTaxa-1; ++k) {
+    if( std::find(filteredTaxa.begin(), filteredTaxa.end(), tax[k]) != filteredTaxa.end() ) {
+      bool toLeft = newhs.size() > 0 && *(newhs.end()-1) < hs[k];
+      if( toLeft ) {
+	*(newhs.end()-1) = hs[k];
+      }	  
+    } else {
+      newhs.push_back(hs[k]);
+      if( hasTXheights ) {
+	newtxhs.push_back(txhs[k]);
+      }
+      newTopo.push_back(tax[k]);
+    }
+  }
+
+  if( std::find(filteredTaxa.begin(), filteredTaxa.end(), tax[nTaxa-1]) != filteredTaxa.end() ) {
+    newhs.pop_back();
+  } else {
+    newTopo.push_back(tax[nTaxa-1]);
+    if( hasTXheights ) {
+      newtxhs.push_back(txhs[nTaxa-1]);
+    }
+  }
+  
+  for(uint k = 0; k < newTopo.size(); ++k) {
+    newTopo[k] = getTaxon(ts.taxonString(newTopo[k]));
+  }
+  uint maxTaxaIndex = *std::max_element(newTopo.begin(), newTopo.end());
+
+  // BUG!! attributes not transferred, BUG labels not transffered
+  TreeRep* r = repFromData(rep.isCladogram(), newTopo, maxTaxaIndex, newhs,
+			   hasTXheights ? &newtxhs : 0, 0, 0);
+  trees.push_back(r);
+  PyObject* a = ts.treesAttributes[nt];
+  Py_XINCREF(a);
+  treesAttributes.push_back(a);
+}
+
 Tree::Expanded::Expanded(int _itax,
 			 uint _nSons,
 			 uint* _sons,
@@ -1797,6 +1974,7 @@ uint Tree::rep2treeInternal(vector<Expanded>& nodes,
 			    vector<double> const& htax,
 			    vector<double> const& hs,
 			    const vector<const Attributes*>* const atrbs,
+			    const vector<uint>* const labels,
 			    uint*& sonsBlock,
 			    uint* const curiScratch,
 			    uint bleft) const
@@ -1830,7 +2008,7 @@ uint Tree::rep2treeInternal(vector<Expanded>& nodes,
     
     for(uint* x = curiScratch; x < curi; ++x) {
       uint const k = rep2treeInternal(nodes, low, *x, tax, htax,
-				      hs, atrbs, sonsBlock, curi, bleft);
+				      hs, atrbs, labels, sonsBlock, curi, bleft);
       double const hs = nodes[k].height;
       nodes[k].branch = new double(curh - hs);
       *sons = k; ++sons;
@@ -1841,7 +2019,15 @@ uint Tree::rep2treeInternal(vector<Expanded>& nodes,
     for(uint* s = sons; s < sons+nSons; ++s) {
       nodes[*s].prev = nodes.size();
     }
-    nodes.push_back(Expanded(-1, nSons, sons, 0, curh, -1,
+    int iTax = -1;
+    if( labels ) {
+      uint nl = (*labels)[*curiScratch];
+      if( nl > 0 ) {
+	iTax = nl - 1;
+      }
+    }
+      
+    nodes.push_back(Expanded(iTax, nSons, sons, 0, curh, -1,
 			     atrbs ? (*atrbs)[*curiScratch + tax.size()] : 0));
   }
   return nodes.size()-1;
@@ -1858,8 +2044,9 @@ void Tree::setup(void) const {
 
   TreeRep const& rep = ts.getTree(nt);
   bool isp;
-  vector<uint> const& t = rep.topology(isp);
+  vector<uint> const& t = rep.tips(isp);
   vector<uint> const& tax = isp ? t : vector<uint>(t);
+  vector<uint> const* labels = rep.labels();
   
   nTaxa = tax.size();
   ts.getHeights(nt, hs, txhs);
@@ -1872,8 +2059,10 @@ void Tree::setup(void) const {
   uint block[2*nTaxa];     // scratch only
   uint* s = sonsBlockSave; // keep sonsBlockSave safe
   rep2treeInternal(*internals, 0, hs.size(), tax, txhs, hs,
-		   rep.getAttributes(), s, block, 2*nTaxa);
-
+		   rep.getAttributes(), labels, s, block, 2*nTaxa);
+  if( labels ) {
+    delete labels;
+  }
   if( rep.isCladogram() ) {
     for(auto i = internals->begin(); i != internals->end(); ++i) {
       Expanded& x = *i;
@@ -1888,9 +2077,9 @@ void Tree::setup(void) const {
 
 	
 vector<uint> const&
-Tree::topology() const
+Tree::tips() const
 {
-  return ts.getTree(nt).topology();
+  return ts.getTree(nt).tips();
 }
 
 void
@@ -1920,7 +2109,7 @@ Tree::isCladogram(void) const
 }
 
 void
-Tree::tostr(vector<string>& s, uint nodeId, bool topoOnly, bool includeStem) const
+Tree::tostr(vector<string>& s, uint nodeId, bool topoOnly, bool includeStem, bool withAttributes) const
 {
   Expanded const& n = (*internals)[nodeId];
   if( n.nSons == 0 ) {
@@ -1931,7 +2120,7 @@ Tree::tostr(vector<string>& s, uint nodeId, bool topoOnly, bool includeStem) con
     }
   } else {
     for(uint i = 0; i < n.nSons; ++i) {
-      tostr(s, n.sons[i], topoOnly, true);
+      tostr(s, n.sons[i], topoOnly, true, withAttributes);
     }
     auto first = s.end() - n.nSons;
     std::sort(first, s.end());
@@ -1941,8 +2130,26 @@ Tree::tostr(vector<string>& s, uint nodeId, bool topoOnly, bool includeStem) con
     }
     first->append(")");
     s.erase(first+1, s.end());
+
+    if( n.itax >= 0 ) {
+      first->append(ts.taxonString(n.itax));
+    }
   }
 
+  if( withAttributes && n.attributes ) {
+    Attributes const& atr = *n.attributes;
+    string& a = *(s.end()-1);
+    a.append("[&");
+    for(uint k = 0; k < atr.size(); ++k) {
+      auto const p = atr[k];
+      if( k > 0 ) {
+	a.append(",");
+      }
+      a.append(p.first).append("=").append(p.second);
+    }
+    a.append("]");
+  }
+  
   if( ! topoOnly && n.branch && includeStem ) {
     char* const b = PyOS_double_to_string(*n.branch, 'r', 0, Py_DTSF_ADD_DOT_0, 0);
     (s.end()-1)->append(":").append(b);
@@ -1951,7 +2158,8 @@ Tree::tostr(vector<string>& s, uint nodeId, bool topoOnly, bool includeStem) con
 }
 
 void
-Tree::toNewick(string& s, int nodeId, bool topoOnly, bool includeStem) const
+Tree::toNewick(string& s, int nodeId, bool const topoOnly,
+	       bool const includeStem, bool const withAttributes) const
 {
   if( nodeId == -1 ) {
     nodeId = getRootID();
@@ -1959,7 +2167,7 @@ Tree::toNewick(string& s, int nodeId, bool topoOnly, bool includeStem) const
     setup();
   }
   vector<string> c;
-  Tree::tostr(c, static_cast<uint>(nodeId), topoOnly, includeStem);
+  tostr(c, static_cast<uint>(nodeId), topoOnly, includeStem, withAttributes);
   s.assign(*c.begin());
 }
 
@@ -2016,8 +2224,8 @@ TreesSet_dealloc(TreesSetObject* self)
   self->ob_type->tp_free((PyObject*)self);
 }
 
-static PyObject *
-TreesSet_new(PyTypeObject* type, PyObject *args, PyObject *kwds)
+static PyObject*
+TreesSet_new(PyTypeObject* type, PyObject* /*args*/, PyObject* /*kwds*/)
 {
   TreesSetObject* self = (TreesSetObject *)type->tp_alloc(type, 0);
 
@@ -2085,7 +2293,7 @@ TreesSet_getItemInternals(TreesSetObject* self, uint i)
   PyObject* n = PyTuple_New(5);
   bool const isc = r.isCladogram();
   PyTuple_SET_ITEM(n, 0, PyBool_FromLong(isc));
-  vector<uint> const& topo = r.topology();
+  vector<uint> const& topo = r.tips();
   PyObject* t = PyTuple_New(topo.size());
   for(uint k = 0; k < topo.size(); ++k) {
     PyTuple_SET_ITEM(t, k, self->taxon(topo[k]));
@@ -2134,12 +2342,6 @@ TreesSet_getItemInternals(TreesSetObject* self, uint i)
   return n;
 }
 
-// PyObject*
-// TreesSet_getItemx(TreesSetObject* self, Py_ssize_t i)
-// {
-//   return TreesSet_getItemInternals(self, i);
-// }
-
 PyObject*
 TreesSet_getItem(TreesSetObject* self, Py_ssize_t i)
 {
@@ -2160,7 +2362,7 @@ PyObject*
 TreeObject::getTaxa(void) const
 {
   if( taxa == 0 ) {
-    auto const& topo = tr->topology();
+    auto const& topo = tr->tips();
     taxa = PyTuple_New(topo.size());
     for(uint k = 0; k < topo.size(); ++k) {
       PyTuple_SET_ITEM(taxa, k, ts->taxon(topo[k]));
@@ -2308,8 +2510,22 @@ TreeObject::setBranch(uint const nodeId, double const newBranchLen)
   }
 }
 
+string
+strOfObject(PyObject* o)
+{
+  if( PyString_Check(o) ) {
+    return PyString_AsString(o);
+  }
+  PyObject* s = PyObject_Str(o);
+  string tmp(PyString_AsString(s));
+  Py_DECREF(s);
+  return tmp;
+}
+  
 void
-TreeObject::tostr(vector<string>& s, int nodeId, bool topoOnly, bool includeStem) const
+TreeObject::tostr(vector<string>& s, int const nodeId,
+		  bool const topoOnly, bool const includeStem,
+		  bool const withAttributes) const
 {
   TreeNodeObject* np = (*treeNodes)[nodeId];
   if( ! np ) {
@@ -2318,13 +2534,14 @@ TreeObject::tostr(vector<string>& s, int nodeId, bool topoOnly, bool includeStem
   }
   TreeNodeObject const& no = *np;
   uint const nSons = no.succ == Py_None ? 0 : PySequence_Size(no.succ);
+  TreeNodeDataObject const& nd = *static_cast<TreeNodeDataObject*>(no.data);
   if( nSons == 0 ) {
-    char* t = PyString_AsString(static_cast<TreeNodeDataObject*>(no.data)->taxon);
+    char* t = PyString_AsString(nd.taxon);
     s.push_back(t);
   } else {
     for(uint i = 0; i < nSons; ++i) {
       int d = PyLong_AsLong(PySequence_GetItem(no.succ, i));
-      tostr(s, d, topoOnly, true);
+      tostr(s, d, topoOnly, true, withAttributes);
     }
     auto first = s.end() - nSons;
     std::sort(first, s.end());
@@ -2334,9 +2551,39 @@ TreeObject::tostr(vector<string>& s, int nodeId, bool topoOnly, bool includeStem
     }
     first->append(")");
     s.erase(first+1, s.end());
+
+    if( nd.taxon != Py_None ) {
+      char* t = PyString_AsString(nd.taxon);
+      first->append(t);
+    }
   }
 
-  PyObject* br = static_cast<TreeNodeDataObject*>(no.data)->branchlength;
+  if( withAttributes && PyObject_HasAttrString(no.data, "attributes") ) {
+    PyObject* const atrs = PyObject_GetAttrString(no.data, "attributes");
+    if( atrs && PyMapping_Check(atrs) ) {
+      string& a = *(s.end()-1);
+      a.append("[&");
+      // Python macro - cant do anything here to remove gcc warning
+      PyObject* keys = PyMapping_Keys(atrs);
+      PyObject* vals = PyMapping_Values(atrs);
+      uint nkeys = PySequence_Size(keys);
+      for(uint k = 0; k < nkeys; ++k) {
+	PyObject* const name = PySequence_GetItem(keys, k);
+	PyObject* const value = PySequence_GetItem(vals, k);
+	if( k > 0 ) {
+	  a.append(",");
+	}
+	a.append(strOfObject(name)).append("=").append(strOfObject(value));
+      }
+      a.append("]");
+      
+      Py_DECREF(keys);
+      Py_DECREF(vals);
+      Py_XDECREF(atrs);
+    }
+  }
+
+  PyObject* const br = nd.branchlength;
   
   if( ! topoOnly && br != Py_None && includeStem ) {
     char* const b = PyOS_double_to_string(PyFloat_AsDouble(br), 'r', 0, Py_DTSF_ADD_DOT_0, 0);
@@ -2346,18 +2593,19 @@ TreeObject::tostr(vector<string>& s, int nodeId, bool topoOnly, bool includeStem
 }
 
 PyObject*
-TreeObject::toNewick(int nodeId, bool topoOnly, bool includeStem) const
+TreeObject::toNewick(int nodeId, bool const topoOnly,
+		     bool const includeStem, bool const withAttributes) const
 {
   string s;
   if( ! treeNodes ) {
-    tr->toNewick(s, nodeId, topoOnly, includeStem);
+    tr->toNewick(s, nodeId, topoOnly, includeStem, withAttributes);
   } else {
     // go through node, in case node was changed
     if( nodeId == -1 ) {
       nodeId = tr->getRootID();
     }
     vector<string> c;
-    tostr(c, nodeId, topoOnly, includeStem);
+    tostr(c, nodeId, topoOnly, includeStem, withAttributes);
     s.assign(*c.begin());
   }
   return PyString_FromString(s.c_str());
@@ -2367,7 +2615,59 @@ static PyMemberDef treesSet_members[] = {
     {NULL}  /* Sentinel */
 };
 
-static PyObject *
+static PyObject*
+treesSet_filterTaxa(TreesSetObject* self, PyObject* args)
+{
+  PyObject* pTaxaSeq;
+  if( !PyArg_ParseTuple(args, "O", &pTaxaSeq) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    return 0;
+  }
+
+  if( ! PySequence_Check(pTaxaSeq) || PySequence_Size(pTaxaSeq) == 0 ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args (sequences of taxa expected).") ;
+    return 0;
+  }
+
+  TreesSet& ts = *self->ts;
+
+  if( ts.store ) {
+    PyErr_SetString(PyExc_ValueError, "Sorry, not implemeted for 'store'.") ;
+    return 0;
+  }
+  
+  vector<uint> taxaIndices;
+
+  int nt = PySequence_Size(pTaxaSeq);
+  for(int k = 0; k < nt; ++k) {
+    PyObject* const s1 = PySequence_GetItem(pTaxaSeq, k);
+    if( ! PyString_Check(s1) ) {
+      PyErr_SetString(PyExc_ValueError, "wrong args (sequences of taxa expected).") ;
+      return 0;
+    }
+      
+    const char* const s1c = PyString_AS_STRING(s1);
+    int const taxIndex = ts.hasTaxon(s1c);
+    if( taxIndex < 0 ) {
+      PyErr_Format(PyExc_ValueError, "Unknown taxon (%s).", s1c) ;
+      return 0;
+    }
+    taxaIndices.push_back(taxIndex);
+  }
+
+  TreesSet* const nts = new TreesSet(ts.compressed, ts.precision, ts.store);
+  
+  for(uint k = 0; k < ts.nTrees(); ++k) {
+    nts->add(ts, k, taxaIndices);
+  }
+
+  PyTypeObject* const type = self->ob_type;
+  TreesSetObject* const n = static_cast<TreesSetObject *>(TreesSet_new(type, 0, 0));
+  n->ts = nts;
+  return n;
+}
+
+static PyObject*
 treesSet_treei(TreesSetObject* self, PyObject* args)
 {
   int n;
@@ -2378,7 +2678,7 @@ treesSet_treei(TreesSetObject* self, PyObject* args)
   return TreesSet_getItemInternals(self, n);
 }
 
-static PyObject *
+static PyObject*
 treesSet_add(TreesSetObject* self, PyObject* args, PyObject* kwds)
 {
   const char* treeTxt;
@@ -2439,10 +2739,14 @@ static PyMethodDef treesSet_methods[] = {
    "Add a tree to set."
   },
 
-  {"treei", (PyCFunction)treesSet_treei, METH_VARARGS,
-   "Internals of tree."
+  {"filterTaxa", (PyCFunction)treesSet_filterTaxa, METH_VARARGS,
+   "Clone set while removing the given taxa list from each tree."
   },
-     
+
+  {"treei", (PyCFunction)treesSet_treei, METH_VARARGS,
+   "Internals of tree (debugging)."
+  },
+
   {NULL}  /* Sentinel */
 };
 
@@ -2561,16 +2865,16 @@ inittreesset(void)
     return;
 
   Py_INCREF(&TreesSetType);
-  PyModule_AddObject(m, "TreesSet", (PyObject *)&TreesSetType);
+  PyModule_AddObject(m, "TreesSet", (PyObject*)&TreesSetType);
 
   Py_INCREF(&TreeType);
-  PyModule_AddObject(m, "Tree", (PyObject *)&TreeType);
+  PyModule_AddObject(m, "Tree", (PyObject*)&TreeType);
 
   Py_INCREF(&TreeNodeType);
-  PyModule_AddObject(m, "Node", (PyObject *)&TreeNodeType);
+  PyModule_AddObject(m, "Node", (PyObject*)&TreeNodeType);
 
   Py_INCREF(&TreeNodeDataType);
-  PyModule_AddObject(m, "NodeData", (PyObject *)&TreeNodeDataType);
+  PyModule_AddObject(m, "NodeData", (PyObject*)&TreeNodeDataType);
 
   // const char* cd = "class NodeData: pass";
   //   // "class NodeData(object):\n  def __init__(self,taxon=None,branchlength=0.0,support=None):\n" 

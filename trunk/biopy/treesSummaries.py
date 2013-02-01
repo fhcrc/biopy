@@ -55,7 +55,7 @@ def summaryTreeUsingCA(tree, xtrees, atz = False) :
     nhs = nodeHeights(t, allTipsZero = atz)
     # Store height estimate from tree per target clade 
     h = [0.0]*len(cladeSets)
-    # We depend on those being in post order
+    # We depend on those being in pre order
     for c,n in getTreeClades(t) :
       c = frozenset(c)
       for k,x in enumerate(cladeSets) :
