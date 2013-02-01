@@ -115,18 +115,13 @@ def permutations(seq) :
       for i in range(len(seq)) :
         yield perm[:i] + seq[0:1] + perm[i:]
 
-
 def allPairs(lst) :
   """ An iterator over all distinct pairs of elements in lst."""
-  if len(lst) < 2:
-    return
-  
-  x0 = lst[0]
-  for x in lst[1:] :
-    yield (x0, x)
-  for p in allPairs(lst[1:]) :
-    yield p
-
+  while len(lst) >= 2:
+    x0 = lst[0]
+    for x in lst[1:] :
+      yield (x0, x)
+    lst = lst[1:]
 
 def lbinomial(k, n, p) :
   """ Log of probability of obtaining k successes out of n from a process with success

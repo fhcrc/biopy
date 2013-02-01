@@ -1,6 +1,10 @@
+all: sphinx
 
 sphinx:
 	sphinx-build -b html source html
+
+sphinx-latex:
+	sphinx-build -b latex -d build/doctrees   source build/latex
 
 doc:
 	epydoc --name biopy --url http://code.google.com/p/biopy/ -o html/  --config conf --inheritance=listed --docformat plaintext -v --graph all

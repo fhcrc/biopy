@@ -51,9 +51,9 @@ parser.add_option("-s", "--scenario", dest="scenario",
                   type='choice', choices=['gradual', 'constant', 'balanced'],
                   help="""Assign migration rates stochastically. 'constant'"""
                   + """ assigns a constant independent rate. 'balanced' assigns a"""
-                  + """ constant rate with A->B flow equal to B->A. For gradual
-                  see documentation. constant and balanced take on distribution
-                  (M), while gradual takes two (M and S).""",
+                  + """ constant rate with A->B flow equal to B->A. For gradual """
+                  + """see documentation. constant and balanced take on distribution """
+                  + """ (M), while gradual takes two (M and S).""",
                   default = None)
                   
 options, args = parser.parse_args()
@@ -157,7 +157,7 @@ for tree in trees:
       s = GeneTreeSimulator(tree)
     (gt,hgt),nim = s.simulateGeneTree()
 
-    tlog.outTree(gt + '[&nim ' + str(nim) + ']')
+    tlog.outTree(gt + '[&nim=' + str(nim) + ']')
     if slog is not None :
       # prepare demographic attributes
       revertDemographics(tree)

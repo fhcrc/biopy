@@ -15,7 +15,7 @@ from biopy.genericutils import fileFromName
 from biopy import INexus, beastLogHelper, treePlotting
 from biopy.treeutils import getTreeClades, countNexusTrees, treeHeight
 
-parser = optparse.OptionParser("""%prog [OPTIONS] posterior-trees.nexus figfilename""")
+parser = optparse.OptionParser("""%prog [OPTIONS] posterior-trees.nexus fig-file-name""")
 
 parser.add_option("-b", "--burnin", dest="burnin",
                   help="Burn-in amount (percent, default %default)", default = "10")
@@ -37,13 +37,16 @@ parser.add_option("-c", "--color", dest="color",
                   help="""Color based on topology.""",
                   action="store_true", default = False)
 
-parser.add_option("", "--yclip", dest="yclip",
+parser.add_option("", "--yclip", dest="yclip", metavar="LEVEL",
                   help="""Clip display of root demographic using upper HPD \
 (0 < level < 1)""", default = 1) 
 
-parser.add_option("", "--ychop", dest="ychop",
-                  help="""chop root demographic to fraction of total tree \
-(0 < level)""", default = None) 
+parser.add_option("", "--ychop", dest="ychop", metavar="LEVEL",
+                  help="""chop root demographic to fraction of total tree """ + 
+                  """ (0 < level)""", default = None) 
+
+parser.add_option("", "--xaxislim", dest="xlim", metavar="min,max",
+                  default = None)
 
 parser.add_option("", "--alphafactor", dest="afactor", metavar="F",
                   help="""Reduce this value to lower drawing intensity.""", default = 10.0) 
@@ -58,6 +61,18 @@ taxa (mean [default] | taxonmean | between).", default = 'mean')
 
 parser.add_option("", "--fontsize", dest="fontsize", metavar="N",
                   help="""labels font size.""", default = 12) 
+
+parser.add_option("", "--figsize", dest="figsize", metavar="W,H",
+                  help="""figure size. Width,Height in Inches.""", default = None) 
+
+parser.add_option("", "--wfactor", dest="wfac", metavar="F",
+                  help="""""", default = "1") 
+
+parser.add_option("", "--dpi", dest="dpi", metavar="N",
+                  help="""image DPI.""", default = "300") 
+
+parser.add_option("", "--labelsoffset", dest="labeloff", metavar="offset",
+                  help="""labels plot offset.""", default = 0.0) 
 
 parser.add_option("", "--mcolors", dest="mcolors", action="append",
                   help="""colors for mean tree(s).""", default = None) 
@@ -127,7 +142,7 @@ for tree in nexusReader.read(nexFile, slice(nBurninTrees, -1, every)) :
 if progress:
   print >> sys.stderr, "preparing ...,",
 
-wd = treePlotting.getSpacing(trees, float(options.treespacing))
+wd = treePlotting.getSpacing(trees, float(options.treespacing)) * float(options.wfac) 
 ref = mainTree[0] if mainTree else None
 taxOrder = treePlotting.getTaxaOrder(trees, refTree = ref,
                                      reportTopologies = colorTops) 
@@ -144,7 +159,11 @@ if progress:
   print >> sys.stderr, "plotting ...,",
 
 pylab.ioff()
-fig = pylab.figure()
+if options.figsize is not None :
+  fs = [float(x) for x in options.figsize.split(',')]
+  fig = pylab.figure(figsize=fs)
+else :  
+  fig = pylab.figure()
 
 pheights = []
 heights = []
@@ -216,8 +235,9 @@ if len(mainTree) :
 labels = []
 for ni in tree.get_terminals():
   node = tree.node(ni)
-  t = pylab.text(xs[node.data.taxon], 0, node.data.taxon,
-                 fontsize = float(options.fontsize), va='top', ha='center')
+  t = pylab.text(xs[node.data.taxon], -float(options.labeloff), node.data.taxon,
+                 fontsize = float(options.fontsize), va='top', ha='center',
+                 rotation="vertical")
   labels.append(t)
   
 if options.ychop is not None:
@@ -243,11 +263,26 @@ if 0 :
 # - I wish I knew how to get text height. above does not work 
 pylab.ylim((-0.5*ymax/10, ymax))
 
+
+if 1 :
+  pylab.draw()
+  ax = pylab.axes()
+  tt = ax.transData.inverted()
+  ymin,ymax = pylab.ylim()
+  # print ymin
+  for t in labels:
+    ex = t.get_window_extent()
+    ymin = min(ymin, 1.3*min([tt.transform(z)[1] for z in (ex.p0,ex.p1)]))
+  pylab.ylim((ymin, ymax))
+
+if options.xlim :
+  pylab.xlim([float(x) for x in options.xlim.split(',')])
+  
 if options.interactive:
   pylab.ion()
   pylab.show()
 
-pylab.savefig(args[1], dpi=300)
+pylab.savefig(args[1], dpi=float(options.dpi))
 
 if progress:
   print >>  sys.stderr, "done." 

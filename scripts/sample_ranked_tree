@@ -11,7 +11,6 @@ from biopy.combinatorics import _prod as prod
 from biopy import INexus, __version__
 from biopy.birthDeath import yuleTimes
 from biopy.treeutils import toNewick, TreeLogger
-# , resolveTree
 
 
 def xx(l) :
@@ -133,6 +132,10 @@ if any([x==1 for x in spans]) :
   
 resolved = not any([x > 2 for x in spans])
 
+if not resolved:
+  print >> sys.stderr, "*** Error: tree is not binary or not fully resolved"
+  sys.exit(1)
+
 #if not all([len(tree.node(x).succ) in [0,2] for x in tree.all_ids()]) :
 #  print >> sys.stderr, "*** Error: tree is not binary or not fully resolved"
 #  sys.exit(1)
@@ -161,16 +164,16 @@ else :
   
 tlog = TreeLogger(options.nexfile, argv = sys.argv, version = __version__)
 
-if resolved : 
-  prepareTree(tree, tree.root)
+# if resolved : 
+prepareTree(tree, tree.root)
 
 for k in range(nTrees) :
-  if not resolved:
-    t = copy.deepcopy(tree)
-    tr = resolveTree(t)
-    prepareTree(tr, tr.root)
-  else :
-    tr = tree
+  ## if not resolved:
+  ##   t = copy.deepcopy(tree)
+  ##   tr = resolveTree(t)
+  ##   prepareTree(tr, tr.root)
+  ## else :
+  tr = tree
     
   order = getOrder(tr)
   intervals = getIntervals(len(order)+2)
