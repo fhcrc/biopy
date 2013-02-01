@@ -218,12 +218,17 @@ ParsedTreeNode::asPyObject(void) const
   PyList_SET_ITEM(nodeData, 1, b);
 
   int const ns = sons.size();
-  PyObject* psubs = PyList_New(ns);
-  for(int k = 0; k < ns; ++k) { 
-    PyList_SET_ITEM(psubs, k, PyLong_FromLong(sons[k]));
+  if( ns > 0 ) {
+    PyObject* psubs = PyList_New(ns);
+    for(int k = 0; k < ns; ++k) { 
+      PyList_SET_ITEM(psubs, k, PyLong_FromLong(sons[k]));
+    }
+    PyList_SET_ITEM(nodeData, 2, psubs);
+  } else {
+    Py_INCREF(Py_None);
+    PyList_SET_ITEM(nodeData, 2, Py_None);
   }
-  PyList_SET_ITEM(nodeData, 2, psubs);
-
+  
   PyList_SET_ITEM(nodeData, 3, attributesAsPyObj(attributes));
 
   return nodeData;

@@ -122,9 +122,11 @@ def _readSubTree(txt, nodesList) :
         n += n1
         txt = txt[n1:]
         if nodesList[-1][3] is None:
-          nodesList[-1][3] = tuple(vals)
+          #nodesList[-1][3] = tuple(vals)
+          nodesList[-1][3] = dict(vals)
         else :
-          nodesList[-1][3] = nodesList[-1][3] + tuple(vals)
+          #nodesList[-1][3] = nodesList[-1][3] + tuple(vals)
+          nodesList[-1][3].update(tuple(vals))
       else :
         # skip over comment, a ']' in comment need escaping
         e = _getStuff(txt[1:], ']')
