@@ -111,7 +111,25 @@ def test01() :
 True
 """
   pass
-  
+
+def basicAttributesTest() :
+  """
+>>> ts = treesset.TreesSet()
+>>> tree0txt = '(a[&a=1],b)' ; i0 = ts.add(tree0txt)
+>>> ts[i0].toNewick(attributes=1)
+'(a[&a=1],b)'
+>>> tree0txt = '(a[&a=1],b)[&ab=1]' ; i0 = ts.add(tree0txt)
+>>> ts[i0].toNewick(attributes=1)
+'(a[&a=1],b)[&ab=1]'
+>>> tree0txt = '(a,(b,c))[&abc=1]' ; i0 = ts.add(tree0txt)
+>>> ts[i0].toNewick(attributes=1)
+'((b,c),a)[&abc=1]'
+>>> tree0txt = '(a[&a=1,x=2],b)'; i0 = ts.add(tree0txt)
+>>> ts[i0].toNewick(attributes=1)
+'(a[&a=1,x=2],b)'
+"""
+  pass
+
 def basicFilterTest() :
   """
 >>> ts = treesset.TreesSet()
@@ -160,9 +178,37 @@ def basicLabelsTest() :
 >>> i = ts.add('((a,b),c)ABC')
 >>> str(ts[i])
 '((a,b),c)ABC'
+>>> tx = '(A.andrenof:0.00000013,A.florea:0.00490281,(A.koschev:0.06076710,(A.dorsata:0.10199850,(A.mellifer:0.06751260,A.cerana:0.07193473)0.242000:0.02410681)0.782000:0.01565092)0.988000:0.04979024)'
+>>> i = ts.add(tx)
+>>> len(str(ts[i]))
+279
   """
   pass
 
+def basicLabelsFilterTest() :
+  """
+>>> ts = treesset.TreesSet()
+>>> i = ts.add('(a,(b,c)BC)ABC')
+>>> ts1 = ts.filterTaxa('b')
+>>> str(ts1[i])
+'(a,c)ABC'
+>>> ts1 = ts.filterTaxa('a')
+>>> str(ts1[i])
+'(b,c)BC'
+>>> tx = '(a,(b[&b=1],c[&c=1])[&bc=1])[&abc=1]'
+>>> ts = treesset.TreesSet()
+>>> i = ts.add(tx)
+>>> ts1 = ts.filterTaxa('b')
+>>> ts1[0].toNewick(attributes=1)
+'(a,c[&c=1])[&abc=1]'
+>>> ts1 = ts.filterTaxa('a')
+>>> ts1[0].toNewick(attributes=1)
+'(b[&b=1],c[&c=1])[&bc=1]'
+>>> ts1 = ts.filterTaxa('c')
+>>> ts1[0].toNewick(attributes=1)
+'(a,b[&b=1])[&abc=1]'
+"""
+  pass
 ## ((((((10:0.036162075000000016,9:0.036162075000000016):0.06274895000000003,1:0.09891103000000001):0.026505180000000017,((13:0.014917999999999987,14:0.014917999999999987):0.03569254299999991,15:0.050610541999999814):0.07480567000000016):0.26405415,(4:0.032545126999999896,5:0.032545126999999896):0.3569252500000002):0.2710403200000002,7:0.6605106600000004):0.2432706699999998,(((16:0.024232836,6:0.024232836):0.009055312000000003,8:0.033288147):0.12789393999999998,3:0.16118209):2.3345778,((12:0.2212771,2:0.2212771):0.20966916000000002,11:0.43094626):0.47283506)
 
 if __name__ == '__main__':

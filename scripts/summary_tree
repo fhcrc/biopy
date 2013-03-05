@@ -528,6 +528,8 @@ if stree:
        print >>  sys.stderr, "annotating ...," 
     from biopy import treesSummaries
     treesSummaries.annotateTree(stree, trees)
-    print >>  sys.stderr, "done."
+
+if progress :
+  print >>  sys.stderr, "done."
     
 print toNewick(stree, attributes="attributes" if options.annotate else None)

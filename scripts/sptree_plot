@@ -28,13 +28,16 @@ parser.add_option("-m", "--mean-tree", dest="mainTree", action="append",
                   help="""Show tree on top of river (the tree from \
 starbeast_posterior_popsizes for instance)""", default = None)
 
+parser.add_option("", "--mcolors", dest="mcolors", action="append",
+                  help="""colors for mean tree(s).""", default = None) 
+
 parser.add_option("-s", "--single", dest="singleTopology",
                   help="Restrict to a single topology (either the most frequent \
 topology, or the one from the mean-tree when given""",
                   action="store_true", default = False)
 
 parser.add_option("-c", "--color", dest="color",
-                  help="""Color based on topology.""",
+                  help="""Assign tree color based on its topology.""",
                   action="store_true", default = False)
 
 parser.add_option("", "--yclip", dest="yclip", metavar="LEVEL",
@@ -55,9 +58,9 @@ parser.add_option("", "--tree-spacing", dest="treespacing",
                   help="""Additional spacing (> 0 default %default)""", default = 0.3) 
 
 parser.add_option("", "--positioning", dest="positioning",
-                  type='choice', choices=['mean', 'taxonmean', 'between'],
+                  type='choice', choices=['mean', 'taxonmean', 'between', 'star'],
                   help="Method of positioning internal nodes based on clade \
-taxa (mean [default] | taxonmean | between).", default = 'mean') 
+taxa (mean [default] | taxonmean | between | star).", default = 'mean') 
 
 parser.add_option("", "--fontsize", dest="fontsize", metavar="N",
                   help="""labels font size.""", default = 12) 
@@ -68,14 +71,15 @@ parser.add_option("", "--figsize", dest="figsize", metavar="W,H",
 parser.add_option("", "--wfactor", dest="wfac", metavar="F",
                   help="""""", default = "1") 
 
+parser.add_option("", "--labelsspacehack", dest="labsphack", metavar="F",
+                  help="""""", default = ".01") 
+
+
 parser.add_option("", "--dpi", dest="dpi", metavar="N",
                   help="""image DPI.""", default = "300") 
 
 parser.add_option("", "--labelsoffset", dest="labeloff", metavar="offset",
                   help="""labels plot offset.""", default = 0.0) 
-
-parser.add_option("", "--mcolors", dest="mcolors", action="append",
-                  help="""colors for mean tree(s).""", default = None) 
 
 parser.add_option("-i", "--interactive", dest="interactive", action="store_true",
                   help="""present plot interactively to user..""", default = False) 
@@ -98,6 +102,8 @@ elif options.positioning == 'taxonmean':
    positioning = treePlotting.DescendantWeightedMean
 elif options.positioning == 'between':
    positioning = treePlotting.DescendantBetween
+elif options.positioning == 'star':
+   positioning = None
 else:
   raise
 
@@ -171,26 +177,55 @@ heights = []
 alpha = min(max(alphaFactor/len(trees), 1/500.), .3)
 
 if colorTops :
-  import colorsys
-  tops = taxOrder[2].items()
-  tops.sort(key = lambda x : len(x[1]))
-  mainHue = 100./256
-  c0 = (mainHue + len(tops[-1][1])/len(trees)/2) % 1
-  for top in tops:
-    topPercent = len(top[1])/len(trees)
-    c2 = (c0 + topPercent/2) % 1
-    col = colorsys.hsv_to_rgb(c2,1.0,184/256.)
-    #print top[0],len(top[1]), c2, [x*256 for x in col]
-    for k in top[1]:
-      tree = trees[k]
-      for x in tree.get_terminals() :
-        tree.node(x).data.x = xs[tree.node(x).data.taxon]
-      h = treePlotting.drawTree(tree, tree.root, cd, positioning = positioning,
-                                generalPlotAttributes = {'color' : col, 'alpha' : alpha})
-      pheights.append(h)
-      heights.append(treeHeight(tree))
-    c0 = (c0 + topPercent) % 1
+  if 1 :
+    import colorsys
+    tops = taxOrder[2].items()
+    tops.sort(key = lambda x : len(x[1]))
+    # main is limelikesort of green
+    mainHue = 100./256
+    c0 = (mainHue + len(tops[-1][1])/len(trees)/2) % 1
+    for top in tops:
+      topPercent = len(top[1])/len(trees)
+      c2 = (c0 + topPercent/2) % 1
+      # full saturatuion, but why v=184??
+      col = colorsys.hsv_to_rgb(c2,1.0,184/256.)
+      #print top[0],len(top[1]), c2, [x*256 for x in col]
+      for k in top[1]:
+        tree = trees[k]
+        for x in tree.get_terminals() :
+          tree.node(x).data.x = xs[tree.node(x).data.taxon]
+        h = treePlotting.drawTree(tree, tree.root, cd, positioning = positioning,
+                                  generalPlotAttributes = {'color' : col, 'alpha' : alpha})
+        pheights.append(h)
+        heights.append(treeHeight(tree))
+      c0 = (c0 + topPercent) % 1
+  else :
+    import colorsys
+    tops = taxOrder[2].items()
+    tops.sort(key = lambda x : len(x[1]))
+    # main is limelikesort of green
+    mainHue = 100./256
+
+    radMain = len(tops[-1][1])/len(trees)/2
+    c0r = (mainHue + radMain) % 1
+    c0l = (mainHue - radMain) % 1
+    print mainHue, radMain, c0r,c0l
     
+    for top in tops:
+      topPercent = len(top[1])/len(trees)
+      c2 = (c0 + topPercent/2) % 1
+      # full saturatuion, but why v=184??
+      col = colorsys.hsv_to_rgb(c2,1.0,184/256.)
+      #print top[0],len(top[1]), c2, [x*256 for x in col]
+      for k in top[1]:
+        tree = trees[k]
+        for x in tree.get_terminals() :
+          tree.node(x).data.x = xs[tree.node(x).data.taxon]
+        h = treePlotting.drawTree(tree, tree.root, cd, positioning = positioning,
+                                  generalPlotAttributes = {'color' : col, 'alpha' : alpha})
+        pheights.append(h)
+        heights.append(treeHeight(tree))
+      c0 = (c0 + topPercent) % 1
     
 else :
   dtrees = trees
@@ -259,13 +294,9 @@ if 0 :
     m = max(m , y1 - y0)
     # print bbox, bboxi, m , y1-y0, (x0,y0),(x1,y1)
   
-# A total hack for an annoying bug (text ends up outside the frame)
-# - I wish I knew how to get text height. above does not work 
-pylab.ylim((-0.5*ymax/10, ymax))
+pylab.ylim((pylab.ylim()[0], ymax))
 
-
-if 1 :
-  pylab.draw()
+def adjustForlabels(labels) :
   ax = pylab.axes()
   tt = ax.transData.inverted()
   ymin,ymax = pylab.ylim()
@@ -274,6 +305,15 @@ if 1 :
     ex = t.get_window_extent()
     ymin = min(ymin, 1.3*min([tt.transform(z)[1] for z in (ex.p0,ex.p1)]))
   pylab.ylim((ymin, ymax))
+  
+try : 
+  pylab.draw()
+  adjustForlabels(labels)
+except RuntimeError,e:
+  # no renderer??
+  nTxt = max([len(t.get_text()) for t in labels])
+  # A total hack for an annoying bug (text ends up outside the frame)
+  pylab.ylim((-ymax*nTxt*float(options.labsphack), ymax))
 
 if options.xlim :
   pylab.xlim([float(x) for x in options.xlim.split(',')])

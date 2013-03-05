@@ -30,8 +30,10 @@ __all__ = ["TreeBuilder", "TreeLogger", "getClade", "getTreeClades",
            "getCommonAncesstor", "countNexusTrees", "toNewick", "nodeHeights",
            "nodeHeight", "treeHeight", "setLabels", "convertDemographics",
            "coalLogLike", "getPostOrder", "getPreOrder", "setSpeciesSimple",
-           "resolveTree"]
+           "resolveTree", "attributesVarName", "addAttributes"]
 
+# Can't change, still hardwired in many places in code
+attributesVarName = "attributes"
 
 class TreeBuilder(object) :
   """ A basic helper for building BioPython trees.
@@ -96,7 +98,7 @@ class TreeBuilder(object) :
       rr.set_succ(rootNode.succ)
       for p in rootNode.succ :
         t.node(p).set_prev(t.root)
-      if hasattr(rootNode.data,"attributes") :
+      if hasattr(rootNode.data,attributesVarName) :
         rr.data.attributes = rootNode.data.attributes
       t.kill(rootNode.id)
     else :
@@ -147,6 +149,12 @@ class TreeLogger(object) :
     if self.outName :
       print >> self.outFile, "end;"
       self.outFile.close()
+
+# don't clobber exsiting attributes - append is much nicer
+def addAttributes(nd, atrs) :
+  if not hasattr(nd.data, attributesVarName) :
+    nd.data.attributes = dict()
+  nd.data.attributes.update(atrs)
 
 def getClade(tree, nodeId) :
   n = tree.node(nodeId)
@@ -342,7 +350,7 @@ def setLabels(trees) :
     for i in tree.get_terminals() :
       data = tree.node(i).data
       ok = False
-      if hasattr(data, "attributes") :
+      if hasattr(data, attributesVarName) :
         if "labels" in data.attributes:
           l = data.attributes["labels"].split(' ')
           data.labels = l
@@ -418,7 +426,7 @@ def convertDemographics(tree, formatUnited = "dmf",
   for i in tree.all_ids() :
     data = tree.node(i).data
     d = None
-    if hasattr(data, "attributes") :
+    if hasattr(data, attributesVarName) :
       if dmf in data.attributes:
         dtxt = data.attributes[dmf]
         d = _toDemog(dtxt)
@@ -446,7 +454,7 @@ def revertDemographics(tree, dattr = "demographic",
 
     d = getattr(data, dattr, None)
     if d :
-      if not hasattr(data, "attributes") :
+      if not hasattr(data, attributesVarName) :
         data.attributes = dict()
       else :
         for l in formatSeparated :
