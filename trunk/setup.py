@@ -12,6 +12,10 @@ module3 = Extension('treesset',
                     sources = ['biopy/treesset.cc'],
                     extra_compile_args=['-std=c++0x', '-Wno-invalid-offsetof'])
 
+module4 = Extension('neutralsim',
+                    sources = ['biopy/neutralsim.cc'],
+                    extra_compile_args=['-std=c++0x'])
+
 classifiers=[
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
@@ -37,7 +41,7 @@ setup (name = 'biopy',
        platforms = ["Linux", "Mac OS-X"],
        packages = ['biopy'],
        package_dir={'biopy': 'biopy'},
-       ext_modules = [module1,module2,module3],
+       ext_modules = [module1,module2,module3,module4],
        scripts = glob.glob('scripts/*'),
        data_files=[('doc',glob.glob('html/*.*')),
                    ('doc/_images', glob.glob('html/_images/*.*')),

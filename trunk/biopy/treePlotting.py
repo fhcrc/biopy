@@ -120,6 +120,8 @@ pconst: True if branch has constant width
 """
 
 def _drawBranch(x, y, fill, generalPlotAttributes, splitPoints) :
+  """ x and y are length 4 sequences, specifing the four corners of the speices
+  tree branch (i.e. (x[0],y[0]), ... ,(x[3],y[3]) """
   if fill is not None:
     pylab.fill(x,y, **fill)
     
@@ -215,7 +217,85 @@ def _drawTree(tree, nid, cladesDict, positioning, fill, generalPlotAttributes,
   
   return aux
 
-def drawTree(tree, nid = None, cladesDict = None, positioning = DescendantMean,
+# Loads of code duplication, I know
+
+def _drawTreeTopDown(tree, nid, xnode, fill, nh, generalPlotAttributes, splitPoints, keepAux) :
+  node = tree.node(nid)
+  d = node.data.demographic
+  pConst = d.naturalLimit() is None
+
+  cInfo = node.data.cladeInfo
+  myh = nh[node.id]
+
+  p = d.population(0)
+  br = d.naturalLimit() or node.data.branchlength
+  p1 = d.population(br)
+  
+  for si in node.succ :
+    chh =  nh[si]
+    toLeft = si == cInfo.lchild
+    if toLeft :
+      a = (xnode - cInfo.lmid) / (myh - cInfo.lh)
+      dx = a * (myh - chh)
+      xchild = xnode - dx
+    else :
+      a = (cInfo.rmid - xnode) / (myh - cInfo.rh)
+      dx = a * (myh - chh)
+      xchild = xnode + dx
+      
+    if keepAux :
+      node.data.x = xnode
+
+    cLeft,cRight,pEnd = _drawTreeTopDown(tree, si, xchild, fill,
+                                         nh, generalPlotAttributes, splitPoints, keepAux)
+    assert cLeft <= cRight
+    x = cRight, cLeft
+    if toLeft :
+      xleft = xnode - pEnd
+      x = x + (xleft, xnode)
+    else:
+      xright = xnode + pEnd
+      x = x + (xnode, xright)
+
+    y = chh, chh, myh, myh
+
+    _drawBranch(x, y, fill, generalPlotAttributes, splitPoints)      
+
+  if not node.succ or pConst:
+    if not node.succ:
+      xleft, xright = xnode - p/2, xnode + p/2
+    else :
+      xright = xnode + (p * (xright-xnode))/(xright - xleft)
+      xleft = xright - p
+      
+    #print xleft, xright
+
+  if nid == tree.root :
+    hpar = myh + br    
+    if pConst :
+      if myh == hpar :
+        # default: 10% root, embedded gene trees should set root branch
+        # as appropriate
+        hpar = 1.1 * myh
+    #print myh, hpar, pConst
+    x = xright, xleft
+    if pConst :
+      x = x + (xleft, xright)
+    else :
+      x = x + (xnode - p1/2, xnode + p1/2)
+    y = myh, myh, hpar, hpar
+    
+    _drawBranch(x, y, fill, generalPlotAttributes, splitPoints)      
+
+    return hpar
+  #aux = _Info2(centerc, h, hpar, xright, p, p1, clade, pConst)
+  #if keepAux :
+  #  node.data.plotAux = aux
+        
+  return xleft, xright, p1
+
+
+def drawTree(tree, nid = None, cladesDict = None, positioning = None,
              fill = None, generalPlotAttributes = None, splitPoints = False,
              keepAux = False) :
 
@@ -230,9 +310,41 @@ def drawTree(tree, nid = None, cladesDict = None, positioning = DescendantMean,
     
   if nid is None :
     nid = tree.root
+    
+  if positioning is not None :
+    h = _drawTree(tree, nid, cladesDict, positioning,
+                  fill, generalPlotAttributes, splitPoints, keepAux) 
+  else :
+    nh = nodeHeights(tree, allTipsZero = True)
+    rl = _setLeftRight(tree, tree.root, nh)
+    xroot = (rl.right + rl.left)/2
+  
+    h = _drawTreeTopDown(tree, nid, xroot,
+                         fill, nh, generalPlotAttributes, splitPoints, keepAux) 
+  return h
 
-  return _drawTree(tree, nid, cladesDict, positioning,
-             fill, generalPlotAttributes, splitPoints, keepAux) 
+## def drawTreeTopDown(tree, nid = None, fill = None,
+##                     generalPlotAttributes = None,
+##                     splitPoints = False, keepAux = False) :
+
+##   if fill is None and generalPlotAttributes is None :
+##     generalPlotAttributes = dict()
+
+##   if fill is not None and 'ec' not in fill :
+##     fill['ec'] = 'none'
+    
+##   if generalPlotAttributes is not None and 'color' not in generalPlotAttributes :
+##     generalPlotAttributes['color'] = 'blue'
+    
+##   if nid is None :
+##     nid = tree.root
+
+##   nh = nodeHeights(tree, allTipsZero = True)
+##   rl = _setLeftRight(tree, tree.root, nh)
+##   xroot = (rl.right + rl.left)/2
+  
+##   return _drawTreeTopDown(tree, nid, xroot,
+##                           fill, nh, generalPlotAttributes, splitPoints, keepAux) 
 
 _Info = namedtuple('Info', 'width widthatend maxspace')
 
@@ -295,7 +407,7 @@ def getCR(oo, dis) :
 
 
 def getTaxaOrder(trees, refTree = None, reportTopologies = False,
-                    nSample = 1, progress = False) :
+                 nSample = 1, progress = False) :
   
   if progress: print >> sys.stderr, "getting topologies...",
 
@@ -565,7 +677,7 @@ _Info1.__doc = """Return value of _setLeftRight: values associated with a node.
 
 left,right: x-positions of leftest and rightest tips in clade
 lmid rmid:  x-position of left/right descentands to aim for
-lh rh:      y-position of left/ right descentands to aim for
+lh rh:      y-position of left/right descentands to aim for
 lchild:     node id of the left child
 """
 
@@ -779,7 +891,7 @@ def drawTreeOnly(tree, plotLinesAttr, stree = None,
                  coalAttr = None, txt = False) :
   assert not stree or allTipsZero
 
-  # A mapping from node id to (positive) node height ( with !allTipsZero, tips
+  # A mapping from node id to (positive) node height (with !allTipsZero, tips
   # may have > 0 height, at least one tip has 0 height). 
   nh = nodeHeights(tree, allTipsZero = allTipsZero)
   if stree is not None :
