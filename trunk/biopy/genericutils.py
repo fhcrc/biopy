@@ -9,9 +9,26 @@ Generic helpers
 ===============
 """
 
-__all__ = ["fileFromName", "sumViaLog"]
+__all__ = ["fileFromName", "sumViaLog", "flatten", "tohms"]
 
 import os.path, gzip, bz2
+
+def flatten(lsts) :
+  """ Concat all sequences (single level)"""
+  if not lsts:
+    return lsts
+
+  return reduce(lambda x,y : x+y, lsts, tuple()
+                if isinstance(lsts[0], tuple) else [])
+
+def tohms(seconds) :
+  if seconds < 0 :
+    return "??:??"
+  m, s = divmod(seconds, 60)
+  h, m = divmod(m, 60)
+  if h > 0 :
+    return "%d:%02d:%02d" % (h, m, s)
+  return "%02d:%02d" % (m, s)
 
 def fileFromName(fname) :
   """A Python file object from (possibly compressed) disk file.

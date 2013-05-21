@@ -1,0 +1,467 @@
+#! /usr/bin/env python
+## This file is part of biopy.
+## Copyright (C) 2013 Joseph Heled
+## Author: Joseph Heled <jheled@gmail.com>
+## See the files gpl.txt and lgpl.txt for copying conditions.
+
+from __future__ import division
+
+import argparse, sys, os.path
+
+parser = argparse.ArgumentParser(description= """ %prog [OPTIONS] in-file""")
+
+parser.add_argument("--derep", default = None, action = "store_true", 
+                    help="""eliminate exact duplicates, add size information to name.""" +
+                    """ output is sorted by decreasing abundance (size).""")
+
+parser.add_argument("--declutter", metavar="TH(,TH1,TH2,...)",
+                    default = None,
+                    help="")
+
+parser.add_argument("--forest", metavar="TH", default = None, type = float,
+                    help="")
+
+parser.add_argument("--stitch", metavar="TH", default = None, type = float,
+                    help="")
+
+parser.add_argument("--max-single-tree", dest="maxClade", metavar="N", default = 6000, type = int,
+                    help="")
+
+parser.add_argument("-p", "--progress", dest="progress",
+                    help="send progress messages to terminal (standard error)",
+                    action='count', default = 0)
+
+parser.add_argument("--verbose", action="store_true", default = False)
+
+parser.add_argument("--compress", metavar='N', type = int, default = -1,
+                    help="""compression level for distance files (%(default)d for no compression)""")
+
+parser.add_argument("--overwrite", action="store_true", default = False,
+                    help="""blindly trash existing files.""")
+
+parser.add_argument("--match-scores", dest="matchScores",metavar="M,X,G,F", default = None,
+                    help="")
+
+parser.add_argument("--use-sequence-identity", dest="JCcorrection",
+                    action="store_false", default = True,
+                    help="use uncorrected sequence identity. by default use Jukes-Cantor correction.")
+
+parser.add_argument("--sequences-extension", dest="seqsext", metavar="STRING", default = "fasta",
+                    help="""%(default)s""")
+
+parser.add_argument("--derep-extension", dest="derepext", metavar="STRING", default = "derep",
+                    help="""%(default)s""")
+
+parser.add_argument("--declutter-extension", dest="declext", metavar="STRING", default = "decl",
+                    help="""%(default)s""")
+
+parser.add_argument("--treelogs-extension", dest="treelogext", metavar="STRING", default = "trees",
+                    help="""%(default)s""")
+
+parser.add_argument('infile', metavar='FILE', help="Sequences (FASTA) or NEXUS")
+
+options = parser.parse_args()
+
+from itertools import count
+
+from biopy import otus, __version__
+from biopy.bioutils import readFasta
+from biopy.treeutils import TreeLogger
+from biopy.INexus import INexus
+
+verbose = options.progress > 1
+fverbose = sys.stderr if verbose else None
+progress = options.progress > 0
+nexusLogExt = "trees.nex"
+
+# main: basename + .fasta
+# derep: basename + .derep.fasta
+# declutter at X:  "basename + .derep.decl_pX.trees"  or "basename + .decl_pX.trees"
+# forest at X:     "basename + .pX.trees"
+
+# can have derep+declutter+forest
+#          declutter+forest
+#          forest (on decluttered file, output meaning unclear otherwise)
+
+if options.forest is not None :
+  if options.derep is not None and options.declutter is None :
+    print >> sys.stderr, "Confusing order, My Lord."
+    sys.exit(1)
+
+def fatalError(msg) :
+  print >> sys.stderr, msg
+  sys.exit(1)
+  
+def progressMessage(msg, stayOnLine = False) :
+  if stayOnLine:
+    print >> sys.stderr, msg,
+    sys.stderr.flush()
+  else :
+    print >> sys.stderr, msg
+
+def noOverwrite(fname) :
+  if not options.overwrite:
+    if os.path.exists(fname) :
+      print >> sys.stderr, "Cowardly refusing to overwrite", fname
+      sys.exit(1)
+
+
+allSeqs = []
+infile = options.infile
+
+if options.derep:
+  try :
+    if not os.path.exists(infile) :
+      infile = infile + os.path.extsep + options.seqsext
+      if not os.path.exists(infile) :
+        fatalError("cant find input file (%s)" % infile)
+
+    # Remove .fasta if suffix
+    base,ext = os.path.splitext(infile)
+    if ext != os.path.extsep + options.seqsext :
+      base = infile
+    derepName = os.path.extsep.join([base, options.derepext, options.seqsext])
+
+    noOverwrite(derepName)
+      
+    allSeqs = list(readFasta(file(infile)))
+    # for next stage, if any
+    infile = derepName
+    
+    if progress:
+      progressMessage("finding duplicates ..., ",True)
+
+    dups = otus.findDuplicates([x[1] for x in allSeqs])
+
+    derepFile = file(derepName, 'w')
+
+    if progress:
+      progressMessage("writing output ..., ",True)
+
+    # Sequences after dereping
+    remaining = []
+    seen = set()
+    for d in sorted(dups, key = list.__len__, reverse=1) :
+      rep = allSeqs[d[0]]
+      h,s = rep[0] + (';size=%d;' % len(d)),rep[1]
+      remaining.append((h,s))
+      
+      print >> derepFile, h
+      print >> derepFile, s
+      seen.update(d)
+
+    for i,rep in enumerate(allSeqs) :
+      if i not in seen :
+        h,s = rep[0] + ';size=1;',rep[1]
+        remaining.append((h,s))
+        
+        print >> derepFile, h
+        print >> derepFile, s
+        
+    derepFile.close()
+    
+    if progress:
+      progressMessage("done.")
+
+    allSeqs = remaining
+  except Exception,e:
+    print >> sys.stderr, "Error:", e.message
+    sys.exit(1)
+
+matchScores = otus.MatchScores(*otus.defaultMatchScores)
+
+if options.matchScores is not None :
+  m = options.matchScores.split(',')
+  if not len(m) == 4 :
+    print >> sys.stderr, "Expecting 4 values for match scores (leave empty for default)."
+    sys.exit(1)
+  ms = [float(x) if x != "" else dflt for x,dflt
+                 in zip(m,defaultMatchScores)[:3]] + \
+                 (matchScores[3] if matchScores[3] is not None else defaultMatchScores[3])
+  
+  if not (ms[0] > 0 and ms[1] <= 0 and ms[2] <= 0) :
+    print >> sys.stderr, "Expecting a non positive mismatch score and gap penalty."
+    sys.exit(1)
+  matchScores = otus.MatchScores(ms)
+  
+if options.declutter is not None:
+  try :
+    ths = [float(x) for x in options.declutter.split(',')]
+
+    if not allSeqs:
+      if not os.path.exists(infile) :
+        d = os.path.extsep.join([infile, options.derepext, options.seqsext])
+        if os.path.exists(d) :
+          infile = d
+        else :
+          d = os.path.extsep.join([infile, options.seqsext])
+          if not os.path.exists(d) :
+            fatalError("cant find input file for declutter (%s)" % infile)
+          infile = d
+      if progress:
+        progressMessage("reading sequences from %s" % infile)
+      allSeqs = list(readFasta(file(infile)))
+      
+    nameparts = infile.split(os.path.extsep)
+    if nameparts[-1] == options.seqsext :
+      nameparts.pop(-1)
+    namebase = os.path.extsep.join(nameparts)
+
+    s = '_'.join([otus.thstr(th) for th in ths])
+    declName = os.path.extsep.join([namebase, "%s_%s" % (options.declext,s),
+                                    options.treelogext])
+    #declName = "%s.declt_%s.%s" % (namebase,,nexusLogExt)
+    noOverwrite(declName)
+    # for next stage
+    infile = declName
+      
+    if progress:
+      progressMessage("declutter at %s" % options.declutter + (" ...," if not verbose else ""), not verbose)
+
+    #singles,pairs,grps = otus.deClutter([x[1] for x in allSeqs], th,
+    brk = otus.deClutterDown([x[1] for x in allSeqs], ths, options.maxClade,
+                              correction = options.JCcorrection,
+                              failsTH = 20, matchScores = matchScores, 
+                              verbose = fverbose)
+    #partition = [[x] for x in singles] + [x[:2] for x in pairs] + grps
+    trs = otus.declutterToTrees(brk, ths)
+    
+    tlog = TreeLogger(declName, labels = zip(count(), [x[0][1:] for x in allSeqs]),
+                      argv = sys.argv, version = __version__,
+                      overwrite = options.overwrite)
+    for t,nm in trs:
+      tlog.outTree(t, name = nm)
+
+    tlog.close()
+
+    if progress:
+      progressMessage("Declutter done." if verbose else "done.")
+    
+  except Exception,e:
+    print >> sys.stderr, "Error:", e.message
+    sys.exit(1)
+
+if options.forest is not None:
+  try :
+    thdecl = float(options.forest)
+
+    if not os.path.exists(infile) :
+      fatalError("cant find input file for forest (%s)" % infile)
+
+    nameparts = infile.split(os.path.extsep)
+    if nameparts[-1] == options.treelogext :
+      nameparts.pop(-1)
+    ths = []
+    if nameparts[-1].startswith(options.declext + '_') :
+      thparts = nameparts[-1].split('_')[1:]
+      for x in thparts:
+        if x[0] == 'p' and x[1:].isdigit() :
+          ths.insert(0, float('.' + x[1:]))
+        else :
+          fatalError("error")
+      
+      ## p = nameparts[-1][len(options.declext + '_'):]
+      ## if not p[0] == 'p' and p[1].isdigit() :
+      ##   fatalError("Invalid declutter name", infile)
+      ## thdecl = float("." + p[1:])
+      if not all([thdecl <= x for x in ths]) :
+        fatalError("Can't build %g forest from %s declutter" (th,nameparts[-1]))
+      nameparts.pop(-1)
+
+    if not allSeqs :
+      base = os.path.extsep.join(nameparts)
+      seqsfile = base + os.path.extsep + options.seqsext
+      if not os.path.exists(seqsfile) :
+        seqsfile = base
+        if not os.path.exists(seqsfile) :
+          fatalError("Unable to located sequences for " + infile)
+
+      if progress:
+        progressMessage("reading sequences from %s" % seqsfile)
+      allSeqs = list(readFasta(file(seqsfile)))
+
+    if progress:
+      progressMessage("Building trees for %s forest" % options.forest)
+
+    forestLevel = otus.thstr(thdecl)
+    forestBase = os.path.extsep.join(nameparts + [forestLevel])
+    forestName = forestBase + os.path.extsep + options.treelogext
+
+    tlog = TreeLogger(forestName, labels = zip(count(), [x[0][1:] for x in allSeqs]),
+                      argv = sys.argv, version = __version__,
+                      overwrite = options.overwrite)
+
+    nameToSeqIndex = dict([(h[1:],k) for (h,s),k in zip(allSeqs, count())])
+    indexToSize = dict([(k,int(h.split(';')[-2].split('=')[1]))
+                        for (h,s),k in zip(allSeqs, count())])
+    def getSeqs(tax) :
+      try :
+        i = [nameToSeqIndex[x] for x in tax]
+        return [allSeqs[x][1] for x in i], [indexToSize[x] for x in i]
+      except:
+        fatalError("mismatch between trees and sequences numbering")
+
+    cnt = 0
+    for tree in INexus(simple=1).read(infile) :
+      tax = [x.strip("'") for x in tree.get_taxa()]
+      itx = [str(nameToSeqIndex[x]) for x in tax]
+      if len(tax) > 1:
+        seqs,wts = getSeqs(tax)
+        dsFile = forestBase + '_c%d' % cnt + '.dists.gz'
+        if os.path.exists(dsFile) :
+          ds,lb = otus.getDistanceMatrix(dsFile)
+          assert tax == lb
+          tr = otus.treeFromDists(ds, tax = itx, weights = wts, asString = True)
+        else :
+          tr,ds = otus.treeFromSeqs(seqs, itx, weights = wts,
+                                    matchScores = matchScores,
+                                    correction = options.JCcorrection,
+                                    asString = True, verbose = fverbose)
+          otus.saveDistancesMatrix(dsFile, ds, tax, compress = options.compress)
+      else :
+        tr = '(' + itx[0] + ')'
+      tlog.outTree(tr, name = tree.name)
+      tlog.outFile.flush()
+      cnt += 1
+      
+    tlog.close()
+
+    # for next stage (if any)
+    infile = forestName
+    
+    if progress:
+      progressMessage("Done building trees for %s forest." % options.forest)
+  except Exception,e:
+    print >> sys.stderr, "Error:", e.message[:1000]
+    sys.exit(1)
+
+
+if options.stitch is not None:
+ try :
+    thstitch = float(options.stitch)
+
+    if not os.path.exists(infile) :
+      fatalError("cant find input file for stitching (%s)" % infile)
+
+    nameparts = infile.split(os.path.extsep)
+    if nameparts[-1] == options.treelogext :
+      nameparts.pop(-1)
+
+    if nameparts[-1][0] == 'p' and nameparts[-1][1:].isdigit() :
+      #thfor = None
+      nameparts.pop(-1)
+
+    if not allSeqs :
+      base = os.path.extsep.join(nameparts)
+      seqsfile = base + os.path.extsep + options.seqsext
+      if not os.path.exists(seqsfile) :
+        seqsfile = base
+        if not os.path.exists(seqsfile) :
+          fatalError("Unable to located sequences for " + infile)
+
+      if progress:
+        progressMessage("reading sequences from %s" % seqsfile)
+      allSeqs = list(readFasta(file(seqsfile)))
+
+    if progress:
+      progressMessage("stitiching trees for %s forest" % options.stitch)
+
+    trees = []
+    levels = set()
+    for tree in INexus(simple=1).read(infile) :
+      assert tree.name.startswith('cluster_')      
+      levels.add(otus.thfromstr(tree.name.split('_')[-1]))
+      
+      trees.append(tree)
+
+    levels = list(sorted(levels))
+
+    nameToSeqIndex = dict([(h[1:],k) for (h,s),k in zip(allSeqs, count())])
+    ## indexToSize = dict([(k,int(h.split(';')[-2].split('=')[1]))
+    ##                     for (h,s),k in zip(allSeqs, count())])
+    
+    getseq = lambda x : allSeqs[nameToSeqIndex[x.strip("'")]][1]
+
+    #tlog = TreeLogger(os.path.extsep.join(nameparts) + ".intrim.trees",
+    #                  labels = zip(count(), [x[0][1:] for x in allSeqs]), overwrite=1) ; # intrim
+    
+    stack = []
+    for tree in reversed(trees) :
+      treeLevel = tree.name.split('_')[1:]
+      #print treeLevel
+      th = otus.thfromstr(treeLevel[-1])
+
+      while th < thstitch and len(treeLevel) > 2 and int(treeLevel[-2]) == 0 :
+        c = [tree]
+        while len(stack) and stack[-1][0][:-2] == treeLevel[:-2] :
+          l,t = stack.pop(-1)
+          c.append(t)
+        
+        th = otus.thfromstr(treeLevel[-1])
+        thTo = levels[levels.index(th) + 1]
+        import pdb; pdb.set_trace()
+        atree = otus.assembleTree(c, th, thTo, getseq, verbose = fverbose)
+        treeLevel = treeLevel[:-2] + [otus.thstr(thTo)]
+        atree.name = "cluster_" + '_'.join(treeLevel)
+        for x in atree.get_terminals() :
+          d = atree.node(x).data
+          d.taxon = str(nameToSeqIndex[d.taxon.strip("'")])
+          
+        th = thTo
+        tree = atree
+
+        #tlog.outTree(atree, name = atree.name) ; # intrim
+        #tlog.outFile.flush() ; # intrim
+        
+      stack.append([treeLevel,tree])
+
+    asis = []
+    assemble = []
+    ath = None
+    for c,tree in stack :
+      treeLevel = tree.name.split('_')[1:]
+      th = otus.thfromstr(treeLevel[-1])
+      if th >= thstitch :
+        asis.append(tree)
+      else :
+        assert ath == None or ath == th
+        ath = th
+        assemble.append(tree)
+
+    import pdb; pdb.set_trace()
+    
+    if len(assemble) :
+      atree = otus.assembleTree(assemble, ath, thstitch, getseq, verbose = fverbose)
+      for x in atree.get_terminals() :
+        d = atree.node(x).data
+        d.taxon = str(nameToSeqIndex[d.taxon.strip("'")])
+        
+      if len(asis) > 0 :
+        p = assemble[0].name.split('_')
+        n = '_'.join(p[:-2] + ([otus.thstr(thstitch)] if thstitch < 1 else []) )
+        atree.name = n
+      else :
+        atree.name = "tree"
+        
+      asis.append(atree)
+
+      #tlog.outTree(str(atree), name = atree.name) ; # intrim
+      #tlog.outFile.flush() ; # intrim
+    #tlog.close() ; # intrim
+    
+    base = os.path.extsep.join(nameparts + ([otus.thstr(thstitch)] if thstitch < 1 else []))
+    name = base + os.path.extsep + options.treelogext
+    tlog = TreeLogger(name, labels = zip(count(), [x[0][1:] for x in allSeqs]),
+                      argv = sys.argv, version = __version__,
+                      overwrite = options.overwrite)
+
+    for t in asis :
+      tlog.outTree(t, name = t.name)
+      
+    tlog.close()
+    
+ except Exception,e:
+   print >> sys.stderr, "Error:", e.message[:1000]
+   sys.exit(1)
+    
+  

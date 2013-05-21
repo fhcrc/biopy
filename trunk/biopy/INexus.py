@@ -490,7 +490,7 @@ class INexus(object):
 
     __slots__=['original_taxon_order','__dict__']
 
-    def __init__(self, input=None):
+    def __init__(self, input=None, simple = False):
         self.ntax=0                     # number of taxa
         self.nchar=0                    # number of characters
         self.taxlabels=[]             # labels for taxa, ordered by their id
@@ -522,7 +522,7 @@ class INexus(object):
    
         # some defaults
         self.options['gapmode']='missing'
-        
+        self.simple = simple
         if input:
           self.trees = list(self.read(input))
 
@@ -877,23 +877,32 @@ class INexus(object):
 
     def _translate(self,options):
         self.translate={}
-        opts=CharBuffer(options)
-        while True:
-            try:
-                # get id and state
-                identifier=int(opts.next_word()) 
-                label=quotestrip(opts.next_word())
-                self.translate[identifier]=label
-                # check for comma or end of command
-                c=opts.next_nonwhitespace()
-                if c is None:
-                    break
-                elif c!=',':
-                    raise NexusError,'Missing \',\' in line %s.' % options
-            except NexusError:
-                raise
-            except:
-                raise NexusError,'Format error in line %s.' % options
+        if self.simple :
+          try:
+            t = options.split(',')
+            for x in t:
+              i,l = x.strip().split(' ')
+              self.translate[int(i)] = l.strip("'").strip('"')
+          except:
+            raise NexusError,'translate table error'
+        else :
+          opts=CharBuffer(options)
+          while True:
+              try:
+                  # get id and state
+                  identifier=int(opts.next_word()) 
+                  label=quotestrip(opts.next_word())
+                  self.translate[identifier]=label
+                  # check for comma or end of command
+                  c=opts.next_nonwhitespace()
+                  if c is None:
+                      break
+                  elif c!=',':
+                      raise NexusError,'Missing \',\' in line %s.' % options
+              except NexusError:
+                  raise
+              except:
+                  raise NexusError,'Format error in line %s.' % options
 
     def _utree(self,options):
         """Some software (clustalx) uses 'utree' to denote an unrooted tree."""
