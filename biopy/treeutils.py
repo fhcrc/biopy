@@ -30,7 +30,7 @@ __all__ = ["TreeBuilder", "TreeLogger", "getClade", "getTreeClades",
            "getCommonAncesstor", "countNexusTrees", "toNewick", "nodeHeights",
            "nodeHeight", "treeHeight", "setLabels", "convertDemographics",
            "coalLogLike", "getPostOrder", "getPreOrder", "setSpeciesSimple",
-           "resolveTree", "attributesVarName", "addAttributes"]
+           "resolveTree", "attributesVarName", "addAttributes", "CAhelper"]
 
 # Can't change, still hardwired in many places in code
 attributesVarName = "attributes"
@@ -106,9 +106,23 @@ class TreeBuilder(object) :
       rootNode.set_prev(t.root)
     return t
 
+def cleanLabel(l) :
+  l = str(l)
+  if l.isalnum() :
+    return l
+  if l[0] == l[-1] == "'":
+    return l
+  if l[0] == l[-1] == '"':
+    return l
+  
+  if "'" in l :
+    return '"' + l + '"'
+  return "'" + l + "'"
+
 class TreeLogger(object) :
   def __init__(self, outName = None, argv = None,
-               version = None, overwrite = False) :
+               version = None, overwrite = False,
+               labels = None) :
     self.outName = outName
     if outName is not None:
       if not overwrite and os.path.isfile(outName) \
@@ -125,6 +139,11 @@ class TreeLogger(object) :
         
       print >> outFile, "#NEXUS"
       print >> outFile, "begin trees;"
+      if labels is not None:
+        print >> outFile,"\tTranslate"
+        for l,n in labels[:-1]:
+          print >> outFile, "\t\t%s %s," % (str(l),cleanLabel(n))
+        print >> outFile, "\t\t%s %s\n;" % (str(labels[-1][0]),cleanLabel(labels[-1][1]))
       
   def outTree(self, tree, treeAttributes = None, name = None) :
     c = ""
@@ -504,3 +523,61 @@ def resolveTree(tree) :
       n.set_succ([x.id for x in cans])
 
   return tree
+
+class CAhelper(object) :
+  """ Augment tree node to allow fast search of common ancestor (use when
+  performing many CA operations on the same (large) tree."""
+  
+  def __init__(self, tr, th = None) :
+    self.tree = tr
+    self.th = th
+    self.dterms = dict()
+
+    nterms = len(tr.get_terminals())
+    
+    for n in getPostOrder(tr) :
+      if not n.succ:
+        n.data.tl = 0
+        n.data.rh = 0
+        n.data.level = 0
+        n.data.path = []
+        n.data.terms = [n]
+        n.data.cladesize = 0
+        self.dterms[n.data.taxon] = n
+      elif not (n.id == tr.root and nterms==1) :
+        ch = [tr.node(x).data for x in n.succ]
+        n.data.tl = sum([c.tl + c.branchlength for c in ch])
+        n.data.rh = max([c.rh + c.branchlength for c in ch])
+        n.data.level = max([c.level for c in ch]) + 1
+        n.data.terms = reduce(lambda x,y : x+y, [c.terms for c in ch])
+        n.data.cladesize = len(n.data.terms)
+
+        for x in n.data.terms:
+          x.data.path.append(n.id)
+
+      if th is not None:
+        n.data.croot = n.data.rh <= th and n.data.rh + n.data.branchlength > th
+
+    #del tr.node(tr.root).data.terms
+    for t in tr.get_terminals() :
+      d = tr.node(t).data
+      d.pathset = set(d.path)
+
+  def __call__(self, *txNodes) :
+    return self.getCA(txNodes)
+
+  def getCA(self, txNodes) :
+    if len(txNodes) == 1 :
+      return txNodes[0]
+    v = reduce(set.intersection, [x.data.pathset for x in txNodes])
+    n = [self.tree.node(x) for x in v]
+    a = min(n, key = lambda x : x.data.level)
+    return a
+
+  def getCAi(self, txNodes) :
+    return self.getCA([self.dterms[x] for x in txNodes])
+
+  def clade(self, n) :
+    if isinstance(n, (int,long)) :
+      n = self.tree.node(n)
+    return n.data.terms

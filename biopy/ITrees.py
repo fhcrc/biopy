@@ -250,19 +250,34 @@ class Tree(Nodes.Chain):
         """
 
         if node_id is None:
-            node_id=self.root
+            return [self.chain[node_id].data.taxon for node_id in self.get_terminals()]
+        
+        ## if node_id is None:
+        ##     node_id=self.root
+        ## 
         if node_id not in self.chain:
-            raise TreeError('Unknown node_id: %d.' % node_id)    
-        if self.chain[node_id].succ==[]:
-            if self.chain[node_id].data:
-                return [self.chain[node_id].data.taxon]
-            else:
-                return None
-        else:
-            list=[]
-            for succ in self.chain[node_id].succ:
-                list.extend(self.get_taxa(succ))
-            return list
+            raise TreeError('Unknown node_id: %d.' % node_id)
+        
+        tx = []
+        waiting = [self.chain[node_id]]
+        while len(waiting) :
+            n = waiting.pop(0)
+            if n.succ==[] :
+                tx.append(n.data.taxon)
+            else :
+                waiting.extend([self.chain[x] for x in n.succ])
+        return tx
+        
+        ## if self.chain[node_id].succ==[]:
+        ##     if self.chain[node_id].data:
+        ##         return [self.chain[node_id].data.taxon]
+        ##     else:
+        ##         return None
+        ## else:
+        ##     list=[]
+        ##     for succ in self.chain[node_id].succ:
+        ##         list.extend(self.get_taxa(succ))
+        ##     return list
 
     def get_terminals(self):
         """Return a list of all terminal nodes."""

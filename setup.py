@@ -16,6 +16,13 @@ module4 = Extension('neutralsim',
                     sources = ['biopy/neutralsim.cc'],
                     extra_compile_args=['-std=c++0x'])
 
+module5 = Extension('calign',
+                    sources = ['biopy/calign.cc'],
+                    extra_compile_args=['-std=c++0x'])
+
+module6 = Extension('cclust',
+                    sources = ['biopy/cclust.cc'])
+
 classifiers=[
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
@@ -41,7 +48,7 @@ setup (name = 'biopy',
        platforms = ["Linux", "Mac OS-X"],
        packages = ['biopy'],
        package_dir={'biopy': 'biopy'},
-       ext_modules = [module1,module2,module3,module4],
+       ext_modules = [module1,module2,module3,module4,module5,module6],
        scripts = glob.glob('scripts/*'),
        data_files=[('doc',glob.glob('html/*.*')),
                    ('doc/_images', glob.glob('html/_images/*.*')),

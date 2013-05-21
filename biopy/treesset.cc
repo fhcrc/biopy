@@ -523,6 +523,8 @@ readSubTree(const char* txt, vector<returnType>& nodes)
 
 template<typename T> class Packer {
 public:
+  virtual ~Packer() {}
+  
   // Number of stored values. 
   virtual uint size(void) const = 0;
   
