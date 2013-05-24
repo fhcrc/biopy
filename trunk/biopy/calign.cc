@@ -1,5 +1,5 @@
 // This file is part of biopy.
-// Copyright (C) 2010 Joseph Heled
+// Copyright (C) 2013 Joseph Heled
 // Author: Joseph Heled <jheled@gmail.com>
 // See the files gpl.txt and lgpl.txt for copying conditions.
 
@@ -15,10 +15,6 @@
 #include <vector>
 using std::vector;
 
-typedef unsigned char byte;
-byte const anynuc = 4;
-byte const gap = 5;
-
 enum ComparisonResult {
   Default = 0,
   JCcorrection = -1,
@@ -26,6 +22,12 @@ enum ComparisonResult {
   DIVERGENCE = -3,
   STATS = -4,
 };
+
+#include "readseq.h"
+// typedef unsigned char byte;
+// byte const anynuc = 4;
+// byte const gap = 5;
+
 
 static inline double 
 stats2distance(uint const              matches,
@@ -56,7 +58,7 @@ stats2distance(uint const              matches,
   return dis;
 }
       
-
+/**
 static byte*
 readSequence(PyObject* seq, uint& nseq, bool const strip = false)
 {
@@ -126,6 +128,7 @@ readSequence(PyObject* seq, uint& nseq, bool const strip = false)
   }
   return s;
 }
+**/
 
 #if 0
 class Choose2 {

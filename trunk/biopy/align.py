@@ -6,6 +6,10 @@
 
 import sys
 import calign
+from collections import namedtuple
+
+MatchScores = namedtuple('MatchScores', "match mismatch gap freeEnds")
+defaultMatchScores = MatchScores(match = 10, mismatch = -5, gap = -6, freeEnds = True)
 
 _tab = [None]*5
 for x in 'AGCTN' :
@@ -44,11 +48,12 @@ def stripseq(s) :
     return [x for x in s if x != calign.GAP]
   return "".join([x for x in s if x != '-'])
 
-matchScore = 10
-misMatchScore = -5
-_gapPenalty = -5
+#matchScore = 10
+#misMatchScore = -5
+#_gapPenalty = -6
 
 def score(nSite, n, cnts) :
+  _gapPenalty = defaultMatchScores.gap
   c = cnts[nSite]
   if n == calign.GAP :
     return _gapPenalty * (sum(c) - c[calign.GAP])
@@ -144,11 +149,11 @@ def mshowAlignment(sqs, n = 100, stripGaps = True) :
 ##     a = a + (x,)
 ##   return a
 
-def seqMultiAlign(seqs, gapPenalty = _gapPenalty, report=False) :
+def seqMultiAlign(seqs, scores = defaultMatchScores, report=False) :
   if len(seqs) < 2:
     return seqs
   
-  a = calign.globalAlign(seqs[0], seqs[1], scores=(None,None,gapPenalty,1), strip=1)
+  a = calign.globalAlign(seqs[0], seqs[1], scores=scores, strip=1)
   ns = 2
   p = calign.createProfile(a)
 
@@ -165,7 +170,8 @@ def seqMultiAlign(seqs, gapPenalty = _gapPenalty, report=False) :
       # enough for sequences start to align
       pad = (len(s2) - len(p))  ;                assert len(p)+2*pad >= len(s2)
 
-    pa,extendLeft,extendRight = calign.profileAlign(s2, p, pad=pad, chop=True, gapPenalty=gapPenalty)
+    pa,extendLeft,extendRight = calign.profileAlign(s2, p, pad=pad, chop=True,
+                                                    gapPenalty=defaultMatchScores.gap)
 
     if extendLeft > 0 or extendRight > 0 :
       gapProfile = [0,0,0,0,0,ns]
@@ -313,7 +319,7 @@ def refineAlignment(al, ci = [0], drop = False, mx = -1, rev = False, verbose = 
   return al,len(al[0]), changed
 
 
-def refineSingle(al, gapPenalty = _gapPenalty) :
+def refineSingle(al, gapPenalty = defaultMatchScores.gap) :
   if not isinstance(al, list) :
     al = list(al)
     
@@ -328,8 +334,8 @@ def refineSingle(al, gapPenalty = _gapPenalty) :
 
   return q
 
-def mpc(seqs, nRefines = 4, gapPenalty = _gapPenalty) :
-  al = seqMultiAlign(seqs, gapPenalty = gapPenalty)
+def mpc(seqs, nRefines = 4, gapPenalty = defaultMatchScores.gap) :
+  al = seqMultiAlign(seqs, scores = defaultMatchScores._replace(gap = gapPenalty))
 
   c0 = stripseq(cons(calign.createProfile(al)))
   r = refineSingle(al, gapPenalty = gapPenalty)
@@ -445,9 +451,9 @@ def trimendsp(p, th = .6) :
   #print len(p), len(p[j:i+1])
   return p[j:i+1]
 
-def mpa(tr, seqs, gapPenalty = -6, feg = True, trimEnd = None) :
+def mpa(tr, seqs, scores = defaultMatchScores, trimEnd = None) :
   dseqs = dict(seqs)
-  scores = (None,None,gapPenalty,feg)
+  #scores = (None,None,gapPenalty,feg)
   for n in getPostOrder(tr) :
     data = n.data
     if not n.succ :

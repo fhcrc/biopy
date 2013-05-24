@@ -21,7 +21,8 @@ module5 = Extension('calign',
                     extra_compile_args=['-std=c++0x'])
 
 module6 = Extension('cclust',
-                    sources = ['biopy/cclust.cc'])
+                    sources = ['biopy/cclust.cc'],
+                    extra_compile_args=['-std=c++0x'])
 
 classifiers=[
   "Development Status :: 3 - Alpha",

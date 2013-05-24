@@ -534,6 +534,8 @@ class CAhelper(object) :
     self.dterms = dict()
 
     nterms = len(tr.get_terminals())
+
+    self.tree.size = nterms
     
     for n in getPostOrder(tr) :
       if not n.succ:
@@ -546,8 +548,10 @@ class CAhelper(object) :
         self.dterms[n.data.taxon] = n
       elif not (n.id == tr.root and nterms==1) :
         ch = [tr.node(x).data for x in n.succ]
-        n.data.tl = sum([c.tl + c.branchlength for c in ch])
         n.data.rh = max([c.rh + c.branchlength for c in ch])
+        for c in ch:
+          c.branchlength = n.data.rh - c.rh
+        n.data.tl = sum([c.tl + c.branchlength for c in ch])
         n.data.level = max([c.level for c in ch]) + 1
         n.data.terms = reduce(lambda x,y : x+y, [c.terms for c in ch])
         n.data.cladesize = len(n.data.terms)
@@ -577,6 +581,9 @@ class CAhelper(object) :
   def getCAi(self, txNodes) :
     return self.getCA([self.dterms[x] for x in txNodes])
 
+  def taxonToNode(self, t) :
+    return self.dterms[t]
+  
   def clade(self, n) :
     if isinstance(n, (int,long)) :
       n = self.tree.node(n)
