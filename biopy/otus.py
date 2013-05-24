@@ -27,8 +27,7 @@ __all__ = ["findDuplicates", "deClutter", "deClutterDown", "treeFromSeqs",
            "saveDistancesMatrix", "getDistanceMatrix",
            "clusterFromTree", "assembleTree"]
 
-MatchScores = namedtuple('MatchScores', "match mismatch gap freeEnds")
-defaultMatchScores = MatchScores(match = 10, mismatch = -5, gap = -6, freeEnds = True)
+from align import defaultMatchScores
                                       
 def nPairs(x) :
   if isinstance(x, (list,tuple)) :
@@ -60,7 +59,7 @@ def getDistanceMatrix(saveName) :
 
 def findDuplicates(allSeqs, verbose = None) :
   """ Locate sequences s1,s2 such that s1 is a prefix of s2.
-  return the merge of those pairs."""
+  Return the merge of those pairs."""
   
   if verbose:
     tstart = time.clock()
@@ -99,7 +98,15 @@ def mergeGroupings(grps) :
   sGrps = sorted([sorted(x) for x in newGrps if x])
   return sGrps
 
-# C code will be faster?
+# C code will be faster? yes but nothing dramatic (2x or 3x)
+from cclust import lookupTable
+def _buildLookupC(seqs, asSet=True) :
+  matches = lookupTable(seqs, 11, True)
+  if asSet:
+    for k,v in matches.iteritems():
+      matches[k] = set(v)
+  return matches
+
 def _buildLookup(seqs, asSet=True) :
   bl = dict()
   
@@ -220,7 +227,7 @@ def deClutter(seqs, th, correction, failsTH = 20,
 
   _failsHardTH = failsTH
     
-  matches = _buildLookup(seqs, asSet = False)
+  matches = _buildLookupC(seqs, asSet = False)
   N = len(seqs)
 
   if verbose:
@@ -400,7 +407,6 @@ def breakGroup(grp, ths, dc, seqs, cnum, maxClade, result) :
     
 def deClutterDown(seqs, ths, maxClade, correction, failsTH = 20,
                   matchScores = defaultMatchScores, verbose = None) :
-
   if len(seqs) <= maxClade :
     return [ [[],[],[],[range(len(seqs))] ] ]
 
@@ -429,8 +435,12 @@ def declutterToTrees(breakdown, ths) :
                                  ('_'.join([namesuf,str(cnt)]) if namesuf else str(cnt) ,p)))
 
   for inds,singles,pairs,grps in breakdown:
-    th = ths[len(inds)-1]
-    p = thstr(th)
+    if len(inds) :
+      th = ths[len(inds)-1]
+      p = thstr(th)
+    else :
+      th = 1
+      p = 'p1'
     
     namesuf = '_'.join([str(x) for x in inds[:-1]])
     cnt = inds[-1]
@@ -515,13 +525,16 @@ def treeFromSeqs(seqs, tax = None, matchScores = None, correction = True,
 
 # th - half distance (i.e. height) 
 def clusterFromTree(tr, th, caHelper = None) :
+  if len(tr.get_terminals()) == 1 :
+    return [tr.node(1)]
+  
   if not caHelper :
     caHelper = CAhelper(tr)
   topNodes = []
   po = getPostOrder(tr)
   for nd in po:
     if nd.data.rh <= th :
-      if nd.id == tr.root or nd.data.rh + nd.data.branchlength > th :
+      if nd.id == tr.root or tr.node(nd.prev).data.rh > th :
         topNodes.append(nd)
   return topNodes
 
@@ -670,7 +683,6 @@ def assembleTree(trees, thFrom, thTo, getSeqForTaxon,
 
   tnew = treeFromDists(ds, tax = [str(x) for x in range(nReps)], weights = wt)
 
-  saveDistancesMatrix('/home/joseph/research/Projects/AWCCoRE/data/iii/CO1/work/dists-inter1', ds, [str(x) for x in range(nReps)], compress=9)
   del ds
 
   for n in getPostOrder(tnew) :

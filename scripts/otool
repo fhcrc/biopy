@@ -31,7 +31,7 @@ parser.add_argument("-p", "--progress", dest="progress",
                     help="send progress messages to terminal (standard error)",
                     action='count', default = 0)
 
-parser.add_argument("--verbose", action="store_true", default = False)
+# parser.add_argument("--verbose", action="store_true", default = False)
 
 parser.add_argument("--compress", metavar='N', type = int, default = -1,
                     help="""compression level for distance files (%(default)d for no compression)""")
@@ -64,7 +64,7 @@ options = parser.parse_args()
 
 from itertools import count
 
-from biopy import otus, __version__
+from biopy import otus, align, __version__
 from biopy.bioutils import readFasta
 from biopy.treeutils import TreeLogger
 from biopy.INexus import INexus
@@ -168,7 +168,7 @@ if options.derep:
     print >> sys.stderr, "Error:", e.message
     sys.exit(1)
 
-matchScores = otus.MatchScores(*otus.defaultMatchScores)
+matchScores = align.MatchScores(*otus.defaultMatchScores)
 
 if options.matchScores is not None :
   m = options.matchScores.split(',')
@@ -182,7 +182,7 @@ if options.matchScores is not None :
   if not (ms[0] > 0 and ms[1] <= 0 and ms[2] <= 0) :
     print >> sys.stderr, "Expecting a non positive mismatch score and gap penalty."
     sys.exit(1)
-  matchScores = otus.MatchScores(ms)
+  matchScores = align.MatchScores(ms)
   
 if options.declutter is not None:
   try :
@@ -265,7 +265,7 @@ if options.forest is not None:
       ##   fatalError("Invalid declutter name", infile)
       ## thdecl = float("." + p[1:])
       if not all([thdecl <= x for x in ths]) :
-        fatalError("Can't build %g forest from %s declutter" (th,nameparts[-1]))
+        fatalError("Can't build %g forest from %s declutter" % (thdecl,nameparts[-1]))
       nameparts.pop(-1)
 
     if not allSeqs :
