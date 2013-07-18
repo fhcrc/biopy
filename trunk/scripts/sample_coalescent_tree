@@ -63,8 +63,11 @@ from biopy.coalescent import sampleCoalescentTree
 from biopy.demographic import Demographic
 
 demog = Demographic.parseDemographic(options.demospec)
-
-tlog = TreeLogger(options.nexfile, argv = sys.argv, version = __version__)
+try :
+  tlog = TreeLogger(options.nexfile, argv = sys.argv, version = __version__)
+except RuntimeError as r:
+  print >> sys.stderr, r.message
+  sys.exit(1)
 
 for nt in range(nTrees) :
   t = sampleCoalescentTree(demog, taxa)

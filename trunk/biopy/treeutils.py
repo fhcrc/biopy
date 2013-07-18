@@ -30,7 +30,8 @@ __all__ = ["TreeBuilder", "TreeLogger", "getClade", "getTreeClades",
            "getCommonAncesstor", "countNexusTrees", "toNewick", "nodeHeights",
            "nodeHeight", "treeHeight", "setLabels", "convertDemographics",
            "coalLogLike", "getPostOrder", "getPreOrder", "setSpeciesSimple",
-           "resolveTree", "attributesVarName", "addAttributes", "CAhelper"]
+           "resolveTree", "attributesVarName", "addAttributes",
+           "rootAtMidpoint", "CAhelper"]
 
 # Can't change, still hardwired in many places in code
 attributesVarName = "attributes"
@@ -524,9 +525,117 @@ def resolveTree(tree) :
 
   return tree
 
+
+def _maxTipPath(n) :
+  d = n.data
+  m = d.mtip
+  return m[0] + d.branchlength, m[1]
+
+def _maxTipPartner(tree, x) :
+  """ Tip with the maximum path length to x on the tree.
+  Uses pre-set mtip data. """
+  #ver = False
+  
+  mx = (-1, None)
+  h = 0
+  n = tree.node(x)
+  while n.id != tree.root :
+    #if ver: print n.id, h, (mx[0],mx[1].data.taxon if mx[1] else None)
+    p = n.prev
+    h += n.data.branchlength
+    np = tree.node(p)
+    l = (-1,None,None)
+    for c,m in zip(np.succ,np.data.mtips) :
+      if c != n.id :
+        if m[0] > l[0] :
+          l = m
+    l = l[0] + h, l[1]
+    #if ver: print (l[0],l[1].data.taxon),
+    if l[0] > mx[0] :
+      mx = l + (np,)
+    #if ver: print (mx[0],mx[1].data.taxon)
+    n = np
+
+  return mx
+  
+def treeDiameterInfo(tree) :
+  """ Find the diameter of the tree. Return the diameter, the two tips at the
+  ends and the internal common ancestor in the (rooted) 'tree'""" 
+  po = getPostOrder(tree)
+  for n in po:
+    if not n.succ:
+      n.data.mtip = (0, n)
+      n.data.mtips = []
+    else :
+      n.data.mtips = [_maxTipPath(tree.node(c)) for c in n.succ]
+      n.data.mtip = max(n.data.mtips)
+
+  x = tree.get_terminals()[0]
+  mx = _maxTipPartner(tree, x)
+  o = _maxTipPartner(tree, mx[1].id)
+
+  for n in po :
+    del n.data.mtip, n.data.mtips
+    
+  return o[0], mx[1], o[1], o[2]
+
+def _unrootedNewickRep(tree, n, c) :
+  """ 'n' is internal. 'c' is a descendant of 'n'. return NEWICK
+  representation of the sub-tree whose root is 'c', with a single branch to 'n'.
+  That is, the tree contains all non-c descendants of n, and the parent of 'n'
+  "away" from 'n'. """
+
+  p = []
+  for nc in n.succ :
+    if nc != c.id :
+      snc = tree.toNewick(nc)
+      p.append( "%s:%g" % (snc,tree.node(nc).data.branchlength) )
+  if n.prev is not None:
+    s = _unrootedNewickRep(tree, tree.node(n.prev), n)
+    p.append("%s:%g" % (s,n.data.branchlength))
+  return '(' + ','.join(p) + ')'
+      
+def _rerootedNewickRep(tree, n, d) :
+  """ Re-root inside the branch between 'n' and its parent, distance 'd' from
+  'n'."""
+  
+  assert n.prev is not None and d < n.data.branchlength
+
+  s = _unrootedNewickRep(tree, tree.node(n.prev), n)
+  lft = "%s:%g" % (s, n.data.branchlength - d)
+  s = tree.toNewick(n.id)
+  rht = "%s:%g" % (s, d)
+  return '(%s,%s)' % (lft,rht)
+      
+def rootAtMidpoint(tree) :
+  """ Re-root unrooted 'tree' at "midpoint" - the middle of the maximum path
+  between 2 tips.
+
+  Return NEWICK text. Metadata not preserved.
+  """
+  
+  diam,tip1,tip2,anode = treeDiameterInfo(tree)
+
+  def xx(tip, d, a) :
+    p = 0
+    n = tip
+    while n != a and p + n.data.branchlength < d :
+      p += n.data.branchlength
+      n = tree.node(n.prev)
+    if n == a :
+      return None
+    return tip, n, d - p
+
+  tip,n,e = xx(tip1, diam/2, anode) or xx(tip2, diam/2, anode)
+
+  return _rerootedNewickRep(tree, n, e)
+
 class CAhelper(object) :
   """ Augment tree node to allow fast search of common ancestor (use when
-  performing many CA operations on the same (large) tree."""
+  performing many CA operations on the same (large) tree.
+
+  Assumes all tip times are 0 (no checks).
+  """
   
   def __init__(self, tr, th = None) :
     self.tree = tr

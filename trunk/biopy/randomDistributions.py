@@ -275,4 +275,4 @@ def parseDistribution(txt) :
   elif len(parts) == 1 :
     return Delta(float(parts[0]))
   
-  raise RuntimeError("malformed distribution specification:" + txt)
+  raise RuntimeError("Malformed distribution specification: " + txt)

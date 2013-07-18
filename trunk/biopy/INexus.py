@@ -881,10 +881,13 @@ class INexus(object):
           try:
             t = options.split(',')
             for x in t:
-              i,l = x.strip().split(' ')
+              x = x.strip()
+              j = x.find(' ')
+              i,l = x[:j], x[j+1:].strip()
               self.translate[int(i)] = l.strip("'").strip('"')
-          except:
-            raise NexusError,'translate table error'
+          except Exception,e:
+            print "Error:", e.message[:1000]
+            raise NexusError,'translate table error' + ' ' + str(i) + '!!' + str(l)
         else :
           opts=CharBuffer(options)
           while True:

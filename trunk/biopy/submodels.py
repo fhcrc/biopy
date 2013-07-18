@@ -7,15 +7,15 @@ from __future__ import division
 
 """
 ===================
-Substitusion Models 
+Substitution Models 
 ===================
 
 Standard substitution models.
 
-Support the "classic" GTR model. JC, K80 and HKY are provided for convenience.
+Implements the "classic" GTR model. JC, K80 and HKY are provided for convenience.
 
-The code supports the forward simulation of sequence data over trees and
-calculating the (log)likelihood of tip sequences.
+Code supports the forward simulation of sequence data over trees and
+calculating the phylogenetic (i.e. "Felsenstein") (log)likelihood of tip sequences.
 """
 
 __all__ = ["JCSubstitutionModel", "HKYSubstitutionModel",
@@ -132,11 +132,26 @@ class SubstitutionModel(object) :
     
     return self.qNorm * self.mu
   
-  def _setTransitionSpeedup(self, tree) :
+  def _setTransitionSpeedup(self, tree, clockDist = None) :
     for n in tree.all_ids() :
       node = tree.node(n)
       if n != tree.root :
-        node.data.pMatrix = self._pExact(node.data.branchlength)
+        mu = None
+        if hasattr(node.data, "attributes") and "mu" in node.data.attributes :
+          mu = node.data.attributes["mu"]
+        elif clockDist is not None :
+          mu = self.mu * clockDist.sample()
+          if not hasattr(node.data, "attributes") :
+            node.data.attributes = dict()
+          
+        if mu :
+          save = self.mu, self.qInitial, self.initialTotalSubRate, self.qNorm
+          self.setMu(mu)
+          node.data.attributes['mu'] = mu
+          node.data.pMatrix = self._pExact(node.data.branchlength)
+          self.mu, self.qInitial, self.initialTotalSubRate, self.qNorm = save
+        else :
+          node.data.pMatrix = self._pExact(node.data.branchlength)
 
   def _clearTransitionSpeedup(self, tree) :
     for n in tree.all_ids() :
@@ -197,11 +212,11 @@ class SubstitutionModel(object) :
         subSeq = self.evolve(seq, tree.node(n).data.pMatrix)
         self._populateSubtreeSeq(tree, n, subSeq)
       
-  def populateTreeSeqBySimulation(self, tree, seqLen) :
+  def populateTreeSeqBySimulation(self, tree, seqLen, clockDist = None) :
     """ Populate tree tips, each with a sequences of length 'seqLen', evolved
     from a common ancestor drawn from the stationary probabilities."""
     
-    self._setTransitionSpeedup(tree)
+    self._setTransitionSpeedup(tree, clockDist)
 
     # Draw root from stationary distribution
     p = array([cumsum(self.pi())])

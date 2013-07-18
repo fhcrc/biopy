@@ -24,10 +24,6 @@ enum ComparisonResult {
 };
 
 #include "readseq.h"
-// typedef unsigned char byte;
-// byte const anynuc = 4;
-// byte const gap = 5;
-
 
 static inline double 
 stats2distance(uint const              matches,
@@ -57,102 +53,7 @@ stats2distance(uint const              matches,
   }
   return dis;
 }
-      
-/**
-static byte*
-readSequence(PyObject* seq, uint& nseq, bool const strip = false)
-{
-  if( ! PySequence_Check(seq) ) {
-    PyErr_SetString(PyExc_ValueError, "not a sequence") ;
-    return 0;
-  }
 
-  nseq = PySequence_Size(seq);
-  byte* s = new byte[nseq];
-
-  int nsite = 0;
-  
-  if( PyString_Check(seq) ) {
-    const char* const c = PyString_AsString(seq);
-    for(uint i = 0; i < nseq; ++i) {
-      switch( c[i] ) {
-	case 'a': case 'A': {
-	  s[nsite] = 0;
-	  break;
-	}
-	case 'g': case 'G': {
-	  s[nsite] = 1;
-	  break;
-	}
-	case 'c': case 'C': {
-	  s[nsite] = 2;
-	  break;
-	}
-	case 't': case 'T': {
-	  s[nsite] = 3;
-	  break;
-	}
-	case '-' : {
-	  if( ! strip ) {
-	    s[nsite] = gap;
-	  } else {
-	    nsite -= 1;
-	  }
-	  break;
-	}
-	default : {
-	  s[nsite] = anynuc; break;
-	}
-      }
-      nsite += 1;
-    }
-  } else {
-    for(uint i = 0; i < nseq; ++i) {
-      PyObject* const o = PySequence_Fast_GET_ITEM(seq, i);
-      
-      s[nsite] = PyInt_AsLong(o);
-      
-      if( !( 0 <= s[nsite] && s[nsite] <= gap ) ) {
-	delete [] s;
-	PyErr_SetString(PyExc_ValueError, "Invalid sequence") ;
-	return 0;
-      }
-      
-      if( !strip || s[nsite] != gap ) {
-	nsite += 1;
-      }
-    }
-  }
-  if( strip ) {
-    nseq = nsite;
-  }
-  return s;
-}
-**/
-
-#if 0
-class Choose2 {
-private:
-  static long* choose2tab;
-  static uint ns;
-public:
-  static void init(uint n) {
-    ns = n;
-    delete [] choose2tab;
-    choose2tab = new long[n];
-    for(uint i = 0; i < n; ++i) {
-      choose2tab[i] = (i*(i-1)) / 2;
-    }
-  }
-
-  static inline ulong c2(uint i) {
-    return i < ns ? choose2tab[i] : (long(i)*(i-1)) / 2;
-  }
-};
-
-long* Choose2::choose2tab = 0;
-uint Choose2::ns = 0;
-#endif
 
 struct ProfileCounts {
 public:
@@ -185,7 +86,7 @@ public:
 template<typename T>
 class MatchScoreValues {
 private:
-  // initalization hackish trick
+  // initialization hackish trick
   PyObject*	values;
   
 public:
@@ -193,10 +94,12 @@ public:
     return values != reinterpret_cast<PyObject*>(0x1);
   }
   
-  MatchScoreValues(T mt, T mis, T gapp, bool free) :
+  MatchScoreValues(T mt, T mis, T gapo, T* gape, bool free) :
     matchScore(mt),
     misMatchScore(mis),
-    gapPenalty(gapp),
+    gapOpen(gapo),
+    gapExtend(gape ? *gape : gapo),
+    gapPenalty(gapo),
     freeEndGaps(free)
     {}
 
@@ -204,7 +107,10 @@ public:
 
   T const matchScore;
   T const misMatchScore;
+  T const gapOpen;
+  T const gapExtend;
   T const gapPenalty;
+  
   bool const freeEndGaps;
 
   inline T
@@ -348,15 +254,18 @@ lgetValue(PyObject* s, int i, T dflt)
 
 template<typename T>
 MatchScoreValues<T>::MatchScoreValues(PyObject* _values) :
+  // Validity checks in C++ must be here if we want the memebers as constants
   values( (_values != Py_None &&
-	   _values && (PySequence_Check(_values) && PySequence_Size(_values) == 4) ) ?
+	   _values && (PySequence_Check(_values) && PySequence_Size(_values) == 5) ) ?
 	  _values : 0 ),
   matchScore(lgetValue<T>(values, 0, 10)),
   misMatchScore(lgetValue<T>(values, 1, -5)),
-  gapPenalty(lgetValue<T>(values, 2, -6)) ,
-  freeEndGaps(lgetValue<bool>(values, 3, true))
+  gapOpen(lgetValue<T>(values, 2, -6)) ,
+  gapExtend(lgetValue<T>(values, 3, gapOpen)),
+  gapPenalty(gapOpen),
+  freeEndGaps(lgetValue<bool>(values, 4, true))
 {
-  // Ugly hack to flag invalid. not C++ strongest point. I could throw and
+  // Ugly hack to flag invalid. Not C++ strongest point. I could throw and
   // catch, but then the catch need to extend over the lifetime of the variable.
   if( _values && _values != Py_None && ! values ) {
     values = reinterpret_cast<PyObject*>(0x1);
@@ -377,12 +286,15 @@ public:
     s2(_s2),
     lseq2(_lseq2),
     sz((lseq1+1) * (lseq2+1)),
-    score(new float[sz]),
+    score(new T[sz]),
+    ix(0),
+    iy(0),
     prev(_prev)
     {}
  
   ~Alignment() {
     delete [] score;
+    delete [] ix;
   }
   
   const byte* const s1;
@@ -398,35 +310,56 @@ public:
   uint  align(MatchScoreValues<T> const&  scores,
 	      byte* const                 alignment);
 
-private:
-  uint initScores(T gapPenalty);
+protected:
+  void initScores(T gapPenalty);
   
   void fillScoreTable(MatchScoreValues<T> const& mScores);
+
+  void fillScoreTableAffine(MatchScoreValues<T> const& mScores);
+  void initScoresAffine(T gapOpen, T gapExtend);
   
   void fillScoreTable(MatchScoreValues<T> const&  mScores,
 		      Alignment const&            prev);
 
-  void fillScores(MatchScoreValues<T> const& mScores);
+  bool fillScores(MatchScoreValues<T> const& mScores);
 
   uint const  sz;
   T*   const  score;
 
+  T*          ix;
+  T*          iy;
+  
   const Alignment*	prev;
 };
 
 template<typename T>
-inline void
+inline bool
 Alignment<T>::fillScores(MatchScoreValues<T> const& mScores) {
-  initScores(mScores.freeEndGaps ? 0 : mScores.gapPenalty);
-  if( prev ) {
+  bool const lin = mScores.gapOpen == mScores.gapExtend;
+  
+  if( lin ) {
+    initScores(mScores.freeEndGaps ? 0 : mScores.gapPenalty);
+  } else {
+    initScoresAffine(mScores.freeEndGaps ? 0 : mScores.gapOpen,
+		     mScores.freeEndGaps ? 0 : mScores.gapExtend);
+  }
+  
+  if( prev && lin ) {
+    // need to implement fillScoreTableAffine(mScores, *prev)
+
     fillScoreTable(mScores, *prev);
   } else {
-    fillScoreTable(mScores);
+    if( lin ) {
+      fillScoreTable(mScores);
+    } else {
+      fillScoreTableAffine(mScores);
+    }
   }
+  return lin;
 }
 
 template<typename T>
-uint
+void
 Alignment<T>::initScores(T const gapPenalty)
 {
   std::fill(score, score+sz, 0);
@@ -450,14 +383,43 @@ Alignment<T>::initScores(T const gapPenalty)
       penalty += gapPenalty;
     }
   }
-  return sz;
 }
+
+template <typename T>
+void
+Alignment<T>::initScoresAffine(T const gapOpen, T const gapExtend)
+{
+  std::fill(score, score+sz, 0);
+  
+  if( ! ix ) {
+    ix = new T [2*sz];
+    iy = ix + sz;
+  }
+  
+  std::fill(ix, ix+2*sz, std::numeric_limits<T>::lowest());
+  //ix[0] = iy[0] = std::numeric_limits<T>::minusinfinity();
+
+  T p = gapOpen;
+  T* i = ix+1;
+  for(T* s = score + 1; s < score + lseq2+1; ++s, ++i) {
+    *s = *i = p;
+    p += gapExtend;
+  }
+
+  p = gapOpen;
+  i = iy + (lseq2+1);
+  for(T* s = score + (lseq2+1); s < score + sz; s += lseq2+1, i += lseq2+1) {
+    *s = *i = p;
+    p += gapExtend;
+  }
+}
+
 
 template<typename T>
 void
 Alignment<T>::fillScoreTable(MatchScoreValues<T> const& mScores)
 {
-  float* m1m1 = score;
+  T* m1m1 = score;
   for(uint i = 1; i <= lseq1; ++i) {
     byte const s1i = s1[i-1];
     for(const byte* s2j = s2; s2j < s2 + lseq2; ++s2j) {
@@ -472,6 +434,31 @@ Alignment<T>::fillScoreTable(MatchScoreValues<T> const& mScores)
       m1m1 += 1;
     }
     m1m1 += 1;
+  }
+}
+
+template<typename T>
+void
+Alignment<T>::fillScoreTableAffine(MatchScoreValues<T> const& mScores)
+{
+  T* m1m1 = score;
+  T* xm1m1 = ix;
+  T* ym1m1 = iy;
+  
+  for(uint i = 1; i <= lseq1; ++i) {
+    byte const s1i = s1[i-1];
+    for(const byte* s2j = s2; s2j < s2 + lseq2; ++s2j) {
+      T const match = mScores.scoreMatching(s1i, *s2j);
+      T const del = *(m1m1+1) + mScores.gapOpen;
+      T const ins = *(m1m1+1+lseq2) + mScores.gapOpen;
+      
+      *(ym1m1+lseq2+2) = std::max(del, *(ym1m1+1) + mScores.gapExtend);
+      *(xm1m1+lseq2+2) = std::max(ins, *(xm1m1+1+lseq2) + mScores.gapExtend);
+	
+      *(m1m1+lseq2+2) = match + std::max(std::max(*m1m1, *xm1m1), *ym1m1);
+      ++m1m1; ++xm1m1; ++ym1m1;
+    }
+    ++m1m1; ++xm1m1; ++ym1m1;
   }
 }
 
@@ -500,7 +487,7 @@ Alignment<T>::fillScoreTable(MatchScoreValues<T> const&  mScores,
   
     for(int i = 1; i < s1MatchLen+1; ++i) {
       const T* p = prev.score + i*(prev.lseq2+1) + 1;
-      //float* m = score + off;
+
       uint const off = i*(lseq2+1) + 1;
       T* m = score + off;
       T* end = m + s2MatchLen;
@@ -543,6 +530,96 @@ Alignment<T>::fillScoreTable(MatchScoreValues<T> const&  mScores,
   }
 }
 
+#if 0
+template<typename T>
+void
+Alignment<T>::fillScoreTableAffine(MatchScoreValues<T> const&  mScores,
+				   Alignment const&            prev)
+{
+  if( ! prev.ix ) {
+    fillScoreTable(mScores);
+    return;
+  }
+  
+  // assume same match scores (caller responsibility)
+  int s1MatchLen = 0;
+  int const s1mx = std::min(lseq1,prev.lseq1);
+  for(; s1MatchLen < s1mx; ++s1MatchLen) {
+    if( s1[s1MatchLen] != prev.s1[s1MatchLen] ) {
+      break;
+    }
+  }
+
+  if( s1MatchLen ) {
+    int s2MatchLen = 0;
+    int const s2mx = std::min(lseq2,prev.lseq2);
+    for(; s2MatchLen < s2mx; ++s2MatchLen) {
+      if( s2[s2MatchLen] != prev.s2[s2MatchLen] ) {
+	break;
+      }
+    }
+  
+    for(int i = 1; i < s1MatchLen+1; ++i) {
+      const T* p = prev.score + i*(prev.lseq2+1) + 1;
+      const T* px = prev.ix + i*(prev.lseq2+1) + 1;
+      const T* py = prev.iy + i*(prev.lseq2+1) + 1;
+
+      uint const off = i*(lseq2+1) + 1;
+      T* m = score + off;
+      T* mx = ix + off;
+      T* my = iy + off;
+      
+      T* end = m + s2MatchLen;
+      for(/**/; m < end; ++m, ++p) {
+	*m = *p;
+	*mx++ = *px++;
+	*my++ = *py++;
+      }
+      if( uint(s2MatchLen) < lseq2 ) {
+	m -= (lseq2+2);
+	byte const s1i = s1[i-1];
+	for(const byte* s2j = s2+s2MatchLen; s2j < s2 + lseq2; ++s2j) {
+	  T const match = *m + mScores.scoreMatching(s1i, *s2j);      
+	  T const del = *(m+1) + mScores.gapPenalty;
+	  T const ins = *(m+1+lseq2) + mScores.gapPenalty;
+#if defined(ALLASSERTS)
+	  assert ( uint((m+lseq2+2) - score) < ((lseq1+1) * (lseq2+1)) );
+#endif
+      
+	  *(m+lseq2+2) = std::max(std::max(match, del), ins);
+	  m += 1;
+	}
+      }
+    }
+  }
+  
+  T* m1m1 = score + s1MatchLen*(lseq2+1);
+  for(uint i = s1MatchLen+1; i <= lseq1; ++i) {
+    byte const s1i = s1[i-1];
+    for(const byte* s2j = s2; s2j < s2 + lseq2; ++s2j) {
+      T const match = *m1m1 + mScores.scoreMatching(s1i, *s2j);      
+      T const del = *(m1m1+1) + mScores.gapPenalty;
+      T const ins = *(m1m1+1+lseq2) + mScores.gapPenalty;
+#if defined(ALLASSERTS)
+      assert ( uint((m1m1+lseq2+2) - score) < ((lseq1+1) * (lseq2+1)) );
+#endif
+      
+      *(m1m1+lseq2+2) = std::max(std::max(match, del), ins);
+      m1m1 += 1;
+    }
+    m1m1 += 1;
+  }
+}
+#endif
+
+inline void
+fillMatchedGap(const byte* const s, int& i, byte*& al0, byte*& al1)
+{
+  --i;
+  *al0++ = s[i];
+  *al1++ = gap;
+}
+
 // alignment: at least [2*(lseq1 + lseq2)], returned reversed
 
 template<typename T>
@@ -556,7 +633,8 @@ Alignment<T>::align(MatchScoreValues<T> const&  scores,
   int iRow = lseq1;
   int jCol = lseq2;
 
-  fillScores(scores);
+  bool const lin = fillScores(scores);
+  
   if( scores.freeEndGaps ) {
     uint iMaxRow = sz-lseq2-1;
     T mxLastRow = score[iMaxRow];
@@ -579,71 +657,70 @@ Alignment<T>::align(MatchScoreValues<T> const&  scores,
     if( mxLastCol > mxLastRow ) {
       int const im = (iMaxCol - lseq2)/(lseq2+1);
       while( iRow > im ) {
-	*al0 = s1[iRow-1];
-	*al1 = gap;
-	al0 += 1;
-	al1 += 1;
-	iRow -= 1;
+	fillMatchedGap(s1, iRow, al0, al1);
       }
     } else {
       int const jm = iMaxRow - (sz-lseq2-1);
       while( jCol > jm ) {
-	*al0 = gap;
-	*al1 = s2[jCol-1];
-	al0 += 1;
-	al1 += 1;
-	jCol -= 1;
+	fillMatchedGap(s2, jCol, al1, al0);
       }
     }
   }
   
-  while( iRow > 0 and jCol > 0 ) {
-    uint const cur = iRow*(lseq2+1) + jCol;
-    T const score_current = score[cur];
-    T const score_diagonal = score[cur - lseq2 - 2];
-
-    if( score_current == score_diagonal +
-	scores.scoreMatching(s1[iRow-1], s2[jCol-1]) ) {
-      *al0 = s1[iRow-1]; 
-      *al1 = s2[jCol-1];
-      iRow -= 1;
-      jCol -= 1;
-    } else {
-      T const score_up = score[cur - lseq2 - 1];
-
-      if( score_current == score_up + scores.gapPenalty ) {
-	*al0 = s1[iRow-1];
-	*al1 = gap;
+  if( lin ) {
+    while( iRow > 0 and jCol > 0 ) {
+      uint const cur = iRow*(lseq2+1) + jCol;
+      T const score_current = score[cur];
+      T const score_diagonal = score[cur - lseq2 - 2];
+      T const match = scores.scoreMatching(s1[iRow-1], s2[jCol-1]);
+      
+      if( score_current == score_diagonal + match ) {
 	iRow -= 1;
-      } else {
-#if !defined(NDEBUG)
-	T const score_left = score[cur - 1];
-#endif
-	assert ( score_current == score_left + scores.gapPenalty ) ;
-	
-	*al0 = gap;
-	*al1 = s2[jCol-1];
 	jCol -= 1;
+	*al0 = s1[iRow]; 
+	*al1 = s2[jCol];
+	al0 += 1;
+	al1 += 1;
+      } else {
+	if( score_current == score[cur - lseq2 - 1] + scores.gapPenalty ) {
+	  fillMatchedGap(s1, iRow, al0, al1);
+	} else {
+	  assert ( score_current == score[cur - 1] + scores.gapPenalty );
+	  
+	  fillMatchedGap(s2, jCol, al1, al0);
+	}
       }
     }
-    al0 += 1;
-    al1 += 1;
+  } else {
+    while( iRow > 0 and jCol > 0 ) {
+      uint const cur = iRow*(lseq2+1) + jCol;
+      T const score_current = score[cur];
+      T const match = scores.scoreMatching(s1[iRow-1], s2[jCol-1]);
+    
+      if( score_current ==  match + score[cur - lseq2 - 2] ) {
+	iRow -= 1;
+	jCol -= 1;
+	*al0 = s1[iRow]; 
+	*al1 = s2[jCol];
+	al0 += 1;
+	al1 += 1;
+      } else {
+	if( score_current == match +  iy[cur - lseq2 - 2] ) {
+	  fillMatchedGap(s1, iRow, al0, al1);
+	} else {
+	  assert ( score_current == match + ix[cur - lseq2 - 2] ) ;
+	  fillMatchedGap(s2, jCol, al1, al0);
+	}
+      }
+    }
   }
   
   while( iRow > 0 ) {
-    *al0 = s1[iRow-1];
-    *al1 = gap;
-    al0 += 1;
-    al1 += 1;
-    iRow -= 1;
+    fillMatchedGap(s1, iRow, al0, al1);
   }
   
   while( jCol > 0 ) {
-    *al0 = gap;
-    *al1 = s2[jCol-1];
-    al0 += 1;
-    al1 += 1;
-    jCol -= 1;
+    fillMatchedGap(s2, jCol, al1, al0);
   }
   
   return al0 - alignment;
@@ -661,7 +738,8 @@ Alignment<T>::getStats(MatchScoreValues<T> const&  scores,
   int iRow = lseq1;
   int jCol = lseq2;
   
-  fillScores(scores);
+  const bool lin = fillScores(scores);
+  
   if( scores.freeEndGaps ) {
     uint iMaxRow = sz-lseq2-1;
     T mxLastRow = score[iMaxRow];
@@ -688,40 +766,66 @@ Alignment<T>::getStats(MatchScoreValues<T> const&  scores,
     }
   } 
   
-  while( iRow > 0 and jCol > 0 ) { 
-    uint const cur = iRow*(lseq2+1) + jCol;
-    T const score_current = score[cur];
-    T const score_diagonal = score[cur - lseq2 - 2];
-
-    if( score_current == score_diagonal + scores.scoreMatching(s1[iRow-1], s2[jCol-1]) ) {
-      if( s1[iRow-1] == s2[jCol-1] ) {
-	matches += 1;
-      } else {
-	misMatches += 1;
-      }
-      iRow -= 1;
-      jCol -= 1;
-    } else {
-      gaps += 1;
-      T const score_left = score[cur - 1];
+  if( lin ) {
+    while( iRow > 0 and jCol > 0 ) { 
+      uint const cur = iRow*(lseq2+1) + jCol;
+      T const score_current = score[cur];
+      T const match = scores.scoreMatching(s1[iRow-1], s2[jCol-1]);
       
-      if ( score_current == score_left + scores.gapPenalty ) {
+      int const k = cur - lseq2 - 2;
+      
+      if( score_current == score[k] + match ) {
+	if( s1[iRow-1] == s2[jCol-1] ) {
+	  matches += 1;
+	} else {
+	  misMatches += 1;
+	}
+	iRow -= 1;
 	jCol -= 1;
       } else {
-#if !defined(NDEBUG)
-	T score_up = score[cur - lseq2 - 1];
-#endif
-	assert (score_current == score_up + scores.gapPenalty);
+	gaps += 1;
+
+	if ( score_current == score[cur - 1] + scores.gapPenalty ) {
+	  jCol -= 1;
+	} else {
+	  assert (score_current == score[k+1] + scores.gapPenalty);
 	
+	  iRow -= 1;
+	}
+      }
+    }
+  } else {
+    while( iRow > 0 and jCol > 0 ) {
+      uint const cur = iRow*(lseq2+1) + jCol;
+      T const score_current = score[cur];
+      T const match = scores.scoreMatching(s1[iRow-1], s2[jCol-1]);
+      int const k = cur - lseq2 - 2;
+      
+      if( score_current ==  match + score[k] ) {
+	if( s1[iRow-1] == s2[jCol-1] ) {
+	  matches += 1;
+	} else {
+	  misMatches += 1;
+	}
 	iRow -= 1;
+	jCol -= 1;
+      } else {
+	gaps += 1;
+	
+	if( score_current == match + iy[k] ) {
+	  iRow -= 1;
+	} else {
+	  jCol -= 1;
+	}
       }
     }
   }
-
+  
   if( !scores.freeEndGaps ) {
     gaps += iRow + jCol;
   }
 }
+
 
 PyObject*
 globAlign(PyObject*, PyObject* args, PyObject* kwds)
@@ -809,6 +913,84 @@ globAlign(PyObject*, PyObject* args, PyObject* kwds)
 
   return ret;
 }
+
+#if 0 
+PyObject*
+globAlignAffine(PyObject*, PyObject* args, PyObject* kwds)
+{
+  static const char* kwlist[] = {"seq0", "seq1", "gapExtend", "report", "strip", "scores",
+				 static_cast<const char*>(0)};
+  PyObject* pseq1 = 0;
+  PyObject* pseq2 = 0;
+
+  ComparisonResult resultType = Default;
+  PyObject* pStrip = 0;
+  PyObject* mScores = 0;
+  float gapExtend = 0;
+  
+  if( ! PyArg_ParseTupleAndKeywords(args, kwds, "OOf|iOO", const_cast<char**>(kwlist),
+				    &pseq1,&pseq2,&gapExtend,&resultType,&pStrip,&mScores)) {
+    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    return 0;
+  }
+
+  if( ! (PySequence_Check(pseq1) && PySequence_Check(pseq2)) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args: not sequences") ;
+    return 0;
+  }
+
+  MatchScoreValues<float> const scores(mScores);
+  if( ! scores.valid() ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args: invalid scores") ;
+    return 0;
+  }
+  
+  uint lseq1;
+  uint lseq2;
+  // always strip for alignment
+  byte* s1 = readSequence(pseq1, lseq1, true);
+  byte* s2 = readSequence(pseq2, lseq2, true);
+  if( ! (s1 && s2 ) ) {
+    return 0;
+  }
+
+  AlignmentAffine<float> al(s1, lseq1, s2, lseq2);
+
+  uint const ltot = lseq1 + lseq2;
+
+  PyObject* ret = 0;
+  
+  if ( 1 ) {
+    byte* const alignment = new byte [2*ltot];
+
+    uint const alen = al.align(scores, gapExtend, alignment);
+    
+    PyObject* al = PyTuple_New(2);
+    PyObject* ps0 = PyTuple_New(alen);
+    const byte* ps = alignment + alen-1;
+    for(uint i = 0; i < alen; ++i,--ps) {
+      PyTuple_SET_ITEM(ps0, i, PyInt_FromLong(*ps));
+    }
+    PyTuple_SET_ITEM(al, 0, ps0);
+  
+    PyObject* ps1 = PyTuple_New(alen);
+    ps = alignment + ltot + alen-1;
+    for(uint i = 0; i < alen; ++i,--ps) {
+      PyTuple_SET_ITEM(ps1, i, PyInt_FromLong(*ps));
+    }
+    PyTuple_SET_ITEM(al, 1, ps1);
+
+    delete [] alignment;
+
+    ret = al;
+  }
+  
+  delete [] s1;
+  delete [] s2;
+
+  return ret;
+}
+#endif
 
 
 class SeqsList {
@@ -933,8 +1115,19 @@ distmat(PyObject*         pseqs,
   }
   
   uint const nseqs = sq1->nSeqs;
-  int* const order = (pReorder && PySequence_Check(pReorder)) ? new int[nseqs] : 0;  
 
+  int* order = 0;
+
+  // Allow order to be anything (iterator, say). performance is not an issue here
+  PyObject* rel = 0;
+  if( pReorder ) {
+    rel = PySequence_Fast(pReorder, "not a seq");
+    if( rel ) {
+      pReorder = rel;
+      order = new int[nseqs];
+    }
+  }
+      
   if( order ) {
     uint const sz = PySequence_Size(pReorder);
     if( sz != nseqs ) {
@@ -944,8 +1137,9 @@ distmat(PyObject*         pseqs,
     vector<int> check(sz, -2); //  = new order(n);
 
     for(uint n = 0; n < sz; ++n) {
-      PyObject* pn = PySequence_Fast_GET_ITEM(pReorder, n);
-      uint v = PyInt_AsLong(pn);
+      PyObject* const pn = PySequence_Fast_GET_ITEM(pReorder, n);
+      uint const v = PyInt_AsLong(pn);
+      
       if( ! (0 <= v && v < sz && check[v] == -2) ) {
 	delete [] order;
 	return 0;
@@ -974,8 +1168,8 @@ distmat(PyObject*         pseqs,
 	  al->getStats(scores, matches, misMatches, gaps);
 	  delete prev; prev = al;
 	} else {
-	  Alignment<float>  al(sq1->seqs[i], sq1->seqslen[i],
-			       sq1->seqs[j], sq1->seqslen[j]);
+	  Alignment<float> al(sq1->seqs[i], sq1->seqslen[i],
+			      sq1->seqs[j], sq1->seqslen[j]);
 	
 	  al.getStats(scores, matches, misMatches, gaps);
 	}
@@ -1039,6 +1233,8 @@ distmat(PyObject*         pseqs,
   delete prev;
 
   delete [] order;
+  Py_XDECREF(rel);
+  
   return retSpace ? Py_None : res;
 }
 
@@ -1285,10 +1481,11 @@ alignToProf(byte*        inseq,
   }
 
   T const bla = -123465.887;
-  for(uint i = 0; i < sz; ++i) {
-    rawscr[i] = bla;
-  }
-
+  // for(uint i = 0; i < sz; ++i) {
+  //   rawscr[i] = bla;
+  // }
+  std::fill(rawscr, rawscr+sz, bla);
+  
   uint tot = 0;
   for(uint i = 0; i < 6; ++i) {
     tot += profile[0][i];
@@ -1320,20 +1517,24 @@ alignToProf(byte*        inseq,
 #if defined(ALLASSERTS)
     assert( siteScores[seq[nk-1]][nk] ==
 	    scoreSite(nk, seq[nk-1], profile, tot, matchScore, misMatchScore, gapPenalty) );
-#endif
     assert (score[nk-1][nk-1] != bla);
+#endif
     
-    score[nk][nk] = score[nk-1][nk-1] + siteScores[seq[nk-1]][nk];
-
+    const T* const ssnk = siteScores[seq[nk-1]];
+    score[nk][nk] = score[nk-1][nk-1] + ssnk[nk];
+    
     for(uint ni = nk+1; ni <= nk + ns - nNucs; ++ni) {
       // Expensive asserts
       // assert (scoreSiteGap(ni, profile, tot, gapPenalty) == gapScores[ni]);
       // assert (siteScores[seq[nk-1]][ni] == scoreSite(ni, seq[nk-1], profile, tot,
       // 					     matchScore, misMatchScore, gapPenalty));
+#if defined(ALLASSERTS)
       assert (score[ni-1][nk] != bla && score[ni-1][nk-1] != bla );
-
-      score[ni][nk] = std::max(score[ni-1][nk]   + gapScores[ni],
-			       score[ni-1][nk-1] + siteScores[seq[nk-1]][ni]);
+#endif
+      
+      const T* const s = score[ni-1] + nk;
+      //score[ni][nk] = std::max(*s + gapScores[ni], *(s-1) + siteScores[seq[nk-1]][ni]);
+      score[ni][nk] = std::max(*s + gapScores[ni], *(s-1) + ssnk[ni]);      
     }
   }
 
@@ -2081,7 +2282,7 @@ UPGMA(PyObject*, PyObject* args, PyObject* kwds)
   
   if( ! PyArg_ParseTupleAndKeywords(args, kwds, "|OOOiOOOO", const_cast<char**>(kwlist),
 				    &dists, &pseqs, &palign,
-				    &resultType, &saveDistancesTo,&pReorder,mScores,
+				    &resultType, &saveDistancesTo, &pReorder, &mScores,
 				    &pWeights)) {
     PyErr_SetString(PyExc_ValueError, "wrong args.") ;
     return 0;
@@ -2222,6 +2423,9 @@ static PyMethodDef calignMethods[] = {
   {"globalAlign",	(PyCFunction)globAlign, METH_VARARGS|METH_KEYWORDS,
    "Global alignment of two DNA sequences. Full Needleman-Wunch with a free flanking gaps option."},
   
+  // {"globalAffineAlign",	(PyCFunction)globAlignAffine, METH_VARARGS|METH_KEYWORDS,
+  //  ""},
+  
   {"profileAlign",	(PyCFunction)alignToProfile, METH_VARARGS|METH_KEYWORDS,
    ""},
   {"prof2profAlign",	(PyCFunction)alignProfileToProfile, METH_VARARGS|METH_KEYWORDS,
@@ -2271,3 +2475,26 @@ initcalign(void)
 // ('ACATGTCTTCGGTGGACTTCAGTTCCGCCCGAGAAACTTAGACAA', 'AATGTAATAAATGG')
 // order with free gaps can matter
 
+#if 0
+class Choose2 {
+private:
+  static long* choose2tab;
+  static uint ns;
+public:
+  static void init(uint n) {
+    ns = n;
+    delete [] choose2tab;
+    choose2tab = new long[n];
+    for(uint i = 0; i < n; ++i) {
+      choose2tab[i] = (i*(i-1)) / 2;
+    }
+  }
+
+  static inline ulong c2(uint i) {
+    return i < ns ? choose2tab[i] : (long(i)*(i-1)) / 2;
+  }
+};
+
+long* Choose2::choose2tab = 0;
+uint Choose2::ns = 0;
+#endif

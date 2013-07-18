@@ -10,22 +10,24 @@ import time, gzip, random, math
 
 from collections import defaultdict, namedtuple
 from itertools import ifilter, count
+from numpy import mean
 
 from genericutils import tohms, fileFromName
 
 import calign, cclust
-import align
+from align import seqMultiAlign, cons, stripseq
 
 from parseNewick import parseNewick
-from treeutils import CAhelper, getPostOrder
+from treeutils import CAhelper, getPostOrder, nodeHeights
 
 # for hierarchy.to_tree, can we get rid of that??
 import scipy.cluster
+from scipy.optimize import brentq
 
 __all__ = ["findDuplicates", "deClutter", "deClutterDown", "treeFromSeqs",
            "MatchScores", "defaultMatchScores", "declutterToTrees"
            "saveDistancesMatrix", "getDistanceMatrix",
-           "clusterFromTree", "assembleTree"]
+           "clusterFromTree", "assembleTree", "doTheCons"]
 
 from align import defaultMatchScores
                                       
@@ -34,15 +36,21 @@ def nPairs(x) :
     x = len(x)
   return (x*(x-1))//2
 
-def saveDistancesMatrix(fname, dsm, labels, compress=-1) :
+def saveDistancesMatrix(fname, dsm, labels, compress = 0) :
   if fname :
-    suf = '.dists.gz' if compress else '.dists'
-    if not fname.endswith(suf):
-      fname = fname + suf
+    if compress > 0 :
+      if not fname.endswith('.dists.gz') :
+        if fname.endswith('.dists') :
+          fname = fname + '.gz'
+        else :
+          fname = fname + 'dists.gz'
+    else :
+      if not fname.endswith('.dists') :
+        fname = fname + 'dists'
 
     assert nPairs(labels) == len(dsm)
-    if compress >= 0 :
-      fs = gzip.open(fname, 'wb', max(compress, 9))
+    if compress > 0 :
+      fs = gzip.open(fname, 'wb', min(compress, 9))
     else :
       fs = file(fname, 'w')
     print >> fs, '#',' '.join(labels)
@@ -50,10 +58,24 @@ def saveDistancesMatrix(fname, dsm, labels, compress=-1) :
       print >> fs, x
     fs.close()
 
+## def getDistanceMatrix(saveName) :
+##   fl = fileFromName(saveName)
+##   labs = [x.strip() for x in next(fl)[2:].split(' ')]
+##   dists = [float(x) for x in fl]
+##   fl.close()
+##   return dists,labs
+
+import array
+from itertools import repeat
+
 def getDistanceMatrix(saveName) :
   fl = fileFromName(saveName)
   labs = [x.strip() for x in next(fl)[2:].split(' ')]
-  dists = [float(x) for x in fl]
+  dists = array.array('f',repeat(0.0,nPairs(labs)))
+  i = 0
+  for x in fl:
+    dists[i] = float(x.strip())
+    i += 1
   fl.close()
   return dists,labs
 
@@ -100,7 +122,7 @@ def mergeGroupings(grps) :
 
 # C code will be faster? yes but nothing dramatic (2x or 3x)
 from cclust import lookupTable
-def _buildLookupC(seqs, asSet=True) :
+def _buildLookupC(seqs, asSet=False) :
   matches = lookupTable(seqs, 11, True)
   if asSet:
     for k,v in matches.iteritems():
@@ -219,15 +241,17 @@ def getPotentials(iSeq, seqs, lseqs, th, fdis, matches, elem2grps, rs = None) :
   return matched,distances, (fails,tries,len(scans))
 
 
-def deClutter(seqs, th, correction, failsTH = 20,
+def deClutter(seqs, th, correction, failsTH = 20, matches = None,
               matchScores = defaultMatchScores, verbose = None) :
   if verbose:
+    print >> verbose, "declutter",len(seqs),"at", "%g" % th
     tmain = time.clock()
     print >> verbose, "building lookup table ..., ",
 
   _failsHardTH = failsTH
-    
-  matches = _buildLookupC(seqs, asSet = False)
+
+  if matches is None :
+    matches = _buildLookupC(seqs)
   N = len(seqs)
 
   if verbose:
@@ -313,7 +337,8 @@ def deClutter(seqs, th, correction, failsTH = 20,
         assert iCans is not None
 
     if verbose and not done:
-      print >> verbose, jSeq, len(paired), len(singles), len(pairs), len(grps), len(iCans)+1, \
+      print >> verbose, jSeq, len(paired), "%.4g%%" % (100*(len(paired)/len(seqs))),\
+            len(singles), len(pairs), len(grps), len(iCans)+1, \
             sum([x not in paired for x in iCans])+1,\
             ("(%d %d  %d)" % (totTries,totFails,stat[2])) if doStats else ""
         
@@ -363,6 +388,181 @@ def deClutter(seqs, th, correction, failsTH = 20,
   mgrps = sorted(mergeGroupings(grps), key = lambda x : len(x), reverse=0)
   return list(singles),pairs,mgrps
 
+def getMates(seq, seqs, th, fdis, matches, lim = -1, failsTH = 30) :
+  cans = [0]*len(seqs)
+  cclust.counts(seq, matches, cans)
+
+  lseq = len(seq)
+  scans = [(-x/min(lseq,len(seqs[k])), k) for k,x in enumerate(cans) if x > 0]
+  heapq.heapify(scans)
+
+  fails = 0
+  matched = []
+  distances = []
+
+  for cn,k in hiter(scans) :
+    if lim > 0 and len(matched) >= lim:
+      break
+
+    djk = fdis(seq, k)
+    if djk <= th :
+      matched.append(k)
+      distances.append(djk)
+
+      fails = 0
+    else :
+      fails += 1
+      if fails > failsTH:
+        break
+  return matched,distances
+
+
+def guesstimateTH(seqs, nMax, thc, matches = None, scores = None, ns = 100) :
+  q = 1- 1./((len(seqs)/nMax)-.5)
+  if q <= 0 :
+    return None
+
+  d = [[calign.globalAlign(x1,x2, report=calign.JCcorrection, scores=scores) for (x1,x2) in
+      [random.sample(seqs, 2)]][0] for k in range(4000)]
+  #import pdb; pdb.set_trace()
+  
+  p = ([int(nMax * q**n) for n in range(0,50)])
+  th = sum([nPairs(x) for x in p])/nPairs(len(seqs))
+
+  sols = []
+  for i in range(40) :
+    d1 = random.sample(d,2000)
+    sols.append(sorted(d1)[int(th*len(d1))])
+    
+  #sol = sorted(d)[int(th*len(d))]
+  #sol = mean(sols)
+  sol = sorted(sols)[(40 * 9)//10]
+  ## f = lambda t : (sum([x < t for x in d])/len(d)) - th
+  #import pdb; pdb.set_trace()
+
+  ## if f(0) * f(1) < 0 :
+  ##   sol = brentq(f, 0, 1)
+  ## else :
+  ##   sol = thc/2
+  return sol/3
+  
+  
+if 0:
+  k = len(seqs)//nMax
+  if max(k,ns) > len(seqs)//50 :
+    return thc/2
+  sq = random.sample(seqs, max(k,ns))
+  t,ds = treeFromSeqs(sq, matchScores = scores)
+  del ds
+  th = sorted(nodeHeights(t).values())[-(ns//k)]
+  #import pdb; pdb.set_trace()
+  return th
+  
+  if matches is None :
+    #print "matches"
+    matches = _buildLookupC(seqs)
+  #print "done matches"
+  # lseqs = [len(x) for x in seqs]
+  fdis = lambda s,j : calign.globalAlign(s, seqs[j], scores = scores,
+                                         report = calign.JCcorrection)
+
+  nInClade = max((len(seqs)//nMax) + 1, nMax)
+  lim = 2*nInClade
+  v = []
+  li = random.sample(range(len(seqs)), min(ns,len(seqs)))
+  for i in li:
+    p = getMates(seqs[i], seqs, .3, fdis, matches, lim = lim)
+    v.append((i,sorted(p[1])))    
+
+  
+  f3 = lambda x : mean(x) if len(x) else 1
+  f1 = lambda th : f3([1./x for x in [sum([x < th for x in u[1]]) for u in v] if x > 0])
+  #import pdb; pdb.set_trace()
+  #f1 = lambda th : mean([1/max(sum([x < th for x in u[1]]),0.0001) for u in v])
+  if f1(1) >= 1./nInClade :
+    f = lambda x : f1(1) * 1.01 - f1(x) 
+  else :
+    f = lambda x : f1(x) - 1./nInClade
+    
+  assert f(0) * f(1) < 0
+  sol = brentq(f, 0, 1)
+
+  f2 = lambda th : 1 - (sum([sum([x < th for x in u[1]]) for u in v])/sum([len(u[1]) for u in v]))
+  f = lambda x : f2(x) - 1./nInClade
+  #import pdb; pdb.set_trace()
+  assert f(0) * f(1) <= 0
+  sol1 = brentq(f, 0, 1)
+
+  th = max(sol,sol1)
+  th = int(th*1000+.5)/1000
+  return th,matches
+if 0 :
+  def guesstimateTH(seqs, nMax, thc, matches = None, scores = None, ns = 100) :
+    d = [[calign.globalAlign(x1,x2, report=calign.JCcorrection, scores=scores) for (x1,x2) in
+        [random.sample(seqs, 2)]][0] for k in range(2000)]
+    q = 1- 1./(len(seqs)/nMax)
+    p = ([int(nMax * q**n) for n in range(0,100)])
+    th = sum([nPairs(x) for x in p])/nPairs(sum(p))/2
+    f = lambda t : (sum([x < t for x in d])/len(d)) - th
+    #import pdb; pdb.set_trace()
+
+    if f(0) * f(1) < 0 :
+      sol = brentq(f, 0, 1)
+    else :
+      sol = thc/2
+    return sol
+
+
+
+    k = len(seqs)//nMax
+    if max(k,ns) > len(seqs)//50 :
+      return thc/2
+    sq = random.sample(seqs, max(k,ns))
+    t,ds = treeFromSeqs(sq, matchScores = scores)
+    del ds
+    th = sorted(nodeHeights(t).values())[-(ns//k)]
+    #import pdb; pdb.set_trace()
+    return th
+
+    if matches is None :
+      #print "matches"
+      matches = _buildLookupC(seqs)
+    #print "done matches"
+    # lseqs = [len(x) for x in seqs]
+    fdis = lambda s,j : calign.globalAlign(s, seqs[j], scores = scores,
+                                           report = calign.JCcorrection)
+
+    nInClade = max((len(seqs)//nMax) + 1, nMax)
+    lim = 2*nInClade
+    v = []
+    li = random.sample(range(len(seqs)), min(ns,len(seqs)))
+    for i in li:
+      p = getMates(seqs[i], seqs, .3, fdis, matches, lim = lim)
+      v.append((i,sorted(p[1])))    
+
+
+    f3 = lambda x : mean(x) if len(x) else 1
+    f1 = lambda th : f3([1./x for x in [sum([x < th for x in u[1]]) for u in v] if x > 0])
+    #import pdb; pdb.set_trace()
+    #f1 = lambda th : mean([1/max(sum([x < th for x in u[1]]),0.0001) for u in v])
+    if f1(1) >= 1./nInClade :
+      f = lambda x : f1(1) * 1.01 - f1(x) 
+    else :
+      f = lambda x : f1(x) - 1./nInClade
+
+    assert f(0) * f(1) < 0
+    sol = brentq(f, 0, 1)
+
+    f2 = lambda th : 1 - (sum([sum([x < th for x in u[1]]) for u in v])/sum([len(u[1]) for u in v]))
+    f = lambda x : f2(x) - 1./nInClade
+    #import pdb; pdb.set_trace()
+    assert f(0) * f(1) <= 0
+    sol1 = brentq(f, 0, 1)
+
+    th = max(sol,sol1)
+    th = int(th*1000+.5)/1000
+    return th,matches
+
 # 10% [s,p g_1 g_2 ...  ] g_s small
 # 3% [k g_k_s g_k_p  g_k_1 g_k_2 ... ] [l g_l_s g_l_p g_l_1 g_l_2 ...]
 # 1% [k x_1_1 x_1_2
@@ -378,44 +578,61 @@ def trans(ss, px, gx, grp) :
   return ss,px,gx
   
   
-def breakGroup(grp, ths, dc, seqs, cnum, maxClade, result) :
-  assert len(ths)
-  
+def breakGroup(grp, ths, dc, seqs, cnum, thl, maxClade, scores, result) :
   assert len(grp) > maxClade > 0
 
   sq = [seqs[x] for x in grp]
-  th = ths[0]
-  #import pdb; pdb.set_trace()
-  ss,px,gx = dc(sq, th)
+
+  if ths is None :
+    th = guesstimateTH(sq, maxClade, thl[-1] if thl else 1,
+                       matches = None, scores = scores, ns = 200)
+    if th is None:
+      c = [cnum, thl, [],[],[grp]]
+      result.append(c)
+      return
+    
+    matches = None
+    if len(thl) and th > thl[-1]/2 :
+      th = thl[-1]/2
+      th = int(th*1000+.5)/1000
+  else :
+    assert len(ths)
+    th,matches = ths[0],None
+
+  ss,px,gx = dc(sq, th, matches)
+  del matches
+  
   ss = sorted(ss)
   gx = sorted(gx, key = list.__len__)
 
-  if len(ths) == 1 :
-    ss,px,gx = trans(ss,px,gx, grp)
-    c = [cnum + [0],ss,px,gx]
+  if ths is not None and len(ths) == 1 :
+    ss,px,gx = trans(ss,px,gx,grp)
+    c = [cnum + [0], thl + [th], ss,px,gx]
     result.append(c)
   else :
     i = len(gx)
     while i > 0 and len(gx[i-1]) > maxClade:
       i -= 1
     ss,px,gx = trans(ss,px,gx, grp)
-    c = [cnum + [0],ss,px,gx[:i]]
+    c = [cnum + [0], thl + [th], ss,px,gx[:i]]
     result.append(c)
-    k1 = sum([len(x) for x in c[1:]])
+    k1 = sum([len(x) for x in c[2:]])
+    #print thl, th, [len(x) for x in gx[i:]]
     for k,g in enumerate(gx[i:]) :
-      breakGroup(g, ths[1:], dc, seqs, cnum + [k1+k], maxClade, result)
+      thm1 = ths[1:] if ths is not None else None
+      breakGroup(g, thm1, dc, seqs, cnum + [k1+k], thl + [th], maxClade, scores, result)
     
 def deClutterDown(seqs, ths, maxClade, correction, failsTH = 20,
                   matchScores = defaultMatchScores, verbose = None) :
   if len(seqs) <= maxClade :
-    return [ [[],[],[],[range(len(seqs))] ] ]
+    return [ [[],[],[],[],[range(len(seqs))] ] ]
 
-  dc = lambda seqs, th : \
-       deClutter(seqs, th, correction = correction, failsTH = failsTH,
-                 matchScores = matchScores,  verbose = verbose)
+  dc = lambda seqs, th, ma : \
+       deClutter(seqs, th, correction = correction, matches = ma, failsTH = failsTH,
+                 matchScores = matchScores, verbose = verbose)
 
   result = []
-  breakGroup(range(len(seqs)), ths, dc, seqs, [], maxClade, result)
+  breakGroup(range(len(seqs)), ths, dc, seqs, [], [], maxClade, matchScores, result)
   return result
 
 def thstr(th) :
@@ -431,19 +648,26 @@ def declutterToTrees(breakdown, ths) :
   trs = []
   cnt = 0
 
-  addit = lambda t : trs.append((t, "cluster_%s_%s" %
-                                 ('_'.join([namesuf,str(cnt)]) if namesuf else str(cnt) ,p)))
+  #addit = lambda t : trs.append((t, "cluster_%s_%s" %
+  #                               ('_'.join([namesuf,str(cnt)]) if namesuf else str(cnt), p)))
 
-  for inds,singles,pairs,grps in breakdown:
+  addit = lambda t,inds,lvls : trs.append((t, "cluster_%s" %
+                                           '_'.join([str(i) + '_' + thstr(l) for i,l in zip(inds,lvls)])))
+
+  for inds,lhs,singles,pairs,grps in breakdown:
     if len(inds) :
-      th = ths[len(inds)-1]
-      p = thstr(th)
+      #th = ths[len(inds)-1]
+      th = lhs[-1]
+      cnt = inds[-1]
+      #p = thstr(th)
     else :
       th = 1
-      p = 'p1'
+      cnt = 0
+      inds = [0]
+      lhs = [1]
+      #p = 'p1'
     
-    namesuf = '_'.join([str(x) for x in inds[:-1]])
-    cnt = inds[-1]
+    #namesuf = '_'.join([str(x) for x in inds[:-1]])
     for g in grps :
       d = th / (len(g)-1)
       h = d
@@ -452,24 +676,24 @@ def declutterToTrees(breakdown, ths) :
       for i in range(2, len(g)) :
         h += d
         t = t + (":%f,%d:%f)" % (d,g[i],h))
-      addit(t)
+      addit(t, inds[:-1]+[cnt],lhs)
       cnt += 1
 
     for i,j,d in pairs:
       d /= 2
       t = "(%s:%f,%s:%f)" % (i,d,j,d)
-      addit(t)
+      addit(t, inds[:-1]+[cnt],lhs)
       cnt += 1
       
     for s in singles:
       t = '(%d)' % s
-      addit(t)
+      addit(t,inds[:-1]+[cnt],lhs)
       cnt += 1
   return trs
 
 def _cln2newick(n, tax) :
   if n.is_leaf() :
-    return tax[n.id] if tax else str(n.id)
+    return str(tax[n.id] if tax else n.id)
   
   ch = (n.get_left(), n.get_right())
   c = [_cln2newick(x, tax) for x in ch]
@@ -528,7 +752,7 @@ def clusterFromTree(tr, th, caHelper = None) :
   if len(tr.get_terminals()) == 1 :
     return [tr.node(1)]
   
-  if not caHelper :
+  if not (caHelper and getattr(caHelper,"tree",None) == tr) :
     caHelper = CAhelper(tr)
   topNodes = []
   po = getPostOrder(tr)
@@ -539,7 +763,7 @@ def clusterFromTree(tr, th, caHelper = None) :
   return topNodes
 
 # th distance, not node height  (i.e. **not** /2)
-def cutForextAt(forest, th, helpersPool) :
+def cutForestAt(forest, th, helpersPool) :
   tops = []
   for it,tr in enumerate(forest) :
     if len(tr.get_terminals()) == 1 :
@@ -550,10 +774,36 @@ def cutForextAt(forest, th, helpersPool) :
       tops.extend([[tr,x] for x in nn])
   return tops
 
+def doTheCons(sqs, trh, lengthQuant = 40) :
+  als = [(lengthQuant*(len(s)//lengthQuant), s) for s in sqs]
+  als = [x[1] for x in sorted(als, reverse=1)]
+  scmp = random.sample(sqs, min(5,len(sqs)))
+  cbest = (None,100000)
+  
+  for i in range(3) :
+    al = seqMultiAlign(als)
+    c = stripseq(cons(calign.createProfile(al)))
+    # spot check
+    p = mean(calign.allpairs(c, scmp, report = calign.JCcorrection))/2
+    if p < cbest[1] :
+      cbest = (c, p)
+      
+    if i == 2 or p < trh :
+      break
+    if i == 0 :
+      # try original order
+      als = sqs
+    elif i == 1 :
+      # try random order
+      als = list(sqs)
+      random.shuffle(als)
+
+  return cbest[0]
+
 
 def assembleTree(trees, thFrom, thTo, getSeqForTaxon,
                  nMaxReps = 20, maxPerCons = 100,
-                 lowDiversity = 0.02, thxx = 1.1, fantasyLand = .15,
+                 lowDiversity = 0.02, refineFactor = 1.1, refineUpperLimit = .15,
                  verbose = None) :
   # cut trees at thFrom
 
@@ -565,7 +815,7 @@ def assembleTree(trees, thFrom, thTo, getSeqForTaxon,
   if verbose:
     print >> verbose, "cutting",len(trees),"trees at %g" % thFrom
   
-  pseudoTaxa  = cutForextAt(trees, thFrom, cahelper)
+  pseudoTaxa  = cutForestAt(trees, thFrom, cahelper)
   nReps = len(pseudoTaxa)
 
   reps = [None]*nReps
@@ -591,8 +841,12 @@ def assembleTree(trees, thFrom, thTo, getSeqForTaxon,
       else :
         i = n.data.terms
       sq = [getSeqForTaxon(x.data.taxon) for x in i]
-      s, r = align.mpc(sq, nRefines=0)
-      del r
+      # s, r = align.mpc(sq, nRefines=0)
+      # del r
+      s = doTheCons(sq, n.data.rh)
+      #al = align.seqMultiAlign(sorted(sqs, reverse=1))
+      #s = align.stripseq(align.cons(calign.createProfile(al)))
+      
       cons[k] = s
     return cons[k]
 
@@ -605,8 +859,8 @@ def assembleTree(trees, thFrom, thTo, getSeqForTaxon,
   # means thing. If not low diversity, use log representatives
   # low less then 4%??
   ## lowDiversity = 0.02
-  ## thxx = 1.1
-  ## fantasyLand = .15
+  ## refineFactor = 1.1
+  ## refineUpperLimit = .15
   
   # counts how many alignments done (for display)
   global acnt
@@ -641,7 +895,7 @@ def assembleTree(trees, thFrom, thTo, getSeqForTaxon,
     
     lowLim = 2*max(mi,mj)
     
-    if anyCons and (h < lowLim or (h < fantasyLand and h < lowLim*thxx)) :
+    if anyCons and (h < lowLim or (h < refineUpperLimit and h < lowLim*refineFactor)) :
       xri = getReps(i) if len(ri) == 1 else ri
       xrj = getReps(j) if len(rj) == 1 else rj
 
@@ -663,7 +917,8 @@ def assembleTree(trees, thFrom, thTo, getSeqForTaxon,
     tnow = time.clock()
 
   # use array??
-  ds = [-1]*nPairs(nReps)
+  #ds = [-1]*nPairs(nReps)
+  ds = array.array('f',repeat(0.0,nPairs(nReps)))
 
   pos = 0
   for i in range(nReps-1) :
@@ -673,7 +928,7 @@ def assembleTree(trees, thFrom, thTo, getSeqForTaxon,
 
     if verbose :
       dn = sum(range(nReps-1, nReps-i-2,-1))
-      print >> verbose, i, dn, "%3.2g%%" % ((100.*dn)/len(ds)), acnt, time.strftime("%T")
+      print >> verbose, i, dn, "%4.3g%%" % ((100.*dn)/len(ds)), acnt, time.strftime("%T")
 
   if verbose :
     print >> verbose, tohms(time.clock() - tnow), time.strftime("%T")

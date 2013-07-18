@@ -8,8 +8,11 @@ import sys
 import calign
 from collections import namedtuple
 
-MatchScores = namedtuple('MatchScores', "match mismatch gap freeEnds")
-defaultMatchScores = MatchScores(match = 10, mismatch = -5, gap = -6, freeEnds = True)
+__all__ = ["seqMultiAlign", "mpc", "mpa", "orderSeqsbyTree"]
+
+MatchScores = namedtuple('MatchScores', "match mismatch gap gape freeEnds")
+defaultMatchScores = MatchScores(match = 10, mismatch = -5, gap = -6, gape = -6,
+                                 freeEnds = True)
 
 _tab = [None]*5
 for x in 'AGCTN' :
@@ -429,14 +432,23 @@ def geto(tr, i) :
   if not n.succ:
     return [n]
   else :
-    return geto(tr, n.succ[0]) + geto(tr, n.succ[1])
+    lf, rt = geto(tr, n.succ[0]) , geto(tr, n.succ[1])
+    if len(lf) < len(rt) :
+      return rt + lf
+    return lf + rt
+    #return geto(tr, n.succ[0]) + geto(tr, n.succ[1])
   
-def trmsa(tr, seqs) :
+def orderSeqsbyTree(tr, seqs) :
   dseqs = dict(seqs)
   o = geto(tr, tr.root)
-  s = [dseqs[n.data.taxon] for n in o]
+  s = [dseqs[n.data.taxon.strip("'")] for n in o]
+  return s
+
+def trmsa(tr, seqs) :
+  s = orderSeqsbyTree(tr, seqs)
   return seqMultiAlign(s)
-  
+
+
 from biopy.treeutils import getPostOrder
 
 def trimendsp(p, th = .6) :
@@ -457,7 +469,7 @@ def mpa(tr, seqs, scores = defaultMatchScores, trimEnd = None) :
   for n in getPostOrder(tr) :
     data = n.data
     if not n.succ :
-      data.seq = (None,dseqs[n.data.taxon])
+      data.seq = (None,dseqs[n.data.taxon.strip("'")])
     else :
       s1,s2 = [tr.node(x).data.seq for x in n.succ]
       if s1[1] :
@@ -536,4 +548,3 @@ def mpat(tr, seqs) :
         #import pdb; pdb.set_trace()
   assert n.id == tr.root
   return n.data.seq[0]
-

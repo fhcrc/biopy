@@ -128,7 +128,8 @@ def readBeast2File(root, what) :
   if "DNA" in what :
     data = dict()
     for a in root.findall("data") :
-      if a.attrib.get('dataType') == "nucleotide" :
+      dt = a.attrib.get('dataType')
+      if dt == "nucleotide" or dt is None:
         aName = a.get('id')
         seqs = dict()
         for s in a.findall("sequence") :
@@ -159,33 +160,47 @@ def readBeast2File(root, what) :
     what['mcmc'] = {'chainLength' : cl, 'logEvery' : le}
 
   if "species" in what :
-    raise RuntimeError("not yet")
-    xspecies = root.find('species')
-    if xspecies is not None :
-      species = dict()
+    for tree in root.findall(".//tree"):
+      if 'id' in tree.attrib and tree.attrib['id'].endswith(':Species') :
+        tss = tree.findall('taxonset')
+        assert len(tss) == 1
+        tss = tss[0]
 
-      for sp in xspecies.findall('sp') :
-        spName = sp.attrib['id']
-        species[spName] = [tx.attrib['idref'] for tx in sp.findall('taxon')]
+        species = dict()
+        for sp in tss.findall('taxon'):
+          species[sp.attrib['id']] = [tx.attrib['id'] for tx in
+                                      sp.findall('taxon')]
+          
+        what['species'] = { 'species' : species}
+        break
+    if 0 :
+      raise RuntimeError("not yet")
+      xspecies = root.find('species')
+      if xspecies is not None :
+        species = dict()
 
-      genes = dict()
-      gts = xspecies.find('geneTrees')
+        for sp in xspecies.findall('sp') :
+          spName = sp.attrib['id']
+          species[spName] = [tx.attrib['idref'] for tx in sp.findall('taxon')]
 
-      for gt in gts.findall('gtree') :
-        ploidy = gt.attrib.get('ploidy')
-        ploidy = float(ploidy) if ploidy else None
-        gtreeName = gt[0].attrib['idref']
-        treeElementName = gt[0].tag
-        alName = getAlName(treeElementName, gtreeName, root) 
-        if alName:    
-          genes[alName] = {'ploidy' : ploidy, 'tree' : gtreeName}
-      for gt in gts.findall('treeModel') :
-        gtreeName = gt.attrib['idref']
-        alName = getAlName(gt.tag, gtreeName, root) 
-        if alName:    
-          genes[alName] = {'ploidy' : 1, 'tree' : gtreeName}
-      
-      what['species'] = { 'species' : species, 'genes' : genes }
+        genes = dict()
+        gts = xspecies.find('geneTrees')
+
+        for gt in gts.findall('gtree') :
+          ploidy = gt.attrib.get('ploidy')
+          ploidy = float(ploidy) if ploidy else None
+          gtreeName = gt[0].attrib['idref']
+          treeElementName = gt[0].tag
+          alName = getAlName(treeElementName, gtreeName, root) 
+          if alName:    
+            genes[alName] = {'ploidy' : ploidy, 'tree' : gtreeName}
+        for gt in gts.findall('treeModel') :
+          gtreeName = gt.attrib['idref']
+          alName = getAlName(gt.tag, gtreeName, root) 
+          if alName:    
+            genes[alName] = {'ploidy' : 1, 'tree' : gtreeName}
+
+        what['species'] = { 'species' : species, 'genes' : genes }
 
   if "logging" in what :
     raise RuntimeError("not yet")

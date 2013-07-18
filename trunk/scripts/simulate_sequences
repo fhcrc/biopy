@@ -6,56 +6,78 @@
 
 from __future__ import division
 
-import optparse, sys, os.path
-parser = optparse.OptionParser("""%prog [OPTIONS] trees-file-or-tree
+import argparse, sys, os.path
 
-    Simulation sequences for tips of a gene tree using a standard GTR
-    substitution model.""")
+parser = argparse.ArgumentParser(description= """%prog [OPTIONS] trees-file-or-tree
 
-parser.add_option("-n", "--seqlen", dest="seqlen", metavar="N",
-                  help="""Alignment length."""
-                  + """(default %default)""", default = 400) 
+    Simulation sequences for tips of a gene tree using a substitution model.""")
 
-parser.add_option("-m", "--model", dest="model",
-                  help="Substitution model. Comma separated list - model name" + 
-                  " and model parameters. (1) JC,mu  (2) HKY,mu,kappa,freqs (3)" +
-                  " GTR,mu,rates,freqs" + 
-                  " (default %default)", default = "JC,1") 
+parser.add_argument("-n", "--seqlen", metavar="N", type = int,
+                    help="""Alignment length. (default %(default)d))""", default = 400) 
 
-parser.add_option("-a", "--annotate", dest="annotate",
-                  help="Output trees annotated with sequences. Default is to" + 
-                  " generate a NEXUS alignment file per tree.",
-                  action="store_true", default = False)
+parser.add_argument("-m", "--model",
+                    help="Substitution model. Comma separated list - model name"
+                    " and model parameters. (1) JC,mu  (2) HKY,mu,kappa,freqs (3)"
+                    " GTR,mu,rates,freqs" 
+                    " (default %(default)s)", default = "JC,1") 
 
-parser.add_option("-o", "--nexus", dest="nexfile", metavar="FILE",
-                  help="Name of annotated trees file.", default = None)
+parser.add_argument("-c", "--clock", metavar="DIST",
+                    help = "Molecular clock. The mutation rate of each branch is"
+                    " multipled of a random value drawn from DIST. A number "
+                    " by itself specifies a constant. Otherwise, a comma separated list where the"
+                    " first character specifies the distribution. See the documentation for supported"
+                    " distributions.", default = None)
 
+parser.add_argument("-a", "--annotate", metavar="FILE",
+                    help="Output trees with sequences embedded in tips annotation. By default,"  
+                    " generate one NEXUS alignment file per tree.",
+                    default = None)
+
+parser.add_argument("-o", "--nexus", dest="nexfile", metavar="FILE",
+                    help="Name of annotated trees file or base of alignment file.", default = None)
+
+
+parser.add_argument('trees', metavar='FILE', help="Trees file (or explicit tree)")
 
 from biopy import INexus, submodels, __version__
 from biopy.treeutils import toNewick, TreeLogger
+from biopy.randomDistributions import parseDistribution
 
-options, args = parser.parse_args()
+options = parser.parse_args()
 
-if len(args) == 0 :
-  parser.print_help(sys.stderr)
-  sys.exit(1)
+## if len(args) == 0 :
+##   parser.print_help(sys.stderr)
+##   sys.exit(1)
 
-if not options.annotate and options.nexfile :
-  print >> sys.stderr, "A file name without an '-a' ?"
-  parser.print_help(sys.stderr)
-  sys.exit(1)
-  
-if os.path.isfile(args[0]) :
-  trees = INexus.INexus().read(file(args[0]))
+#if options.annotate and not options.nexfile :
+#  print >> sys.stderr, "Please specify a file name with -a."
+#  parser.print_help(sys.stderr)
+#  sys.exit(1)
+
+targ = options.trees
+if os.path.isfile(targ) :
+  trees = list(INexus.INexus().read(file(targ)))
 else :
+  if targ[0] != '(' :
+    print >> sys.stderr, "Command line argument is not a file or a newick tree"
+    sys.exit(1)
+    
   try :
-    trees = [INexus.Tree(args[0])]
+    trees = [INexus.Tree(targ)]
   except Exception,e:
-    print >> sys.stderr, "*** Error: failed to parse tree: ",\
-          e.message,"[",args[0],"]"
+    print >> sys.stderr, "*** Error: failed to parse tree: ",e.message,"[",targ,"]"
     sys.exit(1)
 
-seqLen = int(options.seqlen)
+seqLen = options.seqlen
+if seqLen <= 0 :
+  parser.print_help(sys.stderr)
+  sys.exit(1)
+
+try :
+  clockDist = parseDistribution(options.clock) if options.clock else None
+except RuntimeError, e:
+  print >> sys.stderr, "*** Error:", e.message
+  sys.exit(1)
 
 def parseFreqs(freqs) :
   pi = [0]*4
@@ -124,12 +146,12 @@ except RuntimeError as r:
 
 tlog = None
 if options.annotate :
-  tlog = TreeLogger(options.nexfile, argv = sys.argv, version = __version__)
-else :
-  from biopy.INexus import exportMatrix
+  tlog = TreeLogger(options.annotate, argv = sys.argv, version = __version__)
+
+from biopy.INexus import exportMatrix
   
 for count,tree in enumerate(trees):
-  smodel.populateTreeSeqBySimulation(tree, seqLen)
+  smodel.populateTreeSeqBySimulation(tree, seqLen, clockDist)
 
   for n in tree.get_terminals() :
     data = tree.node(n).data
@@ -140,20 +162,30 @@ for count,tree in enumerate(trees):
   if tlog :
     treeTxt = toNewick(tree, attributes = 'attributes')
     tlog.outTree(treeTxt, name = tree.name)
-  else :
+
+  if options.nexfile or not tlog:
+    base = tree.name or options.nexfile or "alignment"
+    if len(trees) > 1 and not tree.name :
+      fname = "%s%d" % (base, count)
+    else :
+      fname = base
+      
+    if not fname.endswith(".nex") :
+      fname = fname + ".nex"
+      
     d = dict()
     for n in tree.get_terminals() :
       data = tree.node(n).data
       d[data.taxon] = data.attributes['seq']
 
-    fname = tree.name if tree.name else ("alignment%d" % count)
-    f = file(fname + ".nex", "w")
+    f = file(fname, "w")
     print >> f, "[Generated by %s%s]" % \
           (os.path.basename(sys.argv[0]),
            (", version " + __version__) if __version__ is not None else "")
     print >> f, "[%s]" % " ".join(sys.argv)
 
     exportMatrix(f, d)
+    f.close()
     
 if tlog:
   tlog.close()

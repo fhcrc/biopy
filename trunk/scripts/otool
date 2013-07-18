@@ -8,7 +8,7 @@ from __future__ import division
 
 import argparse, sys, os.path
 
-parser = argparse.ArgumentParser(description= """ %prog [OPTIONS] in-file""")
+parser = argparse.ArgumentParser(description= """ %(prog)s [OPTIONS] in-file""")
 
 parser.add_argument("--derep", default = None, action = "store_true", 
                     help="""eliminate exact duplicates, add size information to name.""" +
@@ -18,23 +18,43 @@ parser.add_argument("--declutter", metavar="TH(,TH1,TH2,...)",
                     default = None,
                     help="")
 
-parser.add_argument("--forest", metavar="TH", default = None, type = float,
+parser.add_argument("--forest", metavar="TH", default = None,
                     help="")
 
 parser.add_argument("--stitch", metavar="TH", default = None, type = float,
                     help="")
 
-parser.add_argument("--max-single-tree", dest="maxClade", metavar="N", default = 6000, type = int,
+parser.add_argument("--shave", metavar="TH", default = None, type = float,
                     help="")
+
+parser.add_argument("--max-single-tree", dest="maxClade", metavar="N", default = 6000, type = int,
+                    help="""upper limit on the size of single UPGMA trees to build. """
+                    """ This is only a guideline which and not an absolute guarantee. The system"""
+                    """ resources should be enough to build trees twice or three times as large.""")
 
 parser.add_argument("-p", "--progress", dest="progress",
                     help="send progress messages to terminal (standard error)",
                     action='count', default = 0)
 
+parser.add_argument("--terminate-search-count", dest="failsTH", type = int,
+                    metavar="N", default = 20,
+                    help="""Search for matching sequence during declutter are terminated after N"""
+                    """ failures. Increasing the limit increases the search sensitivity with a"""
+                    """ running time cost. You probably want to keep this under 40"""
+                    """ (default %(default)s).""")
+                    
+parser.add_argument("--stitch-parameters", dest="stitchArgs", metavar="VALUES", default = None,
+                    help="""MaxReps,MaxConsReps,NoConsTH,RefinmentFactor,RefinmentLimit""")
+
 # parser.add_argument("--verbose", action="store_true", default = False)
 
-parser.add_argument("--compress", metavar='N', type = int, default = -1,
-                    help="""compression level for distance files (%(default)d for no compression)""")
+#parser.add_argument("--compress", metavar='N', type = int, default = -1,
+#                    help="""compression level for distance files (%(default)d for no compression)""")
+
+parser.add_argument("--save-distances", dest="savedists", metavar="WHAT",
+                    choices = ["no", "plain", "compressed-fast", "compressed-normal",
+                             "compressed-best"], default = "compressed-fast",
+                    help="""no, plain (no compression),compressed-fast/normal/best.""")
 
 parser.add_argument("--overwrite", action="store_true", default = False,
                     help="""blindly trash existing files.""")
@@ -42,9 +62,13 @@ parser.add_argument("--overwrite", action="store_true", default = False,
 parser.add_argument("--match-scores", dest="matchScores",metavar="M,X,G,F", default = None,
                     help="")
 
-parser.add_argument("--use-sequence-identity", dest="JCcorrection",
+parser.add_argument("--use-sequence-identity", dest = "JCcorrection",
                     action="store_false", default = True,
                     help="use uncorrected sequence identity. by default use Jukes-Cantor correction.")
+
+parser.add_argument("--location-from-name", dest="locfromname", metavar = "RE", default = None,
+                    help=""" A regular expression extracting a location from the sequence name."""
+                    """ For example: '\|([^;]*)' (remember the ';size' added by dereping. """)
 
 parser.add_argument("--sequences-extension", dest="seqsext", metavar="STRING", default = "fasta",
                     help="""%(default)s""")
@@ -63,10 +87,12 @@ parser.add_argument('infile', metavar='FILE', help="Sequences (FASTA) or NEXUS")
 options = parser.parse_args()
 
 from itertools import count
+from collections import defaultdict
 
+from biopy.genericutils import tohms
 from biopy import otus, align, __version__
 from biopy.bioutils import readFasta
-from biopy.treeutils import TreeLogger
+from biopy.treeutils import TreeLogger, CAhelper
 from biopy.INexus import INexus
 
 verbose = options.progress > 1
@@ -175,19 +201,24 @@ if options.matchScores is not None :
   if not len(m) == 4 :
     print >> sys.stderr, "Expecting 4 values for match scores (leave empty for default)."
     sys.exit(1)
-  ms = [float(x) if x != "" else dflt for x,dflt
-                 in zip(m,defaultMatchScores)[:3]] + \
-                 (matchScores[3] if matchScores[3] is not None else defaultMatchScores[3])
+  ms = [float(x) if x != "" else dflt for x,dflt in zip(m,defaultMatchScores)[:3]]
+  ms.append(ms[-1])  # linear
+  ms.append((matchScores[3] if matchScores[3] is not None else defaultMatchScores[3]))
   
-  if not (ms[0] > 0 and ms[1] <= 0 and ms[2] <= 0) :
+  if not (ms[0] > 0 and ms[1] <= 0 and ms[2] <= 0 and ms[3] <= 0) :
     print >> sys.stderr, "Expecting a non positive mismatch score and gap penalty."
     sys.exit(1)
   matchScores = align.MatchScores(ms)
   
 if options.declutter is not None:
   try :
-    ths = [float(x) for x in options.declutter.split(',')]
+    if options.declutter == "auto" :
+      ths = None
+    else :
+      ths = [float(x) for x in options.declutter.split(',')]
 
+    failsTH = max(options.failsTH, 20)
+    
     if not allSeqs:
       if not os.path.exists(infile) :
         d = os.path.extsep.join([infile, options.derepext, options.seqsext])
@@ -207,7 +238,7 @@ if options.declutter is not None:
       nameparts.pop(-1)
     namebase = os.path.extsep.join(nameparts)
 
-    s = '_'.join([otus.thstr(th) for th in ths])
+    s = '_'.join([otus.thstr(th) for th in ths]) if ths is not None else "auto"
     declName = os.path.extsep.join([namebase, "%s_%s" % (options.declext,s),
                                     options.treelogext])
     #declName = "%s.declt_%s.%s" % (namebase,,nexusLogExt)
@@ -221,7 +252,7 @@ if options.declutter is not None:
     #singles,pairs,grps = otus.deClutter([x[1] for x in allSeqs], th,
     brk = otus.deClutterDown([x[1] for x in allSeqs], ths, options.maxClade,
                               correction = options.JCcorrection,
-                              failsTH = 20, matchScores = matchScores, 
+                              failsTH = failsTH, matchScores = matchScores, 
                               verbose = fverbose)
     #partition = [[x] for x in singles] + [x[:2] for x in pairs] + grps
     trs = otus.declutterToTrees(brk, ths)
@@ -238,12 +269,21 @@ if options.declutter is not None:
       progressMessage("Declutter done." if verbose else "done.")
     
   except Exception,e:
+    #import traceback
+    #traceback.print_stack()
     print >> sys.stderr, "Error:", e.message
     sys.exit(1)
 
+if options.savedists != "no" :
+  ## seems like the gzip module does not respect compression level
+  compressionLevel = (0,1,6,9)[["plain", "compressed-fast", "compressed-normal",
+                      "compressed-best"].index(options.savedists)]
+else :
+  compressionLevel = None
+  
 if options.forest is not None:
-  try :
-    thdecl = float(options.forest)
+ try :
+    thdecl = float(options.forest) if options.forest != "auto" else 0
 
     if not os.path.exists(infile) :
       fatalError("cant find input file for forest (%s)" % infile)
@@ -254,17 +294,21 @@ if options.forest is not None:
     ths = []
     if nameparts[-1].startswith(options.declext + '_') :
       thparts = nameparts[-1].split('_')[1:]
-      for x in thparts:
-        if x[0] == 'p' and x[1:].isdigit() :
-          ths.insert(0, float('.' + x[1:]))
-        else :
-          fatalError("error")
+      if thparts[0] == "auto" :
+        ths = None
+        thdecl = 0
+      else :
+        for x in thparts:
+          if x[0] == 'p' and x[1:].isdigit() :
+            ths.insert(0, float('.' + x[1:]))
+          else :
+            fatalError("error")
       
       ## p = nameparts[-1][len(options.declext + '_'):]
       ## if not p[0] == 'p' and p[1].isdigit() :
       ##   fatalError("Invalid declutter name", infile)
       ## thdecl = float("." + p[1:])
-      if not all([thdecl <= x for x in ths]) :
+      if ths is not None and not all([thdecl <= x for x in ths]) :
         fatalError("Can't build %g forest from %s declutter" % (thdecl,nameparts[-1]))
       nameparts.pop(-1)
 
@@ -283,7 +327,7 @@ if options.forest is not None:
     if progress:
       progressMessage("Building trees for %s forest" % options.forest)
 
-    forestLevel = otus.thstr(thdecl)
+    forestLevel = otus.thstr(thdecl) if thdecl else "auto"
     forestBase = os.path.extsep.join(nameparts + [forestLevel])
     forestName = forestBase + os.path.extsep + options.treelogext
 
@@ -292,8 +336,16 @@ if options.forest is not None:
                       overwrite = options.overwrite)
 
     nameToSeqIndex = dict([(h[1:],k) for (h,s),k in zip(allSeqs, count())])
-    indexToSize = dict([(k,int(h.split(';')[-2].split('=')[1]))
-                        for (h,s),k in zip(allSeqs, count())])
+    def getSize(h) :
+      if h[-1] == ';' :
+        i = h[:-1].rfind(';')
+        if i >= 0 and h[i+1:i+6] == "size=":
+          return int(h[i+6:-1])
+      return 1
+          
+    #int(h.split(';')[-2].split('=')[1]) 
+    indexToSize = dict([(k,getSize(h)) for (h,s),k in zip(allSeqs, count())])
+    
     def getSeqs(tax) :
       try :
         i = [nameToSeqIndex[x] for x in tax]
@@ -307,8 +359,8 @@ if options.forest is not None:
       itx = [str(nameToSeqIndex[x]) for x in tax]
       if len(tax) > 1:
         seqs,wts = getSeqs(tax)
-        dsFile = forestBase + '_c%d' % cnt + '.dists.gz'
-        if os.path.exists(dsFile) :
+        dsFile = forestBase + '_c%d' % cnt + '.dists'
+        if os.path.exists(dsFile) or os.path.exists(dsFile + '.gz') :
           ds,lb = otus.getDistanceMatrix(dsFile)
           assert tax == lb
           tr = otus.treeFromDists(ds, tax = itx, weights = wts, asString = True)
@@ -317,7 +369,8 @@ if options.forest is not None:
                                     matchScores = matchScores,
                                     correction = options.JCcorrection,
                                     asString = True, verbose = fverbose)
-          otus.saveDistancesMatrix(dsFile, ds, tax, compress = options.compress)
+          if compressionLevel is not None :
+            otus.saveDistancesMatrix(dsFile, ds, tax, compress = compressionLevel)
       else :
         tr = '(' + itx[0] + ')'
       tlog.outTree(tr, name = tree.name)
@@ -331,26 +384,48 @@ if options.forest is not None:
     
     if progress:
       progressMessage("Done building trees for %s forest." % options.forest)
-  except Exception,e:
-    print >> sys.stderr, "Error:", e.message[:1000]
-    sys.exit(1)
+ except Exception,e:
+   #import traceback
+   #traceback.print_stack()
+   print >> sys.stderr, "Error:", e.message[:1000]
+   sys.exit(1)
 
 
 if options.stitch is not None:
- try :
+  try :
     thstitch = float(options.stitch)
 
     if not os.path.exists(infile) :
       fatalError("cant find input file for stitching (%s)" % infile)
 
+    a = [None]*5
+    if options.stitchArgs is not None :
+      a = options.stitchArgs.split(',')
+      if len(a) != 5 :
+         fatalError("expecting 5 comma separated values for --stitch-arguments")
+         
+    maxReps = int(a[0] or 20) 
+    maxConsReps = int(a[1] or 100)
+    noConsTH = float(a[2] or 0.02)
+    refinmentFactor = 1 + float(a[3] or 0.1)
+    refinmentLimit = float(a[4] or .15)
+    if not ( 0 < maxReps and 0 < maxConsReps and 0 < noConsTH < 0.05
+             and 1 <= refinmentFactor and 0 < refinmentLimit ) :
+      fatalError("stitch-arguments dont make sense")
+      
     nameparts = infile.split(os.path.extsep)
     if nameparts[-1] == options.treelogext :
       nameparts.pop(-1)
 
-    if nameparts[-1][0] == 'p' and nameparts[-1][1:].isdigit() :
+    plast = nameparts[-1]
+    if (plast[0] == 'p' and plast[1:].isdigit()) or plast == 'auto' :
       #thfor = None
       nameparts.pop(-1)
 
+    base = os.path.extsep.join(nameparts + ([otus.thstr(thstitch)] if thstitch < 1 else []))
+    finalLogName = base + os.path.extsep + options.treelogext
+    noOverwrite(finalLogName)
+    
     if not allSeqs :
       base = os.path.extsep.join(nameparts)
       seqsfile = base + os.path.extsep + options.seqsext
@@ -364,7 +439,7 @@ if options.stitch is not None:
       allSeqs = list(readFasta(file(seqsfile)))
 
     if progress:
-      progressMessage("stitiching trees for %s forest" % options.stitch)
+      progressMessage("stitching trees for %s forest" % options.stitch)
 
     trees = []
     levels = set()
@@ -384,6 +459,8 @@ if options.stitch is not None:
 
     #tlog = TreeLogger(os.path.extsep.join(nameparts) + ".intrim.trees",
     #                  labels = zip(count(), [x[0][1:] for x in allSeqs]), overwrite=1) ; # intrim
+
+    #    import pdb; pdb.set_trace()
     
     stack = []
     for tree in reversed(trees) :
@@ -398,14 +475,21 @@ if options.stitch is not None:
           c.append(t)
         
         th = otus.thfromstr(treeLevel[-1])
-        thTo = levels[levels.index(th) + 1]
-        import pdb; pdb.set_trace()
-        atree = otus.assembleTree(c, th, thTo, getseq, verbose = fverbose)
-        treeLevel = treeLevel[:-2] + [otus.thstr(thTo)]
+        thTo = otus.thfromstr(treeLevel[-3])
+        #thTo = levels[levels.index(th) + 1]
+        
+        atree = otus.assembleTree(c, th, thTo, getseq, verbose = fverbose,
+                                  nMaxReps = maxReps, maxPerCons = maxConsReps,
+                                  lowDiversity = noConsTH, refineFactor = refinmentFactor,
+                                  refineUpperLimit = refinmentLimit)
+
+        # import pdb; pdb.set_trace()
+        
+        treeLevel = treeLevel[:-2] # + [otus.thstr(thTo)]
         atree.name = "cluster_" + '_'.join(treeLevel)
-        for x in atree.get_terminals() :
-          d = atree.node(x).data
-          d.taxon = str(nameToSeqIndex[d.taxon.strip("'")])
+#        for x in atree.get_terminals() :
+#          d = atree.node(x).data
+#          d.taxon = str(nameToSeqIndex[d.taxon.strip("'")])
           
         th = thTo
         tree = atree
@@ -428,7 +512,7 @@ if options.stitch is not None:
         ath = th
         assemble.append(tree)
 
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     
     if len(assemble) :
       atree = otus.assembleTree(assemble, ath, thstitch, getseq, verbose = fverbose)
@@ -438,7 +522,7 @@ if options.stitch is not None:
         
       if len(asis) > 0 :
         p = assemble[0].name.split('_')
-        n = '_'.join(p[:-2] + ([otus.thstr(thstitch)] if thstitch < 1 else []) )
+        n = '_'.join(p[:-2]) # + ([otus.thstr(thstitch)] if thstitch < 1 else []) )
         atree.name = n
       else :
         atree.name = "tree"
@@ -449,9 +533,9 @@ if options.stitch is not None:
       #tlog.outFile.flush() ; # intrim
     #tlog.close() ; # intrim
     
-    base = os.path.extsep.join(nameparts + ([otus.thstr(thstitch)] if thstitch < 1 else []))
-    name = base + os.path.extsep + options.treelogext
-    tlog = TreeLogger(name, labels = zip(count(), [x[0][1:] for x in allSeqs]),
+    #base = os.path.extsep.join(nameparts + ([otus.thstr(thstitch)] if thstitch < 1 else []))
+    #name = base + os.path.extsep + options.treelogext
+    tlog = TreeLogger(finalLogName, labels = zip(count(), [x[0][1:] for x in allSeqs]),
                       argv = sys.argv, version = __version__,
                       overwrite = options.overwrite)
 
@@ -460,8 +544,110 @@ if options.stitch is not None:
       
     tlog.close()
     
- except Exception,e:
+  except Exception,e:
+   #import pdb; pdb.set_trace()
+   #import traceback
+   #traceback.print_stack()
    print >> sys.stderr, "Error:", e.message[:1000]
    sys.exit(1)
     
   
+if options.shave is not None:
+  try :
+    thshave = float(options.shave)
+
+    if not os.path.exists(infile) :
+      fatalError("cant find input file for stitching (%s)" % infile)
+
+    nameparts = infile.split(os.path.extsep)
+    if nameparts[-1] == options.treelogext :
+      nameparts.pop(-1)
+
+    if not allSeqs :
+      base = os.path.extsep.join(nameparts)
+      seqsfile = base + os.path.extsep + options.seqsext
+      if not os.path.exists(seqsfile) :
+        seqsfile = base
+        if not os.path.exists(seqsfile) :
+          fatalError("Unable to located sequences for " + infile)
+
+      if progress:
+        progressMessage("reading sequences from %s ...," % seqsfile, True)
+      allSeqs = list(readFasta(file(seqsfile)))
+
+    nameToSeqIndex = dict([(h[1:],k) for (h,s),k in zip(allSeqs, count())])
+    getseq = lambda x : allSeqs[nameToSeqIndex[x.strip("'")]][1]
+
+    if progress:
+      progressMessage("shaving tree at %s ...," % options.shave, not fverbose)
+      if fverbose :
+        import time
+      
+    for tree in INexus(simple=1).read(infile) :
+      seqsOutName = tree.name + ".shave_" + otus.thstr(thshave) + \
+                    os.path.extsep + options.seqsext
+      noOverwrite(seqsOutName)
+      sqout = file(seqsOutName, 'w')
+      
+      ca = CAhelper(tree)
+      clades = otus.clusterFromTree(tree, thshave/2, ca)
+      for node in clades:
+        sqs = [getseq(x.data.taxon) for x in node.data.terms]
+        if fverbose and len(sqs) > 100:
+          print >> fverbose, len(sqs),"sequences (%.5g)" % node.data.rh,time.strftime("%T"),
+          tnow = time.clock()
+          fverbose.flush()
+          
+        #import pdb; pdb.set_trace()
+        if len(sqs) > 1 :
+          cs = otus.doTheCons(sqs, node.data.rh)
+        else :
+          cs = sqs[0]
+          
+        if fverbose and len(sqs) > 100:
+          print >> fverbose, tohms(time.clock() - tnow)
+          
+        if options.locfromname:
+          import re
+          comun = defaultdict( lambda : 0 )
+        sz = 0
+        for n in node.data.terms:
+          tax = n.data.taxon.strip("'")
+          i = tax.find(";size=")
+          if i >= 0 :
+            e = tax[i+6:].index(';')
+            isz = int(tax[i+6:i+6+e])
+          else :
+            isz = 1
+          sz += isz
+          if options.locfromname:
+            r = re.search(options.locfromname, tax)
+            if r :
+              comun[r.group(1)] += isz
+        
+        if len(node.data.terms) == 1 :
+          nm = node.data.taxon.strip("'")
+        else :
+          ch = [tree.node(x) for x in node.succ]
+          nm = '$'.join([x.data.terms[0].data.taxon.strip("'") for x in ch])
+
+        #import pdb; pdb.set_trace()
+        if len(comun) :
+          nm = nm + '$' + ':'.join(["%s=%d" % (n,s) for n,s in comun.iteritems()])
+          
+        nm = nm + ('$;size=%d;' % (sz if sz > 0 else len(node.data.terms)))
+        
+        print >> sqout, '>' + nm
+        print >> sqout, cs
+        
+      sqout.close()
+
+    progressMessage("")
+  
+  except Exception,e:
+    #import traceback
+    #traceback.print_stack()
+    print >> sys.stderr, "Error:", e.message[:1000]
+    sys.exit(1)
+
+#  LocalWords:  UPGMA declutter
