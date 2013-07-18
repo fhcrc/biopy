@@ -1,26 +1,26 @@
 from distutils.core import setup, Extension
 import numpy, glob
 
-module1 = Extension('cchelp',
+module1 = Extension('biopy.cchelp',
                     include_dirs = [numpy.get_include()],
                     sources = ['biopy/cchelp.cc'])
 
-module2 = Extension('cnexus',
+module2 = Extension('biopy.cnexus',
                     sources = ['biopy/cnexus.c'])
 
-module3 = Extension('treesset',
+module3 = Extension('biopy.treesset',
                     sources = ['biopy/treesset.cc'],
                     extra_compile_args=['-std=c++0x', '-Wno-invalid-offsetof'])
 
-module4 = Extension('neutralsim',
+module4 = Extension('biopy.neutralsim',
                     sources = ['biopy/neutralsim.cc'],
                     extra_compile_args=['-std=c++0x'])
 
-module5 = Extension('calign',
+module5 = Extension('biopy.calign',
                     sources = ['biopy/calign.cc'],
                     extra_compile_args=['-std=c++0x'])
 
-module6 = Extension('cclust',
+module6 = Extension('biopy.cclust',
                     sources = ['biopy/cclust.cc'],
                     extra_compile_args=['-std=c++0x'])
 
@@ -54,5 +54,6 @@ setup (name = 'biopy',
        data_files=[('doc',glob.glob('html/*.*')),
                    ('doc/_images', glob.glob('html/_images/*.*')),
                    ('doc/_images/math', glob.glob('html/_images/math/*.*')),
-                   ('doc/_static', glob.glob('html/_static/*.*'))]
+                   ('doc/_static', glob.glob('html/_static/*.*')),
+                   ('biopy', ['biopy/readseq.h'])]
        )
