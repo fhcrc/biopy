@@ -56,7 +56,7 @@ parser.add_argument("--name", dest="treename", metavar="STR",
                     help="base for tree names", default = None)
 
 parser.add_argument("--root-range", dest="rootrange", metavar="F", type = float,
-                    help = "Limit root height to +- F% around mean root height",
+                    help = "Limit root height to +- F%% around mean root height",
                     default = None)
 
 parser.add_argument('taxa', metavar="STR", help="taxa specification")

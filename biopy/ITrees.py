@@ -243,7 +243,7 @@ class Tree(Nodes.Chain):
                 self.node(succ).data.branchlength=new_bl
             return prev
         
-    def get_taxa(self,node_id=None):
+    def get_taxa(self,node_id=None,asIDs = False):
         """Return a list of all otus downwards from a node (self, node_id).
 
         nodes = get_taxa(self,node_id=None)
@@ -263,7 +263,7 @@ class Tree(Nodes.Chain):
         while len(waiting) :
             n = waiting.pop(0)
             if n.succ==[] :
-                tx.append(n.data.taxon)
+                tx.append(n.id if asIDs else n.data.taxon)
             else :
                 waiting.extend([self.chain[x] for x in n.succ])
         return tx

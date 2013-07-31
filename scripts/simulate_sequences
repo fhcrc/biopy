@@ -10,7 +10,7 @@ import argparse, sys, os.path
 
 parser = argparse.ArgumentParser(description= """%prog [OPTIONS] trees-file-or-tree
 
-    Simulation sequences for tips of a gene tree using a substitution model.""")
+    Simulation sequences for tips of a gene tree using a substitution and models.""")
 
 parser.add_argument("-n", "--seqlen", metavar="N", type = int,
                     help="""Alignment length. (default %(default)d))""", default = 400) 
@@ -26,7 +26,8 @@ parser.add_argument("-c", "--clock", metavar="DIST",
                     " multipled of a random value drawn from DIST. A number "
                     " by itself specifies a constant. Otherwise, a comma separated list where the"
                     " first character specifies the distribution. See the documentation for supported"
-                    " distributions.", default = None)
+                    " distributions. The branch mutation rate is by default the one from the model,"
+                    " but may be overridden by an attribute specified in the tree.", default = None)
 
 parser.add_argument("-a", "--annotate", metavar="FILE",
                     help="Output trees with sequences embedded in tips annotation. By default,"  
