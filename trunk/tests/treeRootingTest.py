@@ -1,8 +1,11 @@
 import unittest
 
-from biopy.treeutils import getCommonAncesstor, treeDiameterInfo, rootAtMidpoint
+from biopy.treeutils import getCommonAncesstor, treeDiameterInfo, \
+     rootAtMidpoint, _populateTreeWithNodeToTipDistances, _cleanTreeWithNodeToTipDistances
+
 from biopy.combinatorics import allPairs
 from biopy.parseNewick import parseNewick
+from itertools import chain
 
 def pathLenTo(tree, fr, to) :
   p = 0
@@ -36,6 +39,35 @@ def maxTipPathTheHardWay(tree) :
   ##     mx = (p, x, y)
   ## return mx
 
+    
+def tipToInternalDistance(tree, nTip, nNode, dx) :
+  """ As straighforward code as I can make it, still not exactly naive
+  
+  nTip - tip node
+  nNode - internal node
+  dx - distance from internal node towards parent (dx < branch
+  """
+  
+  nodePath = [nNode.id]
+  pathDistance = [-dx]
+  n = nNode
+  while n.id != tree.root :
+    nodePath.append(n.prev)
+    pathDistance.append( pathDistance[-1] + n.data.branchlength )
+    n = tree.node(n.prev)
+  
+  pathDistance[0] = dx
+  #print nodePath, pathDistance
+  
+  nid = nNode.id
+  distance = 0
+  while nTip.id not in nodePath :
+    distance += nTip.data.branchlength
+    nTip = tree.node(nTip.prev)
+
+  #print distance, nTip.id
+  return distance + pathDistance[nodePath.index(nTip.id)]
+
 
 class TestTreeRooting(unittest.TestCase):
   def setUp(self) :
@@ -63,6 +95,18 @@ class TestTreeRooting(unittest.TestCase):
       r2 = allTipDistances(tm)
       u2 = dict([(frozenset([tm.node(y).data.taxon for y in x]),r2[x]) for x in r2])
       self.assertEqual(u1, u2)
+
+  def test_tipDistances(self) :
+    for t in self.trees:
+      _populateTreeWithNodeToTipDistances(t)
+      for nid in t.all_ids() :
+        n = t.node(nid)
+        e2 = dict([(tt,tipToInternalDistance(t, t.node(t.search_taxon(tt)),n, 0))
+                   for tt in t.get_taxa()])
+        ii = chain(*[d for d in n.data.dtips if d])
+        v = sum([(x-y)**2 for x,y in zip(sorted(e2.values()), sorted(ii))])
+        self.assertEqual( float("%f" % v),0.0)
+      _cleanTreeWithNodeToTipDistances(t)
       
 if __name__ == '__main__':
   unittest.main()
