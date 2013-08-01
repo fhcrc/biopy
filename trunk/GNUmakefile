@@ -13,3 +13,7 @@ sphinx-full:
 #	rm -rf html/
 	python setup.py install  --home=./`python --version 2>&1 | sed -s "s/Python /version-/"` > /dev/null 2>&1 
 	sphinx-build -b html source html
+
+dist:
+	rm MANIFEST
+	python setup.py sdist
