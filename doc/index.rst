@@ -6,9 +6,7 @@
 Biopy documentation
 ===================
 
-Biopy is a python based collection of bioinformatic related code.
-
-Biopy contains code for exploring and developing phylogenetic
+Biopy is a small Python library for exploring and developing phylogenetic
 ideas. biopy is useful for generating simulated data and performing
 off-line analysis.
 
