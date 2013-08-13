@@ -33,7 +33,8 @@ __all__ = ["TreeBuilder", "TreeLogger", "getClade", "getTreeClades",
            "nodeHeight", "treeHeight", "setLabels", "convertDemographics",
            "coalLogLike", "getPostOrder", "getPreOrder", "setSpeciesSimple",
            "resolveTree", "attributesVarName", "addAttributes",
-           "rootAtMidpoint", "rootByTipVarianceOptimization", "CAhelper"]
+           "rootAtMidpoint", "rootByTipVarianceOptimization", "treeDiameterInfo",
+           "CAhelper"]
 
 # Can't change, still hardwired in many places in code
 attributesVarName = "attributes"

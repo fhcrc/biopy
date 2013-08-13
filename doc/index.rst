@@ -6,18 +6,21 @@
 Biopy documentation
 ===================
 
-Biopy is a small Python library for exploring and developing phylogenetic
+biopy is a small Python library for exploring and developing phylogenetic
 ideas. biopy is useful for generating simulated data and performing
 off-line analysis.
 
-Some parts are specific to BEAST and \*BEAST in particular.
+Most of the code is of general interest, but some is BEAST/\*BEAST specific.
 
-biopy is **not** a high-duty, high-performance library, but a small
-part is implemented in C++ to ease some pain.
+biopy is **not** a high-duty, high-performance library, but some code
+which proved painfully slow in pur Python has been converted to "C++".
 
-This code requires Python 2.7 and the following packages:
+The library requires Python 2.7 and the following packages:
 `numpy <http://numpy.scipy.org//>`_, `scipy <www.scipy.org//>`_, lxml,
 matplotlib and biopython.
+
+If you use biopy in a publication, please cite it using
+`<http://dx.doi.org/10.6084/m9.figshare.761224>`_.
 
 .. toctree::
    :maxdepth: 5
