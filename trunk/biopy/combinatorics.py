@@ -128,7 +128,7 @@ def lbinomial(k, n, p) :
   probability p.
   """
   v = gammaln(n+1) - (gammaln(k+1) + gammaln(n-k+1))
-  return v + k * math.log(p) + (n-k) * math.log(1-p)
+  return v + k * log(p) + (n-k) * log(1-p)
 
 
 def uniformvec(n,k) :

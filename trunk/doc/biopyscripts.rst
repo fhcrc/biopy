@@ -9,6 +9,8 @@ Biopy utilities
 
    samptrees
 
+   trees
+
    like
 
    seq
