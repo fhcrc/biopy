@@ -273,7 +273,7 @@ Attributes&
 
     int const nameEnd = findIndex(s, '=', ",]\"{}");
     if( s[nameEnd] != '=' ) {
-      return -1;
+      return -eat-1;
     }
     string name(s, nameEnd);
     s += nameEnd+1;
@@ -283,7 +283,7 @@ Attributes&
     if( *s == '"' ) {
       int const e = _getStuff(s+1, '"');
       if( e < 0 ) {
-	return -1;
+	return -eat-1;
       } else {
         v = string(s+1, e);
         s += e+2;
@@ -292,7 +292,7 @@ Attributes&
     } else if( *s == '{' ) {
       int const e = _getStuff(s+1, '}');
       if( e < 0 ) {
-	return -1;
+	return -eat-1;
       } else {
 	v = string(s+1, e);
 	s += e+2;
@@ -301,7 +301,7 @@ Attributes&
     } else {
       int const e = findIndex(s, ',', "]");
       if( e == -1 ) {
-	return -1;
+	return -eat-1;
       }
       v = string(s, e);
       s += e;
@@ -344,6 +344,9 @@ readSubTree(const char* txt, vector<returnType>& nodes)
     
     while( true ) {
       int n1 = readSubTree(txt+1, nodes);
+      if( n1 <= 0 ) {
+	return std::min(n1 - eat,-1);
+      }
       eat += 1+n1;
       txt += 1+n1;
       subs.push_back(nodes.size()-1);
@@ -371,7 +374,7 @@ readSubTree(const char* txt, vector<returnType>& nodes)
         txt += 1;
         break;
       }
-      return -1; // error
+      return -eat - 1; // error
     }
   } else {
     const char* s = txt;
@@ -380,7 +383,7 @@ readSubTree(const char* txt, vector<returnType>& nodes)
     if( *s == '\'' || *s == '"' ) {
       int const e = _getStuff(s+1, *s);
       if( e < 0 ) {
-	return -1;
+	return e - eat -1;
       }
       s += e+2;
     } else {
@@ -424,7 +427,7 @@ readSubTree(const char* txt, vector<returnType>& nodes)
 #endif	
 	int n1 = parseAttributes(txt+2, vs);
 	if( n1 < 0 ) {
-	  return -1;
+	  return n1 - (eat+2);
 	}
 	n1 += 3;
 	n1 += skipSpaces(txt+n1);
@@ -450,7 +453,7 @@ readSubTree(const char* txt, vector<returnType>& nodes)
 	// skip comment
 	int const e = _getStuff(txt+1, ']');
 	if( e < 0 ) {
-	  return -1;
+	  return e - eat - 1;
 	} else {
 	  txt += e+2;
 	  eat += e+2;
@@ -500,7 +503,7 @@ readSubTree(const char* txt, vector<returnType>& nodes)
       double const b = strtod(nTxt, &endp);
       n1 = endp - nTxt;
       if( n1 == 0 ) {
-	return -1;
+	return -eat-1;
       }
 #if PYINTERFACE    
       branch = PyFloat_FromDouble(b);
@@ -1850,7 +1853,7 @@ TreesSet::add(const char* treeTxt, PyObject* kwds)
   
   if( ! (nc == txtLen || (nc+1 == txtLen && treeTxt[nc] == ';')) ) {
     if( nc < 0) {
-      int const where = txtLen+(nc+1);
+      int const where = -(nc+1);
       PyErr_Format(PyExc_ValueError, "failed parsing around %d (%10.10s ...).", where, treeTxt+where);
     } else {
       PyErr_Format(PyExc_ValueError, "extraneous characters at tree end: '%s'",
@@ -2828,8 +2831,8 @@ parseTree(PyObject*, PyObject* args)
   
   if( ! (nc == txtLen || (nc+1 == txtLen && treeTxt[nc] == ';')) ) {
     if( nc < 0) {
-      int const where = txtLen+(nc+1);
-      PyErr_Format(PyExc_ValueError, "failed parsing around %d (%10.10s ...).", where, treeTxt+where);
+      int const where = -(nc+1);
+      PyErr_Format(PyExc_ValueError, "failed parsing around char %d (%10.10s ...).", where, treeTxt+where);
     } else {
       PyErr_Format(PyExc_ValueError, "extraneous characters at tree end: '%s'",
 		   string(treeTxt+nc,std::max(5,txtLen-nc)).c_str());

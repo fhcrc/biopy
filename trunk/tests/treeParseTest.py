@@ -84,6 +84,9 @@ class TestTreeParse(unittest.TestCase):
               self.assertTrue( hasattr(t.node(i).data, "attributes"), msg=case.newick) 
               for n,v in a:
                 self.assertEqual(t.node(i).data.attributes[n], v, msg=case.newick)
-          
+
+# add fails
+# (a,b[&s=cal,])
+
 if __name__ == '__main__':
   unittest.main()

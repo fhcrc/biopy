@@ -298,336 +298,6 @@ seqsMinDiff(PyObject*, PyObject* args)
   return PyLong_FromLong(gMin);
 }
 
-
-#if 0
-static inline bool
-has(char const ch, const char* any) {
-  for(/**/ ; *any; ++any) {
-    if( *any == ch ) {
-      return true;
-    }
-  }
-  return false;
-}
-    
-static inline int
-_getStuff(const char* s, char const sep) {
-  int e = 0;
-  while( s[e] && (s[e] != sep || s[e-1] == '\\') ) {
-    e += 1;
-  }
-  return s[e] ? e : -1;
-}
-
-static int
-findIndex(const char* s, char const ch, const char* stopAt)
-{
-  const char* s0 = s;
-
-  while( *s != ch ) {
-    if( has(*s, stopAt) ) {
-      return s - s0;
-    }
-    ++s;
-    if( ! *s ) {
-      return -1;
-    }
-  }
-  return s - s0;
-}
-
-static inline int
-skipSpaces(const char* txt)
-{
-  const char* s = txt;
-  while( *s && isspace(*s) ) {
-    ++s;
-  }
-  return s - txt;
-}
-
-// trim spaces from both ends of string, return python string
-static inline PyObject*
-trimString(string const& s)
-{
-  const char* txt = s.c_str();
-  int const n0 = skipSpaces(txt);
-  int n1 = s.length()-1;
-  while( n1 >= 0 && isspace(txt[n1]) ) {
-    --n1;
-  }
-  return PyString_FromStringAndSize(txt + n0, n1+1-n0);
-}
-
-static int
-parseAttributes(const char* s, vector<PyObject*>& vals)
-{
-  int eat = 0;
-  while( *s != ']' ) {
-    if( *s == ',' ) {
-      s += 1;
-      eat += 1;
-    }
-
-    int const nameEnd = findIndex(s, '=', ",]\"{}");
-    if( s[nameEnd] != '=' ) {
-      return -1;
-    }
-    string name(s, nameEnd);
-    s += nameEnd+1;
-    eat += nameEnd+1;
-
-    string v;
-    if( *s == '"' ) {
-      int const e = _getStuff(s+1, '"');
-      if( e < 0 ) {
-	return -1;
-      } else {
-        v = string(s+1, e);
-        s += e+2;
-        eat += e+2;
-      }
-    } else if( *s == '{' ) {
-      int const e = _getStuff(s+1, '}');
-      if( e < 0 ) {
-	return -1;
-      } else {
-	v = string(s+1, e);
-	s += e+2;
-	eat += e+2;
-      }
-    } else {
-      int const e = findIndex(s, ',', "]");
-      if( e == -1 ) {
-	return -1;
-      }
-      v = string(s, e);
-      s += e;
-      eat += e;
-    }
-
-    PyObject* o = PyTuple_New(2);
-    PyTuple_SET_ITEM(o, 0, trimString(name));
-    PyTuple_SET_ITEM(o, 1, trimString(v));
-    vals.push_back(o);
-  }
-  return eat;
-}
-
-
-static int
-readSubTree(const char* txt, vector<PyObject*>& nodes)
-{
-  int eat = skipSpaces(txt);
-  txt += eat;
-  //int ll = strlen(txt);
-  //cout << ll << endl;
-    
-  PyObject* vals = NULL;
-  PyObject* const nodeData = PyList_New(4);
-  
-  if( *txt == '(' ) {
-    vector<int> subs;
-    while( true ) {
-      int n1 = readSubTree(txt+1, nodes);
-      if( n1 < 0 ) {
-	return n1;
-      }
-      eat += 1+n1;
-      txt += 1+n1;
-      subs.push_back(nodes.size()-1);
-
-      n1 = skipSpaces(txt);
-      eat += n1;
-      txt += n1;
-      if( *txt == ',' ) {
-        continue;
-      }
-      if( *txt == ')' ) {
-	int const ns = subs.size();
-	PyObject* psubs = PyList_New(ns);
-	for(int k = 0; k < ns; ++k) { 
-	  PyList_SET_ITEM(psubs, k, PyLong_FromLong(subs[k]));
-	}
-	
-	PyList_SET_ITEM(nodeData, 2, psubs);
-
-	Py_INCREF(Py_None);
-	PyList_SET_ITEM(nodeData, 0, Py_None);
-
-	eat += 1;
-        txt += 1;
-        break;
-      }
-      return -(strlen(txt)+1); // error
-    }
-  } else {
-    // a terminal
-    const char* s = txt;
-    if( *s == '\'' || *s == '"' ) {
-      int const e = _getStuff(s+1, *s);
-      if( e < 0 ) {
-	return -(strlen(txt)+1);
-      }
-      s += e+2;
-    } else {
-      while( ! isspace(*s) && *s != ':' && *s != '[' && *s != ','
-	     && *s != '(' && *s != ')' && *s != ']' ) {
-	++s;
-      }
-    }
-    int const n1 = s - txt;
-
-    PyList_SET_ITEM(nodeData, 0, PyString_FromStringAndSize(txt, n1));
-
-    Py_INCREF(Py_None);
-    PyList_SET_ITEM(nodeData, 2, Py_None);
-
-    eat += n1;
-    txt += n1;
-  }
-
-  {
-    int const n1 = skipSpaces(txt);
-    txt += n1;
-    eat += n1;
-  }
-
-  string nodeTxt;
-  while( *txt ) {
-    if( has(*txt, "(),;") ) {
-      break;
-    }
-    if( *txt == '[' ) {
-      if( txt[1] == '&' ) {
-	vector<PyObject*> vs;
-	int n1 = parseAttributes(txt+2, vs);
-	if( n1 < 0 ) {
-	  return -(1+strlen(txt));
-	}
-	n1 += 3;
-	n1 += skipSpaces(txt+n1);
-	eat += n1;
-	txt += n1;
-
-	if( vs.size() > 0 ) {
-	  int b;
-	  if( vals == NULL ) {
-	    vals = PyTuple_New(vs.size());
-	    b = 0;
-	  } else {
-	    b = PyTuple_Size(vals);
-	    _PyTuple_Resize(&vals, b + vs.size());
-	  }
-	  for(unsigned int k = 0; k < vs.size(); ++k) {
-	    PyTuple_SET_ITEM(vals, b+k, vs[k]);
-	  }
-	}
-      } else {
-	// skip comment
-	int const e = _getStuff(txt+1, ']');
-	if( e < 0 ) {
-	  return -(1+strlen(txt));
-	} else {
-	  txt += e+2;
-	  eat += e+2;
-	}
-      }
-    } else {
-      nodeTxt.append(txt, 1);
-      txt += 1;
-      eat += 1;
-    }
-  }
-
-  if( ! vals ) {
-    Py_INCREF(Py_None);
-    vals = Py_None;
-  }
-  PyList_SET_ITEM(nodeData, 3, vals);
-
-  PyObject* branch = NULL;
-
-  //std::cout << nodeTxt << std::endl;  
-  const char* nTxt = nodeTxt.c_str();
-  nTxt += skipSpaces(nTxt);
-  if( *nTxt ) {
-    int const i = findIndex(nTxt, ':',"");
-    if( i != 0 ) {
-      int k = (i>0) ? i : strlen(nTxt);
-      PyList_SET_ITEM(nodeData, 0, trimString(string(nTxt,k)));
-      nTxt += k;
-    }
-    if( i >= 0 ) {
-      int n1 = skipSpaces(nTxt+1);
-      nTxt += 1+n1;
-    
-      //std::cout << nTxt << std::endl;  
-      char* endp;
-      double const b = strtod(nTxt, &endp);
-      n1 = endp - nTxt;
-      if( n1 == 0 ) {
-	return -(1+strlen(txt));
-      }
-    
-      branch = PyFloat_FromDouble(b);
-    }
-  }
-  if( branch == NULL ) {
-    Py_INCREF(Py_None);
-    branch = Py_None;
-  }
-  
-  PyList_SET_ITEM(nodeData, 1, branch);
-  nodes.push_back(nodeData);
-
-  return eat;
-}
-
-static PyObject*
-parseSubTree(PyObject*, PyObject* args)
-{
-  const char* treeTxt;
-
-  if( !PyArg_ParseTuple(args, "s", &treeTxt) ) {
-    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
-    return 0;
-  }
-  vector<PyObject*> nodes;
-
-  int const txtLen = strlen(treeTxt);
-  int nc = readSubTree(treeTxt, nodes);
-  if( nc > 0 ) {
-    nc += skipSpaces(treeTxt + nc);
-  }
-  if( ! (nc == txtLen || (nc+1 == txtLen && treeTxt[nc] == ';')) ) {
-    // clean !!!
-    for(unsigned int k = 0; k < nodes.size(); ++k) {
-      for(int i = 0; i < 4; ++i) {
-	Py_DECREF(PySequence_GetItem(nodes[k], i));
-      }
-      Py_DECREF(nodes[k]);
-    }
-    if( nc < 0) {
-      int const where = txtLen+(nc+1);
-      PyErr_Format(PyExc_ValueError, "failed parsing around %d (%10.10s ...).", where, treeTxt+where);
-    } else {
-      PyErr_Format(PyExc_ValueError, "extraneous characters at tree end: '%s'",
-		   string(treeTxt+nc,std::max(5,txtLen-nc)).c_str());
-    }
-    return 0;
-  }
-  
-  PyObject* n = PyTuple_New(nodes.size());
-  for(unsigned int k = 0; k < nodes.size(); ++k) {
-    PyTuple_SET_ITEM(n, k, nodes[k]);
-  }
-  
-  return n;
-}
-#endif
-
-
 static PyObject*
 effectiveSampleStep(PyObject*, PyObject* args)
 {
@@ -755,8 +425,6 @@ effectiveSampleStep(PyObject*, PyObject* args)
   PyTuple_SET_ITEM(t, 2, PyFloat_FromDouble(act2));
   
   return t;
-
-  //  return PyFloat_FromDouble(ess);
 }
 
 
@@ -836,6 +504,212 @@ sumNonIntersectDer(PyObject*, PyObject* args)
   return o;
 }
 
+static PyObject*
+varianceAndDerive(PyObject*, PyObject* args)
+{
+  PyObject* bsnr;
+  PyObject* bsr;
+  double a;
+  
+  if( !PyArg_ParseTuple(args, "OOd", &bsnr, &bsr, &a) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    return 0;
+  }
+
+  if( ! (PySequence_Check(bsnr) && PySequence_Check(bsr)
+	 && PySequence_Size(bsr) == 2 )) {
+    PyErr_SetString(PyExc_ValueError, "wrong args: not a sequence");
+    return 0;
+  }
+
+  uint const n1 = PySequence_Size(bsnr);
+  uint const n = n1 + 2;
+  
+  PyObject* bsr0 = PySequence_Fast_GET_ITEM(bsr,0);
+  PyObject* bsr1 = PySequence_Fast_GET_ITEM(bsr,1);
+  double const bsr00 = PyFloat_AsDouble(PySequence_Fast_GET_ITEM(bsr0,0));
+  double const bsr10 = PyFloat_AsDouble(PySequence_Fast_GET_ITEM(bsr1,0));
+
+  double b2 = (PyFloat_AsDouble(PySequence_Fast_GET_ITEM(bsr0,1)) +
+	       PyFloat_AsDouble(PySequence_Fast_GET_ITEM(bsr1,1)));
+  double rl = a/bsr00;
+  double rr = (b2 - a)/bsr10;
+  
+  //uint ne = PySequence_Size(PySequence_Fast_GET_ITEM(bs,0));
+
+  double sum = 0.0, sum2 = 0.0;
+  double r[n];
+  double b[n];
+  
+  for(uint k = 0; k < n1; ++k) {
+    PyObject* const x = PySequence_Fast_GET_ITEM(bsnr,k);
+    double const br = PyFloat_AsDouble(PySequence_Fast_GET_ITEM(x, 0));
+    double const s = PyFloat_AsDouble(PySequence_Fast_GET_ITEM(x, 1));
+    double const v = s/br;
+    r[k] = v;
+    b[k] = br;
+    sum += v;
+    sum2 += v*v;
+  }
+  sum += rl + rr;
+  sum2 += rl*rl + rr*rr;
+  
+  double const avg = sum / n;
+
+  PyObject* ret = PyFloat_FromDouble(sum2/n - avg*avg);
+  
+  if( PySequence_Size(bsr0) == 3 ) {
+    r[n1] = rl;
+    r[n1+1] = rr;
+    b[n1] = bsr00;
+    b[n1+1] = bsr10;
+    
+    double dfdir[n];
+    double const f2 = 2./(n*n);
+    for(uint k = 0; k < n; ++k) {
+      dfdir[k] = f2 * (n*r[k] - sum) * -(r[k]/b[k]);
+    }
+
+    PyObject* a[n];
+    for(uint k = 0; k < n1; ++k) {
+      PyObject* const x = PySequence_Fast_GET_ITEM(bsnr,k);
+      a[k] = PySequence_Fast_GET_ITEM(x, 2);
+    }
+    a[n1] = PySequence_Fast_GET_ITEM(bsr0,2);
+    a[n1+1] = PySequence_Fast_GET_ITEM(bsr1,2);
+       
+    uint const m = PySequence_Size(a[0]);
+    PyObject* p = PyTuple_New(m+1);
+    for(uint j = 0; j < m; ++j) {
+      double v(0);
+      for(uint k = 0; k < n; ++k) {
+	PyObject* const akj = PySequence_Fast_GET_ITEM(a[k], j);
+	//assert ( PyFloat_Check(akj) ||  PyInt_Check(akj) ) ;
+	v += dfdir[k] * PyFloat_AsDouble(akj);
+      }
+      PyTuple_SET_ITEM(p, j, PyFloat_FromDouble(v));
+    }
+
+    double const pa = f2 * ( (n*r[n1] - sum)/bsr00 -  (n*r[n1+1] - sum)/bsr10 );
+    PyTuple_SET_ITEM(p, m, PyFloat_FromDouble(pa));
+    
+    PyObject* r = PyTuple_New(2);
+    PyTuple_SET_ITEM(r, 0 , ret);
+    PyTuple_SET_ITEM(r, 1 , p);
+    ret = r;
+  }
+  return ret;
+}
+
+
+
+static PyObject*
+normedVarianceAndDeriv(PyObject*, PyObject* args)
+{
+  PyObject* bsnr;
+  PyObject* bsr;
+  double a;
+  
+  if( !PyArg_ParseTuple(args, "OOd", &bsnr, &bsr, &a) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    return 0;
+  }
+
+  if( ! (PySequence_Check(bsnr) && PySequence_Check(bsr) &&  PySequence_Size(bsr) == 2 )) {
+    PyErr_SetString(PyExc_ValueError, "wrong args: not a sequence");
+    return 0;
+  }
+
+  uint const n1 = PySequence_Size(bsnr);
+  uint const n = n1 + 2;
+  
+  PyObject* const bsr0 = PySequence_Fast_GET_ITEM(bsr,0);
+  PyObject* const bsr1 = PySequence_Fast_GET_ITEM(bsr,1);
+  double const bsr00 = PyFloat_AsDouble(PySequence_Fast_GET_ITEM(bsr0,0));
+  double const bsr10 = PyFloat_AsDouble(PySequence_Fast_GET_ITEM(bsr1,0));
+
+  double const b2 = (PyFloat_AsDouble(PySequence_Fast_GET_ITEM(bsr0,1)) +
+	       PyFloat_AsDouble(PySequence_Fast_GET_ITEM(bsr1,1)));
+  double const rl = a/bsr00;
+  double const rr = (b2 - a)/bsr10;
+  
+  double sum = 0.0, sum2 = 0.0;
+  double r[n];
+  double b[n];
+  
+  for(uint k = 0; k < n1; ++k) {
+    PyObject* const x = PySequence_Fast_GET_ITEM(bsnr,k);
+    double const br = PyFloat_AsDouble(PySequence_Fast_GET_ITEM(x, 0));
+    double const s = PyFloat_AsDouble(PySequence_Fast_GET_ITEM(x, 1));
+    double const v = s/br;
+    r[k] = v;
+    b[k] = br;
+    sum += v;
+    sum2 += v*v;
+  }
+  sum += rl + rr;
+  sum2 += rl*rl + rr*rr;
+  
+  double const avg = sum / n;
+
+  double const iavg2 = 1.0/(avg*avg);
+  double const val = (sum2/n) * iavg2 - 1;
+  
+  PyObject* ret = PyFloat_FromDouble(val);
+  
+  if( PySequence_Size(bsr0) == 3 ) {
+    r[n1] = rl;
+    r[n1+1] = rr;
+    b[n1] = bsr00;
+    b[n1+1] = bsr10;
+
+    double const coeff = 2/(sum*sum);
+    double const a1 = n * coeff;
+    double const b1 = coeff * sum * (1 + val);
+    
+    double dfdr[n];
+    for(uint k = 0; k < n; ++k) {
+      dfdr[k] = a1 * r[k] - b1;
+    }
+    double const dfdr_l = dfdr[n-2];
+    double const dfdr_r = dfdr[n-1];
+
+    for(uint k = 0; k < n; ++k) {
+      dfdr[k] *= -(r[k]/b[k]);
+    }
+    
+    PyObject* a[n];
+    for(uint k = 0; k < n1; ++k) {
+      PyObject* const x = PySequence_Fast_GET_ITEM(bsnr,k);
+      a[k] = PySequence_Fast_GET_ITEM(x, 2);
+    }
+    a[n1] = PySequence_Fast_GET_ITEM(bsr0,2);
+    a[n1+1] = PySequence_Fast_GET_ITEM(bsr1,2);
+       
+    uint const m = PySequence_Size(a[0]);
+    PyObject* p = PyTuple_New(m+1);
+    for(uint j = 0; j < m; ++j) {
+      double v(0);
+      for(uint k = 0; k < n; ++k) {
+	PyObject* const akj = PySequence_Fast_GET_ITEM(a[k], j);
+	//assert ( PyFloat_Check(akj) ||  PyInt_Check(akj) ) ;
+	v += dfdr[k] * PyFloat_AsDouble(akj);
+      }
+      PyTuple_SET_ITEM(p, j, PyFloat_FromDouble(v));
+    }
+
+    double const pa = dfdr_l/bsr00 - dfdr_r/bsr10;
+    PyTuple_SET_ITEM(p, m, PyFloat_FromDouble(pa));
+    
+    PyObject* r = PyTuple_New(2);
+    PyTuple_SET_ITEM(r, 0 , ret);
+    PyTuple_SET_ITEM(r, 1 , p);
+    ret = r;
+  }
+  return ret;
+}
+
+
 static PyMethodDef cchelpMethods[] = {
   {"nonEmptyIntersection",  nonEmptyIntersection, METH_VARARGS,
    ""},
@@ -854,9 +728,6 @@ static PyMethodDef cchelpMethods[] = {
    "Mimimum distance between all pairs of sequences from S1 x S2." 
    " Distance is total sum of mismatched characters."},
 
-  // {"parsetree",  parseSubTree, METH_VARARGS,
-  //  ""},
-
   {"sumNonIntersect",  sumNonIntersect, METH_VARARGS,
    ""},
 
@@ -866,6 +737,12 @@ static PyMethodDef cchelpMethods[] = {
   {"effectiveSampleStep",  effectiveSampleStep, METH_VARARGS,
    ""},
 
+  {"varianceAndDerive", varianceAndDerive, METH_VARARGS,
+   ""},
+  
+  {"normedVarianceAndDeriv", normedVarianceAndDeriv, METH_VARARGS,
+   ""},
+  
   {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 

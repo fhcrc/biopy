@@ -1,7 +1,10 @@
 import unittest
 
 from biopy.treeutils import getCommonAncesstor, treeDiameterInfo, \
-     rootAtMidpoint, _populateTreeWithNodeToTipDistances, _cleanTreeWithNodeToTipDistances
+     rootAtMidpoint, getPostOrder
+from biopy.genericutils import flatten
+
+# , _populateTreeWithNodeToTipDistances, _cleanTreeWithNodeToTipDistances
 
 from biopy.combinatorics import allPairs
 from biopy.parseNewick import parseNewick
@@ -38,6 +41,33 @@ def maxTipPathTheHardWay(tree) :
   ##   if p > mx[0] :
   ##     mx = (p, x, y)
   ## return mx
+
+def _populateTipDistancesFromParent(tree, n, parDists) :
+  if n.id != tree.root :
+    assert not n.data.dtips[-1] and parDists
+    n.data.dtips[-1] = [ [a[0],a[1] + n.data.branchlength] for a in parDists]
+    parDists = n.data.dtips[-1]
+  else :
+    assert n.data.dtips[-1] and not parDists
+    parDists = []
+
+  for i in range(len(n.succ)) :
+    d = flatten([n.data.dtips[j] for j in range(len(n.succ)) if j != i] + [parDists])
+    _populateTipDistancesFromParent(tree, tree.node(n.succ[i]), d)
+
+def _populateTreeWithNodeToTipDistances(tree) :
+  for n in getPostOrder(tree) :
+    if not n.succ:
+      n.data.dtips = [[[n,0]],[],[]]
+    else :
+      ch = [tree.node(c) for c in n.succ]
+      n.data.dtips = [[[a[0],a[1]+x.data.branchlength] for a in x.data.dtips[0]] +
+                      [[a[0],a[1]+x.data.branchlength] for a in x.data.dtips[1]]
+                      for x in ch]
+      if n.id != tree.root :
+         n.data.dtips.append([])
+
+  _populateTipDistancesFromParent(tree, tree.node(tree.root), [])
 
     
 def tipToInternalDistance(tree, nTip, nNode, dx) :
@@ -101,12 +131,83 @@ class TestTreeRooting(unittest.TestCase):
       _populateTreeWithNodeToTipDistances(t)
       for nid in t.all_ids() :
         n = t.node(nid)
-        e2 = dict([(tt,tipToInternalDistance(t, t.node(t.search_taxon(tt)),n, 0))
+        e2 = dict([(tt,tipToInternalDistance(t, t.node(t.search_taxon(tt)), n, 0))
                    for tt in t.get_taxa()])
         ii = chain(*[d for d in n.data.dtips if d])
-        v = sum([(x-y)**2 for x,y in zip(sorted(e2.values()), sorted(ii))])
+        v = sum([(x-y)**2 for x,y in zip(sorted(e2.values()), sorted([x[1] for x in ii]))])
         self.assertEqual( float("%f" % v),0.0)
-      _cleanTreeWithNodeToTipDistances(t)
       
 if __name__ == '__main__':
   unittest.main()
+
+
+
+
+
+if 0:
+  import array
+  from itertools import imap, chain
+  
+  def _populateTipDistancesFromParent(tree, n, parDists) :
+    if n.id != tree.root :
+      assert not n.data.dtips[-1] and parDists
+
+      i = imap(lambda x : x + n.data.branchlength, parDists)
+      parDists = n.data.dtips[-1] = array.array('f', i)
+    else :
+      assert n.data.dtips[-1] and not parDists
+      parDists = []
+
+    for i in range(len(n.succ)) :
+      d = chain(*([n.data.dtips[j] for j in range(len(n.succ)) if j != i] + [parDists]))
+      _populateTipDistancesFromParent(tree, tree.node(n.succ[i]), d)
+
+  def _populateTreeWithNodeToTipDistances(tree) :
+    for n in getPostOrder(tree) :
+      if not n.succ:
+        n.data.dtips = [array.array('f',[0]),[],[]]
+      else :
+        ch = [tree.node(c) for c in n.succ]
+        n.data.dtips = [[a+x.data.branchlength for a in x.data.dtips[0]] +
+                        [a+x.data.branchlength for a in x.data.dtips[1]]
+                        for x in ch]
+        if n.id != tree.root :
+           n.data.dtips.append([])
+
+    _populateTipDistancesFromParent(tree, tree.node(tree.root), [])
+
+  def _cleanTreeWithNodeToTipDistances(tree) :
+    for nid in tree.all_ids() :
+      n = tree.node(nid)
+      del n.data.dtips
+
+if 0 :
+  def _rootPointByTipVarianceOptimization(tree) :
+    _populateTreeWithNodeToTipDistances(tree)
+    minLoc = float('inf'),None,None
+
+    for nid in tree.all_ids() :
+      if nid == tree.root :
+        continue
+      n = tree.node(nid)
+      ## pl,mn = [flatten([[a[1] for a in d] for d in n.data.dtips[:-1] if d])] + \
+      ##         [[a[1] for a in n.data.dtips[-1]]]
+      pl,mn = array.array('f',chain(*[d for d in n.data.dtips[:-1] if d])), n.data.dtips[-1]
+
+      nl = len(mn)+len(pl)
+      spl, smn = sum(pl), sum(mn)
+
+      b,c = 2 * (spl - smn)/nl, sum([x**2 for x in pl + mn])/nl
+      a1,b1 = (len(pl) - len(mn))/nl, (spl + smn)/nl
+
+      ac,bc,cc = (1 - a1**2),  (b - (2 * a1 * b1)), (c - b1**2)
+
+      dx = min(max(-bc / (2 * ac) , 0), n.data.branchlength)
+
+      val = dx**2 * ac + dx * bc +  cc
+      #print n.id,dx,val
+      if val < minLoc[0] :
+        minLoc = (val, n, dx)
+
+    _cleanTreeWithNodeToTipDistances(tree)
+    return minLoc
