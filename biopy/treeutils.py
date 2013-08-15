@@ -654,102 +654,6 @@ def rootAtMidpoint(tree) :
 
   return _rerootedNewickRep(tree, n, e)
 
-if 0 :
-  def _populateTipDistancesFromParent(tree, n, parDists) :
-    if n.id != tree.root :
-      assert not n.data.dtips[-1] and parDists
-      n.data.dtips[-1] = [ [a[0],a[1] + n.data.branchlength] for a in parDists]
-      parDists = n.data.dtips[-1]
-    else :
-      assert n.data.dtips[-1] and not parDists
-      parDists = []
-
-    for i in range(len(n.succ)) :
-      d = flatten([n.data.dtips[j] for j in range(len(n.succ)) if j != i] + [parDists])
-      _populateTipDistancesFromParent(tree, tree.node(n.succ[i]), d)
-
-  def _populateTreeWithNodeToTipDistances(tree) :
-    for n in getPostOrder(tree) :
-      if not n.succ:
-        n.data.dtips = [[[n,0]],[],[]]
-      else :
-        ch = [tree.node(c) for c in n.succ]
-        n.data.dtips = [[[a[0],a[1]+x.data.branchlength] for a in x.data.dtips[0]] +
-                        [[a[0],a[1]+x.data.branchlength] for a in x.data.dtips[1]]
-                        for x in ch]
-        if n.id != tree.root :
-           n.data.dtips.append([])
-
-    _populateTipDistancesFromParent(tree, tree.node(tree.root), [])
-
-import array
-from itertools import imap, chain
-#def farray(n, val = 0.0) :
-#  return array.array('f',repeat(val,n))
-if 0:
-  def _populateTipDistancesFromParent(tree, n, parDists) :
-    if n.id != tree.root :
-      assert not n.data.dtips[-1] and parDists
-
-      i = imap(lambda x : x + n.data.branchlength, parDists)
-      parDists = n.data.dtips[-1] = array.array('f', i)
-    else :
-      assert n.data.dtips[-1] and not parDists
-      parDists = []
-
-    for i in range(len(n.succ)) :
-      d = chain(*([n.data.dtips[j] for j in range(len(n.succ)) if j != i] + [parDists]))
-      _populateTipDistancesFromParent(tree, tree.node(n.succ[i]), d)
-
-  def _populateTreeWithNodeToTipDistances(tree) :
-    for n in getPostOrder(tree) :
-      if not n.succ:
-        n.data.dtips = [array.array('f',[0]),[],[]]
-      else :
-        ch = [tree.node(c) for c in n.succ]
-        n.data.dtips = [[a+x.data.branchlength for a in x.data.dtips[0]] +
-                        [a+x.data.branchlength for a in x.data.dtips[1]]
-                        for x in ch]
-        if n.id != tree.root :
-           n.data.dtips.append([])
-
-    _populateTipDistancesFromParent(tree, tree.node(tree.root), [])
-
-  def _cleanTreeWithNodeToTipDistances(tree) :
-    for nid in tree.all_ids() :
-      n = tree.node(nid)
-      del n.data.dtips
-
-if 0 :
-  def _rootPointByTipVarianceOptimization(tree) :
-    _populateTreeWithNodeToTipDistances(tree)
-    minLoc = float('inf'),None,None
-
-    for nid in tree.all_ids() :
-      if nid == tree.root :
-        continue
-      n = tree.node(nid)
-      ## pl,mn = [flatten([[a[1] for a in d] for d in n.data.dtips[:-1] if d])] + \
-      ##         [[a[1] for a in n.data.dtips[-1]]]
-      pl,mn = array.array('f',chain(*[d for d in n.data.dtips[:-1] if d])), n.data.dtips[-1]
-
-      nl = len(mn)+len(pl)
-      spl, smn = sum(pl), sum(mn)
-
-      b,c = 2 * (spl - smn)/nl, sum([x**2 for x in pl + mn])/nl
-      a1,b1 = (len(pl) - len(mn))/nl, (spl + smn)/nl
-
-      ac,bc,cc = (1 - a1**2),  (b - (2 * a1 * b1)), (c - b1**2)
-
-      dx = min(max(-bc / (2 * ac) , 0), n.data.branchlength)
-
-      val = dx**2 * ac + dx * bc +  cc
-      #print n.id,dx,val
-      if val < minLoc[0] :
-        minLoc = (val, n, dx)
-
-    _cleanTreeWithNodeToTipDistances(tree)
-    return minLoc
 
 def _updateSums(s, x) :
   if not s :
@@ -775,6 +679,12 @@ def _populateTipDistancesFromParentForm(tree, n, parDists) :
 
 
 def _populateTreeWithNodeToTipDistancesForm(tree) :
+  """ Establish 'sums' for each node. There are 3 sums, the first two for the 2
+  descendants sub-trees and the last one to the parent, i.e. for the taxa not in
+  the clade under the node. Each entry summarises the distances from the node to
+  the tips in the form of [count,sum,sum-of-squares].
+  """
+  
   for n in getPostOrder(tree) :
     if not n.succ:
       n.data.sums = [[1,0,0],[0,0,0],[0,0,0]]
@@ -792,37 +702,134 @@ def _cleanTreeWithNodeToTipDistancesForm(tree) :
     n = tree.node(nid)
     del n.data.sums
 
-def _rootPointByTipVarianceOptimization(tree) :
+def _solveMinVariance(npl,nmn,spl,smn,sum2,branchlength) :
+  nl = npl + nmn
+
+  b,c = 2 * (spl - smn) / nl, sum2/nl
+
+  a1,b1 = (npl - nmn)/nl, (spl + smn)/nl
+
+  ac,bc,cc = (1 - a1**2),  (b - 2 * a1 * b1), (c - b1**2)
+    
+  dx = min(max(-bc / (2 * ac) , 0), branchlength)
+    
+  val = dx**2 * ac + dx * bc +  cc
+  return dx,val
+
+if 0 :
+  def _solveMinVarianceNormed(npl,nmn,sump,sumn,sum2,br) :
+    nl = npl + nmn
+    m = (sump+sumn)/nl
+
+    a,b,c = 1, 2. * (sump-sumn)/nl , sum2/nl
+    p = (npl-nmn)/nl
+    a1,b1,c1 = p**2,2*m*p,m**2
+
+    #d = (a**2*c1**2 + a1**2*c**2 + (a*b1**2 - a1*b*b1)*c -
+    #                     (2*a*a1*c + a*b*b1 - a1*b**2)*c1)
+
+    #d1 = (nmn**2*sum2 - 2*nmn*npl*sum2 - nmn*sumn**2 + 2*nmn*sumn*sump + 3*nmn*sump**2 +
+    #      npl**2*sum2 + 3*npl*sumn**2 + 2*npl*sumn*sump - npl*sump**2)/nl**3
+
+    d2 = ((sumn + sump)*((nmn-3*npl)*sumn + (npl-3*nmn)*sump) - (nmn -npl)**2*sum2)/nl**3
+
+    u2 = -nl**3/(4*(nmn - npl)*(nmn*sump + npl*sumn))
+    print u2 - 1/(a*b1 - a1*b)
+
+    u3 = 4*(sumn + sump)*(nmn*sump + npl*sumn)/nl**3
+    print u3 - (a*c1 - a1*c - d2)
+
+    u4 = -2*(nmn - npl)*(nmn*sum2 - npl*sum2 - sumn**2 + sump**2)/(nl)**3
+    print u4 - (a*c1 - a1*c + d2)
+
+    rx1,rx2 = -u3 * u2, -u4 * u2
+
+    rx1 = (sumn + sump)/(nmn - npl)
+    #rx2 = -(nmn - npl)*(nmn*sum2 - npl*sum2 - sumn**2 + sump**2)/(2*(nmn - npl)*(nmn*sump + npl*sumn))
+    rx2 = (sumn**2 - sump**2 - sum2*(nmn-npl))/(2*(nmn*sump + npl*sumn))
+
+    x1 = -(a*c1 - a1*c + d2)/(a*b1 - a1*b)
+
+    print rx1,rx2,x1,-(a*c1 - a1*c - d2)/(a*b1 - a1*b)
+
+    if not (0 <= x1 <= br) :
+      x1 = -(a*c1 - a1*c - d2)/(a*b1 - a1*b)
+
+    if not (0 <= x1 <= br) :
+      v1 = c/c1 - 1
+      x1 = br
+      v2 = (a * x1**2 + b * x1 + c) / (a1 * x1**2 + b1 * x1 + c1) - 1
+      if v1 < v2 :
+        x1 = 0
+
+    val = (a * x1**2 + b * x1 + c) / (a1 * x1**2 + b1 * x1 + c1) - 1
+    return x1, val
+
+def _solveMinVarianceNormed(npl,nmn,sump,sumn,sum2,br) :
+  nl = npl + nmn
+  
+  a,b,c = 1, 2 * (sump-sumn)/nl , sum2/nl
+  
+  p = (npl-nmn)/nl
+  m = (sump+sumn)/nl
+  a1,b1,c1 = p**2,2*m*p,m**2
+
+  x1 = (sumn + sump)/(nmn - npl)
+  
+  if not (0 <= x1 <= br) :
+    x1 = (sumn**2 - sump**2 - sum2*(nmn-npl))/(2*(nmn*sump + npl*sumn))
+    
+  if not (0 <= x1 <= br) :
+    v1 = c/c1 - 1
+    x1 = br
+    v2 = (a * x1**2 + b * x1 + c) / (a1 * x1**2 + b1 * x1 + c1) - 1
+    if v1 < v2 :
+      x1 = 0
+  
+  val = (a * x1**2 + b * x1 + c) / (a1 * x1**2 + b1 * x1 + c1) - 1
+  return x1, val
+    
+def _rootPointByTipVarianceOptimization(tree, normed) :
   _populateTreeWithNodeToTipDistancesForm(tree)
   minLoc = float('inf'),None,None
-  
+
+  fval = _solveMinVarianceNormed if normed else _solveMinVariance
   for nid in tree.all_ids() :
     if nid == tree.root :
       continue
     n = tree.node(nid)
+    
+    # Find the root position in the branch between node and its parent which
+    # minimizes the variance of distances to tips.
 
+    # number of tips in clade (all descendants) and out
     npl,nmn = (sum([x[0] for x in n.data.sums[:-1]]) , n.data.sums[-1][0])
-    nl = npl + nmn
-    spl, smn = sum([x[1] for x in n.data.sums[:-1]]), n.data.sums[-1][1]
+    # nl = npl + nmn
     
-    b,c = 2 * (spl - smn) / nl, sum([x[2] for x in n.data.sums])/nl
+    # sum of distances to descendant tips and out
+    spl, smn = sum([x[1] for x in n.data.sums[:-1]]) , n.data.sums[-1][1]
 
-    a1,b1 = (npl - nmn)/nl, (spl + smn)/nl
+    # The variance has a quadratic form as a function of distance from the
+    # node. Calculate the coefficients and take the minimum of the parabola in
+    # the valid range.
 
-    ac,bc,cc = (1 - a1**2),  (b - 2 * a1 * b1), (c - b1**2)
+    sum2 = sum([x[2] for x in n.data.sums])
+
+    dx,val = fval(npl,nmn,spl,smn,sum2,n.data.branchlength)
+
+    ## print n.id
+    ## print npl,nmn,spl,smn,sum2,n.data.branchlength
+    ## print dx,val
+    ## print solveMinVarianceNormed(npl,nmn,spl,smn,sum2,n.data.branchlength)
     
-    dx = min(max(-bc / (2 * ac) , 0), n.data.branchlength)
-    
-    val = dx**2 * ac + dx * bc +  cc
-    #print n.id,dx,val
     if val < minLoc[0] :
       minLoc = (val, n, dx)
 
   _cleanTreeWithNodeToTipDistancesForm(tree)
   return minLoc
 
-def rootByTipVarianceOptimization(tree) :
-  minLoc = _rootPointByTipVarianceOptimization(tree)
+def rootByTipVarianceOptimization(tree, normed=False) :
+  minLoc = _rootPointByTipVarianceOptimization(tree,normed)
   return _rerootedNewickRep(tree, minLoc[1], minLoc[2])
 
 class CAhelper(object) :
@@ -892,3 +899,5 @@ class CAhelper(object) :
     if isinstance(n, (int,long)) :
       n = self.tree.node(n)
     return n.data.terms
+
+#  LocalWords:  clade taxa
