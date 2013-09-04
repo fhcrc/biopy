@@ -11,7 +11,7 @@ import sys, re
 
 __all__ =  ["readTraces", "setDemographics"]
 
-def readTraces(beastFile, traces, report = False) :
+def readTraces(beastFile, traces, report = False, missingOK = False) :
   """ Read traces from a BEAST log file.
 
   Return a sequence of traces, each a pair (name, sequence-of-values).
@@ -48,7 +48,8 @@ def readTraces(beastFile, traces, report = False) :
             if report:
               print >> sys.stderr, "adding", " ".join([cols[k] for k in i])
           else :
-            raise RuntimeError(t + " not found.")
+            if not missingOK:
+              raise RuntimeError(t + " not found.")
       break
 
   if not len(iTraces) :

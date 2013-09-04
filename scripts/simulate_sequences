@@ -8,26 +8,24 @@ from __future__ import division
 
 import argparse, sys, os.path
 
-parser = argparse.ArgumentParser(description= """%prog [OPTIONS] trees-file-or-tree
+parser = argparse.ArgumentParser(description= """Simulation sequences for tips of a
+gene tree using a substitution and clock models.""")
 
-    Simulation sequences for tips of a gene tree using a substitution and models.""")
 
 parser.add_argument("-n", "--seqlen", metavar="N", type = int,
                     help="""Alignment length. (default %(default)d))""", default = 400) 
 
-parser.add_argument("-m", "--model",
-                    help="Substitution model. Comma separated list - model name"
-                    " and model parameters. (1) JC,mu  (2) HKY,mu,kappa,freqs (3)"
-                    " GTR,mu,rates,freqs" 
-                    " (default %(default)s)", default = "JC,1") 
+parser.add_argument("-m", "--model", action="append", help =
+"""Substitution model. Comma separated list - model name and model parameters.
+(1) JC,mu (2) HKY,mu,kappa,freqs (3) GTR,mu,rates,freqs (default JC,1)""")
 
-parser.add_argument("-c", "--clock", metavar="DIST",
-                    help = "Molecular clock. The mutation rate of each branch is"
-                    " multipled of a random value drawn from DIST. A number "
-                    " by itself specifies a constant. Otherwise, a comma separated list where the"
-                    " first character specifies the distribution. See the documentation for supported"
-                    " distributions. The branch mutation rate is by default the one from the model,"
-                    " but may be overridden by an attribute specified in the tree.", default = None)
+parser.add_argument("-c", "--clock", action="append", metavar="DIST", help =
+"""Molecular clock. The mutation rate of each branch is multipled of a random value
+drawn from DIST. A number by itself specifies a constant. Otherwise, a comma
+separated list where the first character specifies the distribution (see the
+documentation for supported distributions). The base branch mutation rate is the one
+specified by the model, but may be overridden by an attribute specified in the tree.""",
+                    default = None)
 
 parser.add_argument("-a", "--annotate", metavar="FILE",
                     help="Output trees with sequences embedded in tips annotation. By default,"  
@@ -38,7 +36,9 @@ parser.add_argument("-o", "--nexus", dest="nexfile", metavar="FILE",
                     help="Name of annotated trees file or base of alignment file.", default = None)
 
 
-parser.add_argument('trees', metavar='FILE', help="Trees file (or explicit tree)")
+parser.add_argument('trees', metavar='FILE-OR-TREE', help="Trees file (or a NEICK tree string)")
+
+import re
 
 from biopy import INexus, submodels, __version__
 from biopy.treeutils import toNewick, TreeLogger
@@ -74,11 +74,27 @@ if seqLen <= 0 :
   parser.print_help(sys.stderr)
   sys.exit(1)
 
-try :
-  clockDist = parseDistribution(options.clock) if options.clock else None
-except RuntimeError, e:
-  print >> sys.stderr, "*** Error:", e.message
-  sys.exit(1)
+clocksDist = []
+if  options.clock :
+  for clock in options.clock :
+    pat = None
+    if clock.find(':') > 0 :
+      clock,pat = model.split(':')
+    try :
+      clockDist = parseDistribution(clock)
+    except RuntimeError as e:
+      print >> sys.stderr, "*** Error: parsing clock distribution", e.message
+      sys.exit(1)
+    clocksDist.append([clockDist,pat])
+
+if clocksDist :
+  clocksDist = sorted(clocksDist, key = lambda x: 0 if x[1] is None else 1)
+  
+  if len([p is None for c,p in clocksDist]) > 1 :
+    print >> sys.stderr, """Only one clock distribution can be the default (catch-all), the rest
+ require a pattern."""
+  
+    sys.exit(1)
 
 def parseFreqs(freqs) :
   pi = [0]*4
@@ -124,27 +140,50 @@ def parseFreqs(freqs) :
 
   return pi,[x/qMat[-1] for x in qMat][:-1]
 
-try :
-  model = options.model.split(',')
-  modelName = model[0].upper()
-  if modelName == 'JC' :
-    mu = float(model[1]) if model[1] else 1
-    smodel = submodels.JCSubstitutionModel(mu)
-  elif modelName == 'HKY':
-    mu = float(model[1]) if model[1] else 1
-    kappa = float(model[2]) if model[2] else 1
-    freqs = model[3:]
-    pi = parseFreqs(freqs)[0]
-    smodel = submodels.HKYSubstitutionModel(mu = mu, kappa = kappa, pi = pi)
-  elif modelName == 'GTR':
-    mu = float(model[1]) if model[1] else 1
-    freqs = model[2:]
-    pi,qMat = parseFreqs(freqs)
-    smodel = submodels.StationaryGTR(mu = mu, m = qMat, pi = pi)
-except RuntimeError as r:
-  print >> sys.stderr, "error in parsing model." + r.message
-  sys.exit(1)
+#print options.model
+if not options.model :
+  options.model = [["JC,1",None]]
+  
+models = []
+for model in options.model:
+  pat = None
+  if model.find(':') > 0 :
+    model,pat = model.split(':')
+  #print model
+  
+  try :
+    model = model.split(',')
+    modelName = model[0].upper()
+    if modelName == 'JC' :
+      mu = float(model[1]) if model[1] else 1
+      smodel = submodels.JCSubstitutionModel(mu)
+    elif modelName == 'HKY':
+      mu = float(model[1]) if model[1] else 1
+      kappa = float(model[2]) if model[2] else 1
+      freqs = model[3:]
+      pi = parseFreqs(freqs)[0]
+      smodel = submodels.HKYSubstitutionModel(mu = mu, kappa = kappa, pi = pi)
+    elif modelName == 'GTR':
+      mu = float(model[1]) if model[1] else 1
+      freqs = model[2:]
+      pi,qMat = parseFreqs(freqs)
+      smodel = submodels.StationaryGTR(mu = mu, m = qMat, pi = pi)
+    else :
+      print >> sys.stderr,"model",modelName,"??"
+      sys.exit(1)
+  except RuntimeError as r:
+    print >> sys.stderr, "error in parsing model." + r.message
+    sys.exit(1)
 
+  models.append([smodel,pat])
+  del smodel
+  
+if models[0][1] != None or any([p is None for m,p in models[1:]]) :
+  print >> sys.stderr, """First model must be the default (catch-all), the rest
+ require a pattern."""
+  
+  sys.exit(1)
+  
 tlog = None
 if options.annotate :
   tlog = TreeLogger(options.annotate, argv = sys.argv, version = __version__)
@@ -152,6 +191,25 @@ if options.annotate :
 from biopy.INexus import exportMatrix
   
 for count,tree in enumerate(trees):
+  if len(models) == 1 or not tree.name:
+    smodel = models[0][0]
+  else :
+    smodel = None
+    for m,p in models[1:]:
+      if re.search(p, tree.name) :
+        smodel = m
+        break
+    smodel = smodel or models[0][0]
+
+  clockDist = None
+  if len(clocksDist) :
+    for c,p in clocksDist[1:]:
+      if re.search(p, tree.name) :
+        clockDist = c
+        break
+    if not clockDist and clocksDist[0][1] is None:
+      clockDist = clocksDist[0][0]
+      
   smodel.populateTreeSeqBySimulation(tree, seqLen, clockDist)
 
   for n in tree.get_terminals() :
@@ -161,6 +219,12 @@ for count,tree in enumerate(trees):
     data.attributes['seq'] = smodel.toNucCode(data.seq)
 
   if tlog :
+    if len(models) > 1 :
+      d = tree.node(tree.root).data
+      if not hasattr(d,"attributes") :
+        d.attributes = dict()
+      d.attributes['mu'] = str(smodel.mu)
+      
     treeTxt = toNewick(tree, attributes = 'attributes')
     tlog.outTree(treeTxt, name = tree.name)
 

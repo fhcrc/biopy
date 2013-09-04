@@ -5,8 +5,11 @@
 #
 
 """
-Generic helpers
 ===============
+Generic Helpers
+===============
+
+That have nothing to do with bio-informatics.
 """
 
 __all__ = ["fileFromName", "sumViaLog", "flatten", "tohms"]

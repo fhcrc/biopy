@@ -6,9 +6,12 @@
 
 """
 =============================
-Birth-Death process utilities
+Birth-Death Process Utilities
 =============================
 
+  Sample trees using the Birth-Death process and provide statistics based on
+  model parameters.
+  
   The complicated math is taken from Gerhard (Stadler) `thesis
   <http://deposit.ddb.de/cgi-bin/dokserv?idn=992078377&dok_var=d1&dok_ext=pdf&filename=992078377.pdf>`_.
 """

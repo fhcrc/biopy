@@ -5,16 +5,16 @@
 #
 
 """
+=====================
 Demographic Functions
 =====================
 
-A demographic function is a function of the effective population size over
-time.
+A demographic function defines the effective population size over time.
 
 In addition to :math:`N(t)`, the (positive) population size at time t, the
 demographic provides the integral of the population inverse, :math:`g(x) =
-\int_0^x \\frac{1}{N(t)} dt`, and a draw of the next coalescent time, starting
-with k individuals at time t. 
+\int_0^x \\frac{1}{N(t)} dt`, and can draw the time to the next coalescent,
+starting with k individuals at time t.
 
 Starting with k lineages, the rate of coalescence as a function of t is
 :math:`r(k,t) = \\binom{k}{2}/N(t)`, and the density at time t is
@@ -25,12 +25,13 @@ and x is :math:`c(x) = 1 - e^{\int_0^x -r(k,t) dt} = 1 - e^{-\\binom{k}{2} g(x)}
 t, no event happened between 0 and t (:math:`c(x)`), followed by a coalescence
 (density :math:`r(k,t)`).
 
-To draw a random time to coalesce, we sample r in [0,1] (uniform over cumulative
+To draw a random time to coalesce, we sample r in [0,1] (uniform in cumulative
 density) and solve :math:`g(x) = -\log(1-r)/\\binom{k}{2}` for x.
 
-If we start at :math:`t_0` we need to solve :math:`-log(1-r)/\\binom{k}{2} + g(t_0) = g(x)`.
+If we start at :math:`t_0` instead of zero we need to solve
+:math:`-log(1-r)/\\binom{k}{2} + g(t_0) = g(x)`.
 
-The integral on the interval can be defined in terms of g, :math:`g(x,y) = g(y)
+The integral on any interval can be defined in terms of g, :math:`g(x,y) = g(y)
 - g(x)`, but some instances may provide a (computationally) cheaper version.
 """
 
