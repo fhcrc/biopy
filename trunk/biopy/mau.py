@@ -6,6 +6,10 @@
 from __future__ import division
 
 """
+===========================
+``Mau'' Tree Representation
+===========================
+
    Tree representation based on the ideas of Mau et all.
    
    Bayesian Phylogenetic Inference via Markov Chain Monte Carlo Methods
@@ -13,7 +17,7 @@ from __future__ import division
    http://citeseer.ist.psu.edu/cache/papers/cs/5768/
    ftp:zSzzSzftp.stat.wisc.eduzSzpubzSznewtonzSzlastfinal.pdf/mau98bayesian.pdf>`_)
 
-   Provide transformation to and from BioPython Nexus tree and strings in newick
+   Provide transformation to and from BioPython Nexus tree and strings in NEWICK
    format. 
 """
 

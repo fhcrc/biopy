@@ -8,7 +8,7 @@ from __future__ import division
 
 import argparse, sys, os.path
 
-parser = argparse.ArgumentParser(description= """%prog [OPTIONS] trees-file-or-tree""")
+parser = argparse.ArgumentParser(description = """Root unrooted trees.""")
 
 parser.add_argument("-m", "--midpoint", action="store_true", default = False,
                     help="""Use midpoint rooting""")
@@ -16,7 +16,7 @@ parser.add_argument("-m", "--midpoint", action="store_true", default = False,
 parser.add_argument("-o", "--nexus", metavar="FILE",
                     help="Name of trees file.", default = None)
 
-parser.add_argument('trees', metavar='FILE', help="Trees file (or explicit tree)")
+parser.add_argument('trees', metavar='FILE-OR-TREE', help="Trees file (or explicit tree)")
 
 from biopy import INexus, __version__
 from biopy.treeutils import toNewick, TreeLogger, \

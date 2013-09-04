@@ -4,11 +4,12 @@
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 
 """
+====================
 Coalescent utilities
 ====================
 
-Sample from the coalescent and calculate the likelihood of a tree under the
-coalescent.
+Sample trees from the coalescent and calculate the likelihood of a tree under
+the coalescent.
 
 """
 

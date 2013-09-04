@@ -4,7 +4,12 @@
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 #
 
-""" Miscellaneous helpers for reading BEAST xml files.
+"""
+===================
+BEAST XML Utilities
+===================
+
+Miscellaneous helpers for reading BEAST XML files.
 """
 
 from __future__ import division
@@ -171,7 +176,7 @@ def readBeast2File(root, what) :
           species[sp.attrib['id']] = [tx.attrib['id'] for tx in
                                       sp.findall('taxon')]
           
-        what['species'] = { 'species' : species}
+        what['species'] = {'species' : species}
         break
     if 0 :
       raise RuntimeError("not yet")
