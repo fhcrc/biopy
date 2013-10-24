@@ -27,6 +27,9 @@ parser.add_argument("--stitch", metavar="TH", default = None, type = float,
 parser.add_argument("--shave", metavar="TH", default = None, type = float,
                     help="")
 
+parser.add_argument("--cluster", metavar="TH", default = None, type = float,
+                    help="")
+
 parser.add_argument("--max-single-tree", dest="maxClade", metavar="N", default = 6000, type = int,
                     help="""upper limit on the size of single UPGMA trees to build. """
                     """ This is only a guideline which and not an absolute guarantee. The system"""
@@ -80,6 +83,9 @@ parser.add_argument("--declutter-extension", dest="declext", metavar="STRING", d
                     help="""%(default)s""")
 
 parser.add_argument("--treelogs-extension", dest="treelogext", metavar="STRING", default = "trees",
+                    help="""%(default)s""")
+
+parser.add_argument("--clusters-extension", dest="clustersext", metavar="STRING", default = "clusters",
                     help="""%(default)s""")
 
 parser.add_argument('infile', metavar='FILE', help="Sequences (FASTA) or NEXUS")
@@ -557,7 +563,7 @@ if options.shave is not None:
     thshave = float(options.shave)
 
     if not os.path.exists(infile) :
-      fatalError("cant find input file for stitching (%s)" % infile)
+      fatalError("cant find input file (%s)" % infile)
 
     nameparts = infile.split(os.path.extsep)
     if nameparts[-1] == options.treelogext :
@@ -644,6 +650,80 @@ if options.shave is not None:
 
     progressMessage("")
   
+  except Exception,e:
+    #import traceback
+    #traceback.print_stack()
+    print >> sys.stderr, "Error:", e.message[:1000]
+    sys.exit(1)
+
+if options.cluster is not None:
+  try :
+    if not os.path.exists(infile) :
+      fatalError("cant find input file (%s)" % infile)
+
+    thclust = float(options.cluster)
+
+    nameparts = infile.split(os.path.extsep)
+    if nameparts[-1] == options.treelogext :
+      nameparts.pop(-1)
+    if nameparts[-1] == options.derepext :
+      nameparts.pop(-1)
+    base = os.path.extsep.join(nameparts)
+    
+    seqsfile = base + os.path.extsep + options.seqsext
+    if not os.path.exists(seqsfile) :
+      fatalError("Unable to located original sequences for " + infile)
+    #allSeqs = dict([(h[1:],b) for h,b in readFasta(file(seqsfile))])
+    if progress:
+      progressMessage("reading sequences from %s ...," % seqsfile, True)
+    allSeqs = [(h[1:],b) for h,b in readFasta(file(seqsfile))]
+
+    byseq = defaultdict(lambda : [])
+    for n,b in allSeqs :
+      byseq[b].append(n)
+    byname = dict()
+    for b in byseq:
+      for n in byseq[b]:
+        byname[n] = byseq[b] 
+    del allSeqs, byseq
+    
+    def getMapped(n) :
+      #print n, byname.keys()[:2]
+      n = n.strip("'")
+      if ';' in n :
+        ns = n.split(';')
+        if not ns[-1]:
+          ns = ns[:-1]
+        if len(ns) > 1 and ns[-1].startswith('size=') :
+          ns = ns[:-1]
+          n = ';'.join(ns)
+      #print n
+      return byname[n]
+    
+    # fasta file (derep probably)
+    # full file if derep
+
+    if progress:
+      progressMessage("clustering ...,", True)
+
+    ucOutName = base + os.path.extsep + otus.thstr(thclust) + os.path.extsep + options.clustersext
+    noOverwrite(ucOutName)
+    ucout = file(ucOutName, 'w')
+    
+    for tree in INexus(simple=1).read(infile) :
+      ca = CAhelper(tree)
+      clades = otus.clusterFromTree(tree, thclust/2, ca)
+      for node in clades:
+        #clu = [getMapped(x.data.taxon) for x in node.data.terms])
+        for x in node.data.terms :
+          c = ' '.join(getMapped(x.data.taxon))
+          print >> ucout, c,
+        print >> ucout 
+    ucout.close()
+
+    if progress:
+      progressMessage("done.")
+
   except Exception,e:
     #import traceback
     #traceback.print_stack()

@@ -321,6 +321,7 @@ protected:
   void fillScoreTable(MatchScoreValues<T> const&  mScores,
 		      Alignment const&            prev);
 
+  // Returns True if linear gap scores, False if affine
   bool fillScores(MatchScoreValues<T> const& mScores);
 
   uint const  sz;
@@ -775,7 +776,10 @@ Alignment<T>::getStats(MatchScoreValues<T> const&  scores,
       int const k = cur - lseq2 - 2;
       
       if( score_current == score[k] + match ) {
-	if( s1[iRow-1] == s2[jCol-1] ) {
+	byte const c1 = s1[iRow-1];
+	byte const c2 = s2[jCol-1];
+	
+	if( c1 == c2 || c1 == anynuc || c2 == anynuc ) {
 	  matches += 1;
 	} else {
 	  misMatches += 1;
@@ -802,7 +806,10 @@ Alignment<T>::getStats(MatchScoreValues<T> const&  scores,
       int const k = cur - lseq2 - 2;
       
       if( score_current ==  match + score[k] ) {
-	if( s1[iRow-1] == s2[jCol-1] ) {
+	byte const c1 = s1[iRow-1];
+	byte const c2 = s2[jCol-1];
+	
+	if( c1 == c2 || c1 == anynuc || c2 == anynuc ) {
 	  matches += 1;
 	} else {
 	  misMatches += 1;

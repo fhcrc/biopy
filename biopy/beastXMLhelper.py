@@ -166,7 +166,7 @@ def readBeast2File(root, what) :
 
   if "species" in what :
     for tree in root.findall(".//tree"):
-      if 'id' in tree.attrib and tree.attrib['id'].endswith(':Species') :
+      if 'id' in tree.attrib and tree.attrib['id'].endswith('Species') :
         tss = tree.findall('taxonset')
         assert len(tss) == 1
         tss = tss[0]

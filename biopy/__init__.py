@@ -32,6 +32,6 @@ A small collection of bioinformatic scripts.
   
 """
 
-__version__ = '0.1.8'
+__version__ = '0.1.9'
 """The version of biopy"""
 

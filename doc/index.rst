@@ -13,7 +13,7 @@ off-line analysis.
 Most of the code is of general interest, but some is BEAST/\*BEAST specific.
 
 biopy is **not** a high-duty, high-performance library, but some code
-which proved painfully slow in pur Python has been converted to "C++".
+which proved painfully slow in pure Python has been converted to "C++".
 
 The library requires Python 2.7 and the following packages:
 `numpy <http://numpy.scipy.org//>`_, `scipy <www.scipy.org//>`_, lxml,

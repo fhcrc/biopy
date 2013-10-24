@@ -709,6 +709,264 @@ normedVarianceAndDeriv(PyObject*, PyObject* args)
   return ret;
 }
 
+static PyObject*
+normedVarianceAndDerivNew(PyObject*, PyObject* args)
+{
+  PyObject* bsnr;
+  PyObject* bsr;
+  double a;
+  int variant;
+  
+  if( !PyArg_ParseTuple(args, "OOdi", &bsnr, &bsr, &a, &variant) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    return 0;
+  }
+
+  if( ! (PySequence_Check(bsnr) && PySequence_Check(bsr) &&  PySequence_Size(bsr) == 2 )
+      && (0 <= variant && variant <= 8) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args: not a sequence");
+    return 0;
+  }
+
+  uint const n1 = PySequence_Size(bsnr);
+  uint const n = n1 + 2;
+  
+  PyObject* const bsr0 = PySequence_Fast_GET_ITEM(bsr,0);
+  PyObject* const bsr1 = PySequence_Fast_GET_ITEM(bsr,1);
+  double const bsr00 = PyFloat_AsDouble(PySequence_Fast_GET_ITEM(bsr0,0));
+  double const bsr10 = PyFloat_AsDouble(PySequence_Fast_GET_ITEM(bsr1,0));
+
+  double const b2 = (PyFloat_AsDouble(PySequence_Fast_GET_ITEM(bsr0,1)) +
+	       PyFloat_AsDouble(PySequence_Fast_GET_ITEM(bsr1,1)));
+  double const rl = a/bsr00;
+  double const rr = (b2 - a)/bsr10;
+  
+  double sum = 0.0, sum2 = 0.0;
+  double r[n];
+  double b[n];
+  
+  for(uint k = 0; k < n1; ++k) {
+    PyObject* const x = PySequence_Fast_GET_ITEM(bsnr,k);
+    double const br = PyFloat_AsDouble(PySequence_Fast_GET_ITEM(x, 0));
+    double const s = PyFloat_AsDouble(PySequence_Fast_GET_ITEM(x, 1));
+    double const v = s/br;
+    r[k] = v;
+    b[k] = br;
+    sum += v;
+    sum2 += v*v;
+  }
+  r[n1] = rl;
+  r[n1+1] = rr;
+  b[n1] = bsr00;
+  b[n1+1] = bsr10;
+
+  sum += rl + rr;
+  sum2 += rl*rl + rr*rr;
+  
+  double const avg = sum / n;
+  double const avg2 = avg*avg;
+  double const iavg2 = 1.0/avg2;
+  
+  double val;
+  switch( variant ) {
+    case 0 :
+    {
+      val = (sum2/n) * iavg2 - 1;
+      break;
+    }
+    case 1 :
+    {
+      double const a = (avg-1);
+      val = sqrt(sum2 * iavg2 - n) + a*a;
+      break;
+    }
+    case 2 :
+    {
+      double const a = (avg-1);
+      val = (sum2 * iavg2 - n) + a*a;
+      break;
+    }
+    case 3 :
+    {
+      double const a = (avg-1);
+      val = (sum2 * iavg2 - n) + fabs(a);
+      break;
+    }
+    case 4 :
+    {
+      double const a = (avg-1);
+      val = sqrt(sum2 * iavg2 - n) + fabs(a);
+      break;
+    }
+    case 5 :
+    {
+      double const a = (avg-1);
+      val = (sum2 * iavg2 - n) + n * a * a;
+      break;
+    }
+    case 6 :
+    {
+      double const a = (avg-1);
+      val = (sum2 * iavg2 - n) + n * n * a * a;
+      break;
+    }
+    case 7 : case 8 :
+    {
+      double lx[n];
+      double slx = 0;
+      for(uint k = 0; k < n; ++k) {
+	double x = r[k];
+	if( x <= 0 ) {
+	  x = 1e-10;
+	}
+	lx[k] = log(x);
+	slx += lx[k];
+      }
+      double const av = slx/n;
+      double const a = (avg-1);
+      val = n * a * a;
+      if( variant == 8 ) {
+	val *= n;
+      }
+      for(uint k = 0; k < n; ++k) {
+	double const v = lx[k] - av;
+	val += v*v;
+      }
+      break;
+    }
+  }
+    
+  PyObject* ret = PyFloat_FromDouble(val);
+  
+  if( PySequence_Size(bsr0) == 3 ) {
+
+    double dfdr[n];
+    if( variant == 0 ) {
+      double const coeff = 2/(sum*sum);
+      double const a1 = n * coeff;
+      double const b1 = coeff * sum * (1 + val);
+    
+      for(uint k = 0; k < n; ++k) {
+	dfdr[k] = a1 * r[k] - b1;
+      }
+    } else if( 7 <= variant && variant <= 8 ) {
+      double lx[n];
+      double slx = 0;
+      for(uint k = 0; k < n; ++k) {
+	double x = r[k];
+	if( x <= 0 ) {
+	  x = 1e-10;
+	}
+	lx[k] = log(x);
+	slx += lx[k];
+      }
+      double const av = slx/n;
+      double const c1 = (variant == 7) ? 2 * (avg - 1) : 2 * (avg - 1) * n;
+      double const a1 = (2.0 * (n-2))/n;
+      for(uint k = 0; k < n; ++k) {
+	dfdr[k] = ((lx[k] - av) * a1)/r[k] + c1;
+      }
+    } else {
+      double const m = sum * avg - sum2;
+      double const sumu = (2*m)/(n * avg2*avg);
+
+      double a1 = 2 * iavg2;
+      double b1;
+      
+      switch( variant ) {
+	case 1:
+	{
+	  double const p = 1/(2*sqrt(sum2 * iavg2 - n));
+	  a1 *= p;
+	  double const c1 = (2.0/n) * (avg - 1);
+	  b1 = p * sumu - a1 * avg + c1;
+	  break;
+	}
+	case 2:
+	{
+	  double const c1 = (2.0/n) * (avg - 1);
+	  
+	  b1 = sumu - a1 * avg + c1;
+	  break;
+	}
+	case 3:
+	{
+	  double const ep = 1e-6;
+	  double const c1 = fabs(avg-1) < ep ? 0 : (avg > 1 ? (1./n) : (-1./n));
+	  
+	  b1 = sumu - a1 * avg + c1;
+	  break;
+	}
+	case 4:
+	{
+	  double const p = 1/(2*sqrt(sum2 * iavg2 - n));
+	  a1 *= p;
+
+	  double const ep = 1e-6;
+	  double const c1 = fabs(avg-1) < ep ? 0 : (avg > 1 ? (1./n) : (-1./n));
+	  
+	  b1 = p * sumu - a1 * avg + c1;
+	  break;
+	}
+	case 5:
+	{
+	  double const c1 = (2.0) * (avg - 1);
+	  
+	  b1 = sumu - a1 * avg + c1;
+    	  break;
+	}
+	case 6:
+	{
+	  double const c1 = (2.0*n) * (avg - 1);
+	  
+	  b1 = sumu - a1 * avg + c1;
+	  break;
+	}
+      }
+      
+      for(uint k = 0; k < n; ++k) {
+	dfdr[k] = a1 * r[k] + b1;
+      }
+    }
+    
+    double const dfdr_l = dfdr[n-2];
+    double const dfdr_r = dfdr[n-1];
+
+    for(uint k = 0; k < n; ++k) {
+      dfdr[k] *= -(r[k]/b[k]);
+    }
+    
+    PyObject* a[n];
+    for(uint k = 0; k < n1; ++k) {
+      PyObject* const x = PySequence_Fast_GET_ITEM(bsnr,k);
+      a[k] = PySequence_Fast_GET_ITEM(x, 2);
+    }
+    a[n1] = PySequence_Fast_GET_ITEM(bsr0,2);
+    a[n1+1] = PySequence_Fast_GET_ITEM(bsr1,2);
+       
+    uint const m = PySequence_Size(a[0]);
+    PyObject* p = PyTuple_New(m+1);
+    for(uint j = 0; j < m; ++j) {
+      double v(0);
+      for(uint k = 0; k < n; ++k) {
+	PyObject* const akj = PySequence_Fast_GET_ITEM(a[k], j);
+	//assert ( PyFloat_Check(akj) ||  PyInt_Check(akj) ) ;
+	v += dfdr[k] * PyFloat_AsDouble(akj);
+      }
+      PyTuple_SET_ITEM(p, j, PyFloat_FromDouble(v));
+    }
+
+    double const pa = dfdr_l/bsr00 - dfdr_r/bsr10;
+    PyTuple_SET_ITEM(p, m, PyFloat_FromDouble(pa));
+    
+    PyObject* r = PyTuple_New(2);
+    PyTuple_SET_ITEM(r, 0 , ret);
+    PyTuple_SET_ITEM(r, 1 , p);
+    ret = r;
+  }
+  return ret;
+}
+
 
 static PyMethodDef cchelpMethods[] = {
   {"nonEmptyIntersection",  nonEmptyIntersection, METH_VARARGS,
@@ -741,6 +999,9 @@ static PyMethodDef cchelpMethods[] = {
    ""},
   
   {"normedVarianceAndDeriv", normedVarianceAndDeriv, METH_VARARGS,
+   ""},
+
+  {"normedVarianceAndDerivNew", normedVarianceAndDerivNew, METH_VARARGS,
    ""},
   
   {NULL, NULL, 0, NULL}        /* Sentinel */

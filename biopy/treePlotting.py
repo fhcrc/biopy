@@ -1013,4 +1013,3 @@ def setSTspacing(tree, epsi, po) :
     
   for n,x in zip(filter(lambda n : not n.succ, getPostOrder(tree)), xs) :
     n.data.x = x
- 
