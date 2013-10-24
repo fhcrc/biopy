@@ -20,6 +20,11 @@ module5 = Extension('biopy.calign',
                     sources = ['biopy/calign.cc'],
                     extra_compile_args=['-std=c++0x'])
 
+module7 = Extension('biopy.aalign',
+                    sources = ['biopy/aalign.cc'],
+                    extra_compile_args=['-std=c++0x'])
+
+
 module6 = Extension('biopy.cclust',
                     sources = ['biopy/cclust.cc'],
                     extra_compile_args=['-std=c++0x'])
@@ -49,7 +54,7 @@ setup (name = 'biopy',
        platforms = ["Linux", "Mac OS-X"],
        packages = ['biopy'],
        package_dir={'biopy': 'biopy'},
-       ext_modules = [module1,module2,module3,module4,module5,module6],
+       ext_modules = [module1,module2,module3,module4,module5,module6,module7],
        scripts = glob.glob('scripts/*'),
        data_files=[('doc',glob.glob('html/*.*')),
                    ('doc/_images', glob.glob('html/_images/*.*')),

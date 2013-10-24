@@ -287,7 +287,7 @@ buildLookup(PyObject*, PyObject* args, PyObject* kwds)
     char key[fragmentSize+1];
     key[fragmentSize] = 0;
 
-    for(auto i = matches.begin(); i != matches.end(); ++i) {
+    for(auto i = matches.begin(); i != matches.end(); i = matches.erase(i) /** ++i **/) {
       vector<int>& v = i->second;
       if( removeSingles && v.size() == 1 ) {
 	continue;
@@ -313,7 +313,7 @@ buildLookup(PyObject*, PyObject* args, PyObject* kwds)
       PyDict_SetItemString(d, key, ls);
       Py_DECREF(ls);  // gets me every time. new ref passed again are
 		      // not borrowed and should be released
-      matches.erase(i);
+      // matches.erase(i);
     }
   }
   

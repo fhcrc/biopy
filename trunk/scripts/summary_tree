@@ -241,7 +241,7 @@ nTrees = countNexusTrees(nexusTreesFileName)
 
 # establish trees
 
-nexusReader = INexus.INexus()
+nexusReader = INexus.INexus(simple=True)
 
 nBurninTrees = int(burnIn*nTrees)
 
@@ -374,6 +374,9 @@ if options.method != "taxon-partitions" :
 
 if not optimizingMethod :
   from biopy import treesSummaries
+  if progress:
+    print >> sys.stderr, " computing ...,",
+    
   # "median-heights", "taxon-partitions"
   if options.method == "clade-ca" :
     stree = treesSummaries.summaryTreeUsingCA(allt[0][1][0], trees)
@@ -464,9 +467,9 @@ else :
     norm = bool(options.norm) # True
 
     tr, score = minDistanceTree(options.distance, tree, postTrees,
-                                nodesMinHeight = nh, withDerivative =
-                                options.derivative, norm = norm)
-
+                                nodesMinHeight = nh,
+                                withDerivative = options.derivative,
+                                norm = norm)
     if tr is None :
       # failed: incompatible
       continue

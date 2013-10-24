@@ -8,7 +8,7 @@ import sys
 import calign
 from collections import namedtuple
 
-__all__ = ["seqMultiAlign", "mpc", "mpa", "orderSeqsbyTree"]
+__all__ = ["seqMultiAlign", "mpc", "mpa", "orderSeqsbyTree", "cons"]
 
 MatchScores = namedtuple('MatchScores', "match mismatch gap gape freeEnds")
 defaultMatchScores = MatchScores(match = 10, mismatch = -5, gap = -6, gape = -6,
@@ -99,7 +99,7 @@ def showAlignment(s1, s2, n = 100, stripGaps = True) :
     s1,s2 = ["".join(x) for x in s1,s2]
  
   stats = sum([x==y and x !='-' and y !='-' for x,y in zip(s1,s2)]),\
-          sum([x!=y and x !='-' and y !='-' for x,y in zip(s1,s2)]),\
+          sum([x!=y and x !='-' and y !='-' and x != 'N' and y != 'N' for x,y in zip(s1,s2)]),\
           sum([ x =='-' or y =='-' for x,y in zip(s1,s2)])
    
   while s1 or s2 :

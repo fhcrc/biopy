@@ -762,7 +762,7 @@ def clusterFromTree(tr, th, caHelper = None) :
         topNodes.append(nd)
   return topNodes
 
-# th distance, not node height  (i.e. **not** /2)
+# th distance, not node height  (i.e. **not** 1/2)
 def cutForestAt(forest, th, helpersPool) :
   tops = []
   for it,tr in enumerate(forest) :
