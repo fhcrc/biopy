@@ -18,7 +18,8 @@ using std::vector;
 
 #include "readseq.h"
 
-static const char aminoAcidsOrder[24] = "ABCDEFGHIKLMNPQRSTVWXYZ";
+// last 3 are ambiguous codes
+static const char aminoAcidsOrder[24] = "ACDEFGHIKLMNPQRSTVWYBXZ";
 static uint const nAA = sizeof(aminoAcidsOrder)-1;
 
 static byte*
@@ -329,6 +330,7 @@ public:
     
     vector<int>		alignedFramedRead;
     vector<int>		alignedAA;
+    vector<int>		dnaBoundries;
     
     Result(void) :
       matches(0),
@@ -374,7 +376,7 @@ AlignAndCorrect::scoreCell(uint const idna, uint const jaa)
     
   if (idna < 2 || jaa == 0) {
     c.score = 0;
-    c.what = /*some kind of none;*/ (FType)-1;
+    c.what = /*some kind of none;*/ (FType)200;
   } else {
     // gap in AA
     double const insAA = nodes[idna][jaa - 1].score + scores.correctionScores.indelPenalty;
@@ -501,14 +503,15 @@ AlignAndCorrect::doAlignment(const byte* read, uint nRead, const byte* aa, uint 
   res.dnaFreeEnd = nRead - icur;
   res.aaFreeEnd = naa - jcur;
     
-  while( icur > 0 && jcur > 0 ) {
+  while( icur > 1 && jcur > 0 ) {
     Cell const& cur = nodes[icur][jcur];
 
     int codon[3];
     if( cur.what != ins_ref ) {
       getCodon(cur.loc, icur, codon);
     } else {
-      codon[2] = codon[1] = codon[0] = 5; /* damn */
+      codon[2] = codon[1] = codon[0] = gap;
+      res.dnaBoundries.push_back(0);
     }
     res.alignedFramedRead.push_back(codon[2]);
     res.alignedFramedRead.push_back(codon[1]);
@@ -517,7 +520,8 @@ AlignAndCorrect::doAlignment(const byte* read, uint nRead, const byte* aa, uint 
     int const curaa = aa[jcur-1];
       
     bool aagap = false;
-      
+    int const icurbefore = icur;
+    
     switch( cur.what ) {
       case match: {
 	icur -= 3;
@@ -557,7 +561,11 @@ AlignAndCorrect::doAlignment(const byte* read, uint nRead, const byte* aa, uint 
 	break;
       }
     }
-      
+
+    if( icur != icurbefore ) {
+      res.dnaBoundries.push_back(icurbefore - icur);
+    }
+    
     if( aagap ) {
       res.gaps += 1;
       res.alignedAA.push_back( nAA + 1 );
@@ -654,13 +662,21 @@ aaCorrect(PyObject*, PyObject* args, PyObject* kwds)
 
   uint nseq=0, naa=0;
   byte* const dirtyRead = readSequence(pseq, nseq, true);
+  if( ! dirtyRead ) {
+    return 0;
+  }
+    
   byte* const peptide = readAASequence(paaseq, naa);
+
+  if( ! peptide ) {
+    return 0;
+  }
   
   AlignAndCorrect ac(scoreMatrix, scores, geneticCode);
 
   AlignAndCorrect::Result const& res = ac.doAlignment(dirtyRead, nseq, peptide, naa);
 
-  PyObject* tup = PyTuple_New(3);
+  PyObject* tup = PyTuple_New(4);
   {
     auto const& aread = res.alignedFramedRead;
     int alen = aread.size();
@@ -730,17 +746,436 @@ aaCorrect(PyObject*, PyObject* args, PyObject* kwds)
     }
     PyTuple_SET_ITEM(tup, 2, d);
   }
+  {
+    auto const& b = res.dnaBoundries;
+    int alen = b.size();
+    PyObject* ps = PyTuple_New(alen);
+    alen -= 1;
+    for(uint i = 0; alen >= 0; ++i,--alen) {
+      PyTuple_SET_ITEM(ps, i, PyInt_FromLong(b[alen]));
+    }
+    PyTuple_SET_ITEM(tup, 3, ps);
+  }
 
   delete [] dirtyRead;
   delete [] peptide;
   
   return tup;
+}
+
+#include "seqslist.cc"
+
+// template <typename T>
+// inline T
+// maxit(const T* x, uint start, uint end)
+// {
+//   T v = x[start];
+//   start += 1;
+  
+//   while( start < end ) {
+//     v = std::max(v, x[start]);
+//     start += 1;
+//   }
+//   return v;
+// }
+
+inline float
+maxit(const float* x, uint start, uint end)
+{
+  float v = x[start];
+  start += 1;
+  
+  while( start < end ) {
+    v = std::max(v, x[start]);
+    start += 1;
+  }
+  return v;
+}
+
+// template <typename T>
+// inline int
+// imax(const T* x, uint start, uint end)
+// {
+//   int i = start;
+//   T v = x[i];
+//   start += 1;
+  
+//   while( start < end ) {
+//     if( x[start] > v ) {
+//       i = start;
+//       v = x[i];
+//     }
+//     start += 1;
+//   }
+//   return i;
+// }
+
+inline int
+imax(const float* x, uint start, uint end)
+{
+  int i = start;
+  float v = x[i];
+  start += 1;
+  
+  while( start < end ) {
+    if( x[start] > v ) {
+      i = start;
+      v = x[i];
+    }
+    start += 1;
+  }
+  return i;
+}
+
+static inline int
+decode(uint i, int (&c)[3])
+{
+  if( i < 64 ) {
+    c[0] = i >> 4;
+    i -= 16*c[0];
+    c[1] = i >> 2;
+    c[2] = i - 4*c[1];
+    return 3;
+  }
+  if( i < 64 + 16 ) {
+    i -= 64;
+    c[0] = i >> 2;
+    i -= 4*c[0];
+    c[1] = i;
+    return 2;
+  }
+  if( i < 64 + 16 + 4 ) {
+    c[0] = i - 64 - 16;
+    return 1;
+  }
+  return 0;
+}
+
+// inline byte
+// lastnuc(uint i) {
+//   return 0;
+// }
+
+static inline byte
+lastnuc(uint i) {
+  if( i > 64+16+4 ) {
+    i -= 64+16+4;
+  }
+  if( i < 64 ) {
+    return i & 0x3;
+  }
+  if( i < 64 + 16 ) {
+    return (i-64) & 0x3;
+  }
+  return i - (64 + 16);
+}
+
+static inline bool
+compat(uint const i, uint const ip)
+{
+  int ic[3], ipc[3];
+  uint ni = decode(i, ic);
+  uint nip = decode(ip, ipc);
+  if( nip == 3 && ni == 1 ) {
+    return true;
+  }
+  if( ni == nip+1 ) {
+    for(uint k = 0; k < nip; ++k ) {
+      if( ic[k] != ipc[k] ) {
+	return false;
+      }
+    }
+    return true;
+  }
+  
+  return false;
+}
+
+static inline void
+sortv(const float* const v, uint const n, int* inds)
+{
+  for(uint k = 0; k < n; ++k) {
+    inds[k] = k;
+  }
+  auto fcmp = [v] (int i1, int i2) -> bool { return v[i1] > v[i2]; };
+  std::sort(inds, inds + n, fcmp);
+}
+
+inline float
+cost(byte const x, byte const y, const byte* const nb)
+{
+  // cost '-' -> '-' (deleting) 0
+  // cost of '-' -> X (insert) mismatch (should depend on neighbors?)
+  // cost of 'X' -> '-' (deleting) depends on neighbors
+  // cost X -> X 0 (or positive?)
+  // cost X -> Y (change) mismatch (should depend on neighbors?)
+  if( x == y ) {
+    return 0;
+  }
+  
+  if( y == gap ) {
+    uint const n = (x==nb[0]) + (x==nb[1]);
+    return ((float[]){-6,-3,-2})[n];
+  }
+  
+  // mismatch score
+  return -5;
+}
+
+static byte*
+getAAcons(SeqsList const& seqs, int const (&geneticCode)[64], uint& fstart)
+{
+  uint const nSeq = seqs.nSeqs;
+  uint const nSites = seqs.seqslen[0];
+  // 0 is left, 1 is right
+  byte* const nb = new byte [nSites*2];
+
+  uint const dsb = (64 + 16 + 4);
+  uint const nv = 2*dsb;
+
+  float** const seqScore = new float* [nSites];
+  float** const profileScore = new float* [nSites];
+  uint const nCells = nSites * nv;
+  seqScore[0] = new float [nCells];
+  profileScore[0] = new float [nCells];  // zeros
+  std::fill(profileScore[0], profileScore[0]+nCells, 0);
+  
+  for(uint k = 1; k < nSites; ++k) {
+    seqScore[k] = seqScore[k-1] + nv;
+    profileScore[k] = profileScore[k-1] + nv;
+  }
+
+  for(uint ns = 0; ns < nSeq; ++ns) {
+    const byte* seq = seqs.seqs[ns];
+    // Establish neighbors
+    nb[2*0 + 0] = gap;
+    for(uint si = 1; si < nSites; ++si) {
+      nb[2*si+0] = (seq[si-1] != gap) ? seq[si-1] : nb[2*(si-1)+0];
+    }
+
+    nb[2*(nSites-1) + 1] = gap;
+    for(uint si = nSites-1; si > 0; --si) {
+      nb[2*(si-1) + 1] = (seq[si] != gap) ? seq[si] : nb[2*si + 1];
+    }
+
+    {
+      uint const si = 0;
+      byte const xi = seq[si];
+      const byte* const nbsi = nb + 2*si;
+      float const c[4] = {cost(xi, 0, nbsi),cost(xi, 1, nbsi),cost(xi, 2, nbsi),cost(xi, 3, nbsi)};
+
+      for(uint i = 0; i < 4; ++i) {
+	seqScore[si][64+16 + i] = c[i]; 
+	for(uint j = 0; j < 4; ++j) {
+	  seqScore[si][64 + 4*j + i] = c[i]/2;
+	  for(uint k = 0; k < 4; ++k) {
+	    uint const ii = 16*k + 4*j + i;
+	    // assume any wildcard is not all stop codons???
+	    seqScore[si][ii] = geneticCode[ii] >= 0 ? c[i]/3 : -50000;
+	  }
+	}
+      }
+      float const dc = cost(xi, gap, nbsi);
+      for(uint i = 0; i < dsb; ++i) {
+	seqScore[si][dsb+i] = dc;
+      }
+    }
+    for(uint si = 1; si < nSites; ++si) {
+      byte const xi = seq[si];
+      const byte* const nbsi = nb + 2*si;
+      float const c[4] = {cost(xi, 0, nbsi),cost(xi, 1, nbsi),cost(xi, 2, nbsi),cost(xi, 3, nbsi)};
+      float anyEndU = maxit(seqScore[si-1],0,64);
+      float anyEndD = maxit(seqScore[si-1], dsb, dsb+64);
+      float anyEnd = std::max(anyEndU,anyEndD);
+
+      for(uint i = 0; i < 4; ++i) {
+	seqScore[si][64+16 + i] = anyEnd + c[i]; 
+	for(uint j = 0; j < 4; ++j) {
+	  float const m0 = std::max(seqScore[si-1][64+16+j],seqScore[si-1][dsb + (64+16+j)]);
+	  seqScore[si][64 + 4*j + i] = m0 + c[i]/2;
+	  
+	  for(uint k = 0; k < 4; ++k) {
+	    uint const ii = 16*k + 4*j + i;
+	    // assume any wildcard is not all stop codons???
+	    if( geneticCode[ii] >= 0 ) {
+	      float const m1 = std::max(seqScore[si-1][64 + 4*k + j], seqScore[si-1][dsb + 64 + 4*k + j]);
+	      seqScore[si][ii] = m1 + c[i]/3;
+	    } else {
+	      seqScore[si][ii] = -50000;
+	    }
+	  }
+	}
+      }
+      float const dc = cost(xi, gap, nbsi);
+      for(uint i = 0; i < dsb; ++i) {
+	seqScore[si][dsb+i] = std::max(seqScore[si-1][i], seqScore[si-1][dsb + i]) + dc;
+      }
+    }
+    float* s = seqScore[0];
+    float* p = profileScore[0];
+    for(uint i = 0; i < nCells; ++i) {
+      *p++ += *s++;
+    }
+  }
+
+  byte* states = new byte [nSites];
+  int* istates = new int [nSites]();
+  std::fill(istates, istates+nSites, -1);
+  
+  int si = nSites-1;
+  while( imax(profileScore[si],0,nv) >= int(dsb) ) {
+    states[si] = gap;
+    si -= 1;
+  }
+
+  uint i = imax(profileScore[si],0,nv);
+  states[si] = lastnuc(i);
+  istates[si] = i;
+  uint isi = i;
+  
+  while( si > 0 ) {
+    si -= 1;
+    uint i1 = imax(profileScore[si],0,nv);
+    if( i1 < dsb ) {
+      if( compat(i, i1) ) {
+        states[si] = lastnuc(i1);
+	istates[si] = i1;
+        
+        i = i1 ;
+	isi = si;
+      } else {
+	//print "1",si,
+	int sinds[nv];
+	sortv(profileScore[si], nv, sinds);
+	// i1 might not be top if there are equals to it
+	for(uint k = 0; k < nv; ++k) {
+	  i1 = sinds[k];
+	  if( i1 < dsb ) {
+	    if( compat(i, i1) ) {
+              states[si] = lastnuc(i1);
+	      istates[si] = i1;
+
+              i = i1 ; isi = si;
+              break;
+	    }
+	  } else {
+	    if( compat(i, i1-dsb) ) {
+              states[si] = gap;
+              break;
+	    }
+	  }
+	}
+      }
+    } else {
+      // deleted state for site
+      states[si] = gap;
+      if( ! compat(i, i1-dsb) ) {
+	// deleted state *is not* compatible with current
+	int sinds[nv];
+	sortv(profileScore[si], nv, sinds);
+	// i1 might not be top if there are equals to it
+	for(uint k = 0; k < 11; ++k) {
+	  i1 = sinds[k];
+	  if( i1 >= dsb ) {
+	    if( compat(i, i1-dsb) ) {
+	      // a deleted state compatible with current, keep deleted status
+	      break;
+	    }
+	  } else {
+	    if( compat(i, i1) ) {
+	      // a non deleted state compatible with current, cancel gap
+	      states[si] = lastnuc(i1)/*[-1]*/ ;
+	      istates[si] = i1;
+
+	      i = i1 ; isi = si;
+	      break;
+	    }
+	  }
+	}
+      }
+    }
+  }
+
+  i = istates[isi];                assert( i < dsb );
+  int t[3];
+  int const frame = decode(i,t) - 1;
+  fstart = isi + ((3-frame) % 3);
+  
+  delete [] profileScore[0];
+  delete [] seqScore[0];
+  delete [] seqScore;
+  delete [] profileScore;
+
+  delete [] nb;
+
+  delete [] istates;
+  
+  return states;
+}
+	  
+
+PyObject*
+aaCons(PyObject*, PyObject* args, PyObject* kwds)
+{
+  static const char* kwlist[] = {"seqs", "geneticCode",
+				 static_cast<const char*>(0)};
+
+  PyObject* pGeneticCode;
+  PyObject* pseqs = 0;
+  
+  if( ! PyArg_ParseTupleAndKeywords(args, kwds, "OO", const_cast<char**>(kwlist),
+				    &pseqs,&pGeneticCode) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    return 0;
+  }
+
+  if( ! PySequence_Check(pseqs) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args: not sequences") ;
+    return 0;
+  }
+
+  if( ! (PySequence_Check(pGeneticCode) && PySequence_Size(pGeneticCode) == 64) ) {
+    PyErr_SetString(PyExc_ValueError, "wrong args: invalid genetic code");
+  }
+  
+  int geneticCode[64];
+  {
+    PyObject* const s = PySequence_Fast(pGeneticCode, "error");
+    for(uint k = 0; k < 64; ++k) {
+      PyObject* const o = PySequence_Fast_GET_ITEM(s,k);
+      int const m = PyInt_AS_LONG(o);
+      assert( -1 <= m && m < (int)nAA );
+      geneticCode[k] = m;
+    }
+  }
+
+  std::unique_ptr<const SeqsList> seqs(readSeqsIn(pseqs, false));
+  if( ! seqs || seqs->nSeqs == 0 ) {
+    return 0;
+  }
+  uint fstart;
+  const byte* s = getAAcons(*seqs, geneticCode, fstart);
+
+  PyObject* tup = PyTuple_New(2);
+  
+  uint const nSites = seqs->seqslen[0];
+  PyObject* ps = PyTuple_New(nSites);
+  for(uint i = 0; i < nSites; ++i) {
+    PyTuple_SET_ITEM(ps, i, PyInt_FromLong(s[i]));
+  }
+
+  PyTuple_SET_ITEM(tup, 0, ps);
+  PyTuple_SET_ITEM(tup, 1, PyInt_FromLong(fstart));
+  
+  delete [] s;
+  
+  return tup;
+  
   // PyObject* ret = Py_None;
   // Py_INCREF(ret);
   
   // return ret;
 }
-
 
   
 PyDoc_STRVAR(aalign__doc__,
@@ -750,6 +1185,9 @@ PyDoc_STRVAR(aalign__doc__,
 static PyMethodDef aalignMethods[] = {
   {"acorrect",	(PyCFunction)aaCorrect, METH_VARARGS|METH_KEYWORDS,
    "Align nucs to AA reference and correct errors."},
+  
+  {"aacons",	(PyCFunction)aaCons, METH_VARARGS|METH_KEYWORDS,
+   "Valid coding amino acid from nuclieotide alignment."},
   
   {NULL, NULL, 0, NULL}        /* Sentinel */
 };

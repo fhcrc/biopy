@@ -8,26 +8,48 @@ from __future__ import division
 
 import argparse, sys, os.path
 
-parser = argparse.ArgumentParser(description = """Correct a DNA coding short"""
-                                 """ sequence (read) with the help of an AminoAcid reference.""")
+import Bio.SubsMat.MatrixInfo
+from Bio.Data import CodonTable
+
+availScores = ','.join(Bio.SubsMat.MatrixInfo.available_matrices)
+class MyParser(argparse.ArgumentDefaultsHelpFormatter):
+    def format_epilog(self, formatter):
+        return self.epilog
+      
+parser = argparse.ArgumentParser(description = """Correct a short coding DNA read """
+                                 """ using an Amino Acid reference.""",
+                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+  epilog="Available match scores: " + availScores +
+         '.\n Available Genetic Codes: ' + ','.join(CodonTable.unambiguous_dna_by_name.keys()))
 
 parser.add_argument("--output", choices = ["fancy", "plain", "sequence", "full-sequence"],
-                    default = "plain", help="output options")
+                    default = "plain", help="""Output options. 'plain' outputs the corrected nuclieotide
+                    fragment and the corresponding AA reference on one line. 'sequence' outputs only
+                    the nuclieotide sequence, and 'full-sequence' outputs the unmatched prefix and
+                    suffix as well (in lowercase). 'fancy' print a detailed, human readable description.""")
 
 parser.add_argument("-t", "--translation", default = "Standard",
-                    help="""Name of Genetic Code translation table.""")
-parser.add_argument("-m", "--match-scores", dest="mscores", default = "blosum80",
-                    help="""Name of AA match score table.""")
+                    help="""Name of Genetic Code translation table."""
+                    """ NCBI table numbers are supported as well.""")
 
-parser.add_argument('aaref', metavar = "PEPTIDE-REFERENCE", help = "")
-parser.add_argument('seqs', metavar = 'FILE-OR-SEQUENCE',
-                    help = "fasta file with DNA reads (or a single sequence)")
+parser.add_argument("-m", "--match-scores", dest="mscores", default = "blosum80",
+                    metavar='', choices = Bio.SubsMat.MatrixInfo.available_matrices,
+                    help="""Amino Acid match scores.""")
+
+parser.add_argument("-c", "--correction-scores",  dest="cscores", default="-10,-10,-100",
+                    help="""Comma separated correction Penalties: Indel,Correction,StopCodon.""")
+
+parser.add_argument('aaref', metavar = "PEPTIDE-OR-FILE",
+                    help = """An AminoAcid reference sequence or a FASTA file. If a file, reference
+                    is generated de-novo from the DNA sequences in the file.""")
+
+parser.add_argument('seqs', metavar = 'SEQUENCE-OR-FILE',
+                    help = "A nuclieotide sequence or a FASTA file containing reads to correct.")
 
 options = parser.parse_args()
 
 import sys
 
-from Bio.Data import CodonTable
 try :
   if options.translation.isdigit() :
     transTable = CodonTable.unambiguous_dna_by_id[int(options.translation)]
@@ -37,20 +59,19 @@ except KeyError,e:
   print >> sys.stderr, "No such translation table:",options.translation
   sys.exit(1)
 
-import Bio.SubsMat.MatrixInfo 
 matchScores = getattr(Bio.SubsMat.MatrixInfo, options.mscores)
 if matchScores is None :
   print >> sys.stderr, "No such match scores table:", options.mscores
   sys.exit(1)
+
+try :
+  indelPenalty,correctionPenalty,stopCodonPenalty = [float(x) for x in options.cscores.split(',')]
+except Exception,e:
+  print >> sys.stderr, "Incorrect correction scores"
+  sys.exit(1)
   
 
 from biopy import align, calign, aalign
-
-aaref = [x.upper() for x in options.aaref]
-if not all([x in aalign.AAorder for x in aaref]) :
-  print >> sys.stderr, "Invalid AA reference: (",options.aaref,")"
-  sys.exit(1)
-  
 
 geneticCode = [None]*(64)
 
@@ -70,6 +91,34 @@ for sc in transTable.stop_codons :
 
 assert all([x is not None for x in geneticCode])
 
+if os.path.exists(options.aaref) :
+  from biopy.bioutils import readFasta
+  seqsForRef = list(readFasta(file(options.aaref)))
+  if len(seqsForRef) < 2 :
+    print >> sys.stderr, "Invalid seqeunces file for AA reference: (",options.aaref,")"
+    sys.exit(1)
+
+  def doTheCons(sqs, lengthQuant = 40) :
+    als = [(lengthQuant*(len(s)//lengthQuant), s) for s in sqs]
+    als = [x[1] for x in sorted(als, reverse=1)]
+    al = align.seqMultiAlign(als)
+    return al
+
+  al = doTheCons([x[1] for x in seqsForRef])
+  aaCons,fstart = aalign.aacons(al, geneticCode)
+  sq = filter(lambda x: x != calign.GAP, aaCons[fstart:])
+  aaref = [geneticCode[16*sq[3*k] + 4*sq[3*k+1] + sq[3*k+2]] for k in range(len(sq)//3)]
+  assert all([x >= 0 for x in aaref]), aaref
+  aaref = ''.join([aalign.AAorder[x] for x in aaref])
+  if options.output == "fancy" :
+    print "Generated reference from",len(al),"sequences:"
+    print aaref
+else :
+  aaref = ''.join([x.upper() for x in options.aaref])
+  if not all([x in aalign.AAorder for x in aaref]) :
+    print >> sys.stderr, "Invalid AA reference: (",options.aaref,")"
+    sys.exit(1)
+
 msc = [None]*(len(aalign.AAorder)**2)
 for k1,c1 in enumerate(aalign.AAorder) :
   for k2,c2 in enumerate(aalign.AAorder) :
@@ -80,43 +129,106 @@ for k1,c1 in enumerate(aalign.AAorder) :
     assert msc[len(aalign.AAorder) * k1 + k2] is None
     msc[len(aalign.AAorder) * k1 + k2] = s
 
+def showframes(a, seq) :
+  aseq, aa, stats, frames = a
+  aseq = align.iton(aseq)
+  n = len(frames) ; assert 3*n == len(aseq)
+
+  s = seq[stats["dnaFreeStart"]:-stats["dnaFreeEnd"]
+          if stats["dnaFreeEnd"] else None]
+  for rr in range((n+19)//20)  :
+    r = list(range(20*rr,20*rr+20))
+    print
+    
+    for k,i in enumerate(frames) :
+      if k not in r : continue
+      f = "%3s"
+      if i > 3 :
+        f = "%%%ds" % i
+      print f % aseq[3*k:3*k+3],
+    print
+
+    l = 0
+    for k,i in enumerate(frames) :
+      if k in r : 
+
+        if i > 3 :
+          print '-xx-',
+        elif 0 < i < 3 :
+          print '+++',
+        elif i == 3 :
+          print ''.join([':' if x==y else '*' for x,y in zip(s[l:l+i], aseq[3*k:3*k+3])]),
+        else :
+          print '   ',
+      l += i
+
+    print    
+    l = 0
+    for k,i in enumerate(frames) :
+      if k in r :
+      
+        f = "%3s"
+        if i > 3 :
+          f = "%%%ds" % i
+        print f % s[l:l+i],
+      l += i
+    print
+
 if os.path.exists(options.seqs) :
   from biopy.bioutils import readFasta
   allSeqs = list(readFasta(file(options.seqs)))
   for nm,seq in allSeqs:
-    res = aalign.acorrect(seq, options.aaref, msc, geneticCode)
-    if options.output == "plain" :
-      aa = ''.join([aalign.AAorder[x] for x in res[1]])
-      print nm + '|' + aa
+    res = aalign.acorrect(seq, aaref, msc, geneticCode)
+
+    stats = res[2]
+    print ';;',stats["matches"],"matches,",stats["mismatches"],"mimatches,",stats["gaps"],"gaps."
+    ci,cd = stats["correctionInsertions"], stats["correctionDeletions"]
+    print ';;',ci+cd,"corrections:",ci,"insersions +",cd,"deletions."
+    
+    aa = ''.join([aalign.AAorder[x] if x < len(aalign.AAorder) else '-' for x in res[1]])
+    print nm + '|' + aa
+      
     s = align.iton(res[0])
+    if options.output != "sequence" :
+      stats = res[2]
+      dnapre = ''.join([x.lower() for x in seq[:stats["dnaFreeStart"]]])
+      dnasuf = ''.join([x.lower() for x in seq[-stats["dnaFreeEnd"]:]])
+      s = dnapre + s + dnasuf
     print s
+    print
+    
 else :
-  if not all([x in "AGCTNagctn-" for x in options.seqs]) :
+  seq = options.seqs
+  if not all([x in "AGCTNagctn-" for x in seq]) :
     print >> sys.stderr, "Expecting a sequence or a fasta file name"
     sys.exit(1)
-    
-  res = aalign.acorrect(options.seqs, options.aaref, msc, geneticCode)
+
+  res = aalign.acorrect(seq, aaref, msc, geneticCode, indel = indelPenalty,
+                        correction = correctionPenalty, stopCodon = stopCodonPenalty)
+  
   s = align.iton(res[0])
-  aa = ''.join([aalign.AAorder[x] for x in res[1]])
+  aa = ''.join([aalign.AAorder[x] if x < len(aalign.AAorder) else '-' for x in res[1]])
   if options.output == "plain" :
     print s, aa
   elif options.output == "sequence" :
     print s
   elif options.output == "full-sequence" :
     stats = res[2]
-    dnapre = ''.join([x.lower() for x in options.seqs[:stats["dnaFreeStart"]]])
-    dnasuf = ''.join([x.lower() for x in options.seqs[-stats["dnaFreeEnd"]:]])
+    dnapre = ''.join([x.lower() for x in seq[:stats["dnaFreeStart"]]])
+    dnasuf = ''.join([x.lower() for x in seq[-stats["dnaFreeEnd"]:]])
     print dnapre + s + dnasuf
   elif options.output == "fancy" :
     stats = res[2]
-    print stats["matches"],"matches,",stats["mismatches"],"mimatches ",stats["gaps"],"gaps."
+    print stats["matches"],"matches,",stats["mismatches"],"mimatches,",stats["gaps"],"gaps."
     ci,cd = stats["correctionInsertions"], stats["correctionDeletions"]
 
-    print ci+cd,"corrections,",ci,"insersions,",cd,"deletions."
-    dnapre = ''.join([x.lower() for x in options.seqs[:stats["dnaFreeStart"]]])
-    dnasuf = ''.join([x.lower() for x in options.seqs[-stats["dnaFreeEnd"]:]])
-    aapre = ''.join([x.lower() for x in options.aaref[:stats["aaFreeStart"]]])
-    aasuf = ''.join([x.lower() for x in options.aaref[-stats["aaFreeEnd"]:]])
+    print ci+cd,"corrections:",ci,"insersions +",cd,"deletions."
+    dnapre = ''.join([x.lower() for x in seq[:stats["dnaFreeStart"]]])
+    e = stats["dnaFreeEnd"]
+    dnasuf = ''.join([x.lower() for x in seq[-e:]]) if e > 0 else ''
+    aapre = ''.join([x.lower() for x in aaref[:stats["aaFreeStart"]]])
+    e = stats["aaFreeEnd"]
+    aasuf = ''.join([x.lower() for x in aaref[-e:]]) if e > 0 else ''
     lpre = max(len(dnapre),len(aapre))
     codons = [s[3*k:3*k+3] for k in range(len(s)//3)]
     tr = [transTable.forward_table[x] for x in codons]
@@ -124,4 +236,4 @@ else :
     print ' '*(lpre-len(dnapre)) + dnapre, ' '.join(codons),dnasuf
     print ' '*(lpre-len(aapre)) + aapre,' '.join([' %c ' % x for x in aa]),aasuf
 
-  
+    showframes(res, seq)
