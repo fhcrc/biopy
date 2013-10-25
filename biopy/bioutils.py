@@ -10,7 +10,7 @@ def readFasta(fasFile) :
   assert (hasattr(fasFile, 'read') and hasattr(fasFile, 'write'))
   head = None
   for l in fasFile :
-    if l[0] == '#' :
+    if l[0] == '#' or l[0] == ';' :
       continue
     if l[0] == '>':
       if head :

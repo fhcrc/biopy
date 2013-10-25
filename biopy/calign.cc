@@ -999,7 +999,8 @@ globAlignAffine(PyObject*, PyObject* args, PyObject* kwds)
 }
 #endif
 
-
+#include "seqslist.cc"
+# if 0
 class SeqsList {
 public:
   SeqsList(uint n, const uint* sl, const byte** sq) :
@@ -1097,6 +1098,7 @@ readSeqsIn(PyObject* const pseqs, bool const strip)
   }
   return new SeqsList(nseqs, seqslen, seqs);
 }
+#endif
 
 template<typename T>
 PyObject*
