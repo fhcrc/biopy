@@ -91,7 +91,8 @@ for sc in transTable.stop_codons :
 
 assert all([x is not None for x in geneticCode])
 
-if os.path.exists(options.aaref) :
+deNovoAA = os.path.exists(options.aaref)
+if deNovoAA :
   from biopy.bioutils import readFasta
   seqsForRef = list(readFasta(file(options.aaref)))
   if len(seqsForRef) < 2 :
@@ -110,9 +111,7 @@ if os.path.exists(options.aaref) :
   aaref = [geneticCode[16*sq[3*k] + 4*sq[3*k+1] + sq[3*k+2]] for k in range(len(sq)//3)]
   assert all([x >= 0 for x in aaref]), aaref
   aaref = ''.join([aalign.AAorder[x] for x in aaref])
-  if options.output == "fancy" :
-    print "Generated reference from",len(al),"sequences:"
-    print aaref
+  deNovoAA = len(al)
 else :
   aaref = ''.join([x.upper() for x in options.aaref])
   if not all([x in aalign.AAorder for x in aaref]) :
@@ -176,6 +175,12 @@ def showframes(a, seq) :
 
 if os.path.exists(options.seqs) :
   from biopy.bioutils import readFasta
+
+  if deNovoAA :
+    print ";; De novo reference from",deNovoAA,"sequences:"
+    print ";;", aaref
+    print
+    
   allSeqs = list(readFasta(file(options.seqs)))
   for nm,seq in allSeqs:
     res = aalign.acorrect(seq, aaref, msc, geneticCode)
@@ -218,6 +223,10 @@ else :
     dnasuf = ''.join([x.lower() for x in seq[-stats["dnaFreeEnd"]:]])
     print dnapre + s + dnasuf
   elif options.output == "fancy" :
+    if deNovoAA :
+      print "De novo reference from",deNovoAA,"sequences:"
+      print aaref
+    
     stats = res[2]
     print stats["matches"],"matches,",stats["mismatches"],"mimatches,",stats["gaps"],"gaps."
     ci,cd = stats["correctionInsertions"], stats["correctionDeletions"]
@@ -231,7 +240,7 @@ else :
     aasuf = ''.join([x.lower() for x in aaref[-e:]]) if e > 0 else ''
     lpre = max(len(dnapre),len(aapre))
     codons = [s[3*k:3*k+3] for k in range(len(s)//3)]
-    tr = [transTable.forward_table[x] for x in codons]
+    tr = [transTable.forward_table[x] if x != '---' else '-' for x in codons]
     print ' '*lpre, ' '.join([' %c ' % x for x in tr])
     print ' '*(lpre-len(dnapre)) + dnapre, ' '.join(codons),dnasuf
     print ' '*(lpre-len(aapre)) + aapre,' '.join([' %c ' % x for x in aa]),aasuf

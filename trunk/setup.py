@@ -60,5 +60,5 @@ setup (name = 'biopy',
                    ('doc/_images', glob.glob('html/_images/*.*')),
                    ('doc/_images/math', glob.glob('html/_images/math/*.*')),
                    ('doc/_static', glob.glob('html/_static/*.*')),
-                   ('biopy', ['biopy/readseq.h'])]
+                   ('biopy', ['biopy/readseq.h','biopy/seqslist.cc'])]
        )
