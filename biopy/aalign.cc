@@ -18,7 +18,7 @@ using std::vector;
 
 #include "readseq.h"
 
-// last 3 are ambiguous codes
+// last 3 (BXZ) are ambiguous, the are only 20 in nature
 static const char aminoAcidsOrder[24] = "ACDEFGHIKLMNPQRSTVWYBXZ";
 static uint const nAA = sizeof(aminoAcidsOrder)-1;
 
@@ -207,7 +207,7 @@ FScore::getAAIndicesOfCodon(Codon const codon, int (&aas)[16]) const
       aas[0] = 16*c0 + 4*c1 + c2;
       n = 1;
     } else {
-      assert(codon[2] >= 0);
+                                         assert(codon[2] >= 0);
       if( codon[1] >= 0 ) {
 	int const b = 4*codon[1] + codon[2];
 	for(int i = 0; i < 4; ++i) {
@@ -308,6 +308,8 @@ class AlignAndCorrect {
 public:
   FScore const scores;
 
+  // class memebers used to share arguments between method calls. Not
+  // permanent (not allocated or de-allocated by constructor/destructor)
   uint nRead;
   const byte* read;
   uint naa;
@@ -343,16 +345,7 @@ public:
 
   AlignAndCorrect(const int* sub, CorrectionScores<float> const& cscores, int const geneticCode[]);
 
-  inline void
-  getCodon(CodonLocations const cloc, int const idna, int (&codon)[3]) const
-  {
-    auto const cdl = cd[cloc];
-    uint const ii = idna - 1;
-    for(uint k = 0; k < 3 ; ++k) {
-      int const i = ii + cdl[k];
-      codon[k] = i >= 0 ? read[i] : -1;
-    }
-  }
+  void getCodon(CodonLocations const cloc, int const idna, int (&codon)[3]) const;
 
   Result doAlignment(const byte* read, uint nRead, const byte* aa, uint naa);
 
@@ -368,6 +361,16 @@ AlignAndCorrect::AlignAndCorrect(const int* sub,
   nodes(0)
 {}
 
+inline void
+AlignAndCorrect::getCodon(CodonLocations const cloc, int const idna, int (&codon)[3]) const
+{
+  auto const cdl = cd[cloc];
+  uint const ii = idna - 1;
+  for(uint k = 0; k < 3 ; ++k) {
+    int const i = ii + cdl[k];
+    codon[k] = i >= 0 ? read[i] : -1;
+  }
+}
 
 void
 AlignAndCorrect::scoreCell(uint const idna, uint const jaa)
@@ -506,7 +509,7 @@ AlignAndCorrect::doAlignment(const byte* read, uint nRead, const byte* aa, uint 
   while( icur > 1 && jcur > 0 ) {
     Cell const& cur = nodes[icur][jcur];
 
-    int codon[3];
+    Codon codon;
     if( cur.what != ins_ref ) {
       getCodon(cur.loc, icur, codon);
     } else {
@@ -516,7 +519,7 @@ AlignAndCorrect::doAlignment(const byte* read, uint nRead, const byte* aa, uint 
     res.alignedFramedRead.push_back(codon[2]);
     res.alignedFramedRead.push_back(codon[1]);
     res.alignedFramedRead.push_back(codon[0]);
-    // jcur is decremented adn aa[jcur] needed later
+    // jcur is decremented and aa[jcur] is needed later
     int const curaa = aa[jcur-1];
       
     bool aagap = false;
@@ -612,7 +615,6 @@ aaCorrect(PyObject*, PyObject* args, PyObject* kwds)
   
   PyObject* pseq = 0;
   PyObject* paaseq = 0;
-
   
   if( ! PyArg_ParseTupleAndKeywords(args, kwds, "OOOO|ddd", const_cast<char**>(kwlist),
 				    &pseq,&paaseq,&pScoreMatrix,&pGeneticCode,
@@ -637,8 +639,8 @@ aaCorrect(PyObject*, PyObject* args, PyObject* kwds)
   
   CorrectionScores<float> const scores(indelPenalty, correctionPenalty, stopCodonPenalty);
 
-  int* scoreMatrix = new int[nAA * nAA];
-  std::unique_ptr<int> dscoreMatrix(scoreMatrix);
+  int* const scoreMatrix = new int[nAA * nAA];
+  std::unique_ptr<int> dscoreMatrix(scoreMatrix);  // releases pointer
   {
     PyObject* const s = PySequence_Fast(pScoreMatrix, "error");
     for(uint k = 0; k < nAA*nAA; ++k) {
@@ -655,7 +657,10 @@ aaCorrect(PyObject*, PyObject* args, PyObject* kwds)
     for(uint k = 0; k < 64; ++k) {
       PyObject* const o = PySequence_Fast_GET_ITEM(s,k);
       int const m = PyInt_AS_LONG(o);
-      assert( -1 <= m && m < (int)nAA );
+      if ( ! ( -1 <= m && m < (int)nAA ) ) {
+	PyErr_SetString(PyExc_ValueError, "wrong args: invalid genetic code");
+	return 0;
+      }
       geneticCode[k] = m;
     }
   }
@@ -667,7 +672,6 @@ aaCorrect(PyObject*, PyObject* args, PyObject* kwds)
   }
     
   byte* const peptide = readAASequence(paaseq, naa);
-
   if( ! peptide ) {
     return 0;
   }
@@ -780,7 +784,7 @@ aaCorrect(PyObject*, PyObject* args, PyObject* kwds)
 // }
 
 inline float
-maxit(const float* x, uint start, uint end)
+maxit(const float* const x, uint start, uint const end)
 {
   float v = x[start];
   start += 1;
@@ -811,7 +815,7 @@ maxit(const float* x, uint start, uint end)
 // }
 
 inline int
-imax(const float* x, uint start, uint end)
+imax(const float* const x, uint start, uint const end)
 {
   int i = start;
   float v = x[i];
@@ -851,11 +855,6 @@ decode(uint i, int (&c)[3])
   return 0;
 }
 
-// inline byte
-// lastnuc(uint i) {
-//   return 0;
-// }
-
 static inline byte
 lastnuc(uint i) {
   if( i > 64+16+4 ) {
@@ -891,16 +890,47 @@ compat(uint const i, uint const ip)
   return false;
 }
 
+// Reversed sort: order reported as an indices permutation. Cool C++-11
+// features. 
 static inline void
 sortv(const float* const v, uint const n, int* inds)
 {
   for(uint k = 0; k < n; ++k) {
     inds[k] = k;
   }
-  auto fcmp = [v] (int i1, int i2) -> bool { return v[i1] > v[i2]; };
+  auto const fcmp = [v] (int i1, int i2) -> bool { return v[i1] > v[i2]; };
   std::sort(inds, inds + n, fcmp);
 }
 
+inline float
+cost(byte const x, byte const y, const byte* const nb)
+{
+  // cost '-' -> '-' (gap in deleted column) 0
+  // cost of '-' -> X (insert) mismatch depend on neighbors
+  // cost of 'X' -> '-' (delete) depends on neighbors
+  // cost X -> X 0 (or positive?)
+  // cost X -> Y (change) mismatch (should depend on neighbors?)
+  if( x == y ) {
+    return 0;
+  }
+  
+  if( y == gap ) {
+    uint const n = (x==nb[0]) + (x==nb[1]);
+    return ((float[]){-6,-3,-2})[n];
+  }
+
+  uint const n = (y==nb[0]) + (y==nb[1]);
+  if( x == gap ) {
+    return n == 0 ? -6 : ( n == 1 ? -3 : -2 );
+    //return ((float[]){-6,-3,-2})[n];
+  }
+
+  // Mismatch score. Higher score duplicating a neighbor
+  return n == 0 ? -10 : ( n == 1 ? -8 : -7 );
+  //return -10;
+}
+
+#if 0
 inline float
 cost(byte const x, byte const y, const byte* const nb)
 {
@@ -921,6 +951,7 @@ cost(byte const x, byte const y, const byte* const nb)
   // mismatch score
   return -5;
 }
+#endif
 
 static byte*
 getAAcons(SeqsList const& seqs, int const (&geneticCode)[64], uint& fstart)
@@ -930,14 +961,19 @@ getAAcons(SeqsList const& seqs, int const (&geneticCode)[64], uint& fstart)
   // 0 is left, 1 is right
   byte* const nb = new byte [nSites*2];
 
+  // 64 scores for each DNA triplet, 16 for each pair, 4 for each singleton
   uint const dsb = (64 + 16 + 4);
+  // double the trouble by adding a "deleted state" score for each combination.
   uint const nv = 2*dsb;
 
+  // per sequence scores accumulated here
   float** const seqScore = new float* [nSites];
+  // total scores accumulated here
   float** const profileScore = new float* [nSites];
+
   uint const nCells = nSites * nv;
   seqScore[0] = new float [nCells];
-  profileScore[0] = new float [nCells];  // zeros
+  profileScore[0] = new float [nCells];
   std::fill(profileScore[0], profileScore[0]+nCells, 0);
   
   for(uint k = 1; k < nSites; ++k) {
@@ -958,108 +994,147 @@ getAAcons(SeqsList const& seqs, int const (&geneticCode)[64], uint& fstart)
       nb[2*(si-1) + 1] = (seq[si] != gap) ? seq[si] : nb[2*si + 1];
     }
 
+    // Not sure if skipping stop codon cases altogether would make code slower
+    // or faster. I hope it makes little difference since usually the number of
+    // stop codons is smalll. 
+    float const stopCodonPenalty = -50000;
+    
+    // first column special case. duplicate code to avoide checks in the busy
+    // main loop  .
     {
       uint const si = 0;
       byte const xi = seq[si];
       const byte* const nbsi = nb + 2*si;
-      float const c[4] = {cost(xi, 0, nbsi),cost(xi, 1, nbsi),cost(xi, 2, nbsi),cost(xi, 3, nbsi)};
+      float const c[4] = {cost(xi, 0, nbsi),cost(xi, 1, nbsi),
+			  cost(xi, 2, nbsi),cost(xi, 3, nbsi)};
 
+      auto const scsi = seqScore[si];
+      
       for(uint i = 0; i < 4; ++i) {
-	seqScore[si][64+16 + i] = c[i]; 
+	scsi[64+16 + i] = c[i]; 
 	for(uint j = 0; j < 4; ++j) {
-	  seqScore[si][64 + 4*j + i] = c[i]/2;
+	  scsi[64 + 4*j + i] = c[i]/2;
 	  for(uint k = 0; k < 4; ++k) {
 	    uint const ii = 16*k + 4*j + i;
 	    // assume any wildcard is not all stop codons???
-	    seqScore[si][ii] = geneticCode[ii] >= 0 ? c[i]/3 : -50000;
+	    scsi[ii] = geneticCode[ii] >= 0 ? c[i]/3 : stopCodonPenalty;
 	  }
 	}
       }
       float const dc = cost(xi, gap, nbsi);
       for(uint i = 0; i < dsb; ++i) {
-	seqScore[si][dsb+i] = dc;
+	scsi[dsb+i] = dc;
       }
     }
+    
     for(uint si = 1; si < nSites; ++si) {
+      // nuc at site si
       byte const xi = seq[si];
       const byte* const nbsi = nb + 2*si;
-      float const c[4] = {cost(xi, 0, nbsi),cost(xi, 1, nbsi),cost(xi, 2, nbsi),cost(xi, 3, nbsi)};
-      float anyEndU = maxit(seqScore[si-1],0,64);
-      float anyEndD = maxit(seqScore[si-1], dsb, dsb+64);
-      float anyEnd = std::max(anyEndU,anyEndD);
+      // match costs to nuc
+      // Its fun when you have 4 cases forever. Well, at least until we get back
+      // the samples from mars.
+      float const c[4] = {cost(xi, 0, nbsi), cost(xi, 1, nbsi),
+			  cost(xi, 2, nbsi), cost(xi, 3, nbsi)};
+
+      float const cd2[4] = {c[0]/2, c[1]/2, c[2]/2, c[3]/2};
+      float const cd3[4] = {c[0]/3, c[1]/3, c[2]/3, c[3]/3};
+
+      auto const scsi = seqScore[si];
+      auto const scsim1 = seqScore[si-1];
+	
+      float const anyEndU = maxit(scsim1, 0, 64);
+      float const anyEndD = maxit(scsim1, dsb, dsb+64);
+      // score of a frame ending at previous column. (previous column may be
+      // deleted or not). 
+      float const anyEnd = std::max(anyEndU,anyEndD);
 
       for(uint i = 0; i < 4; ++i) {
-	seqScore[si][64+16 + i] = anyEnd + c[i]; 
+	scsi[64+16 + i] = anyEnd + c[i]; 
 	for(uint j = 0; j < 4; ++j) {
-	  float const m0 = std::max(seqScore[si-1][64+16+j],seqScore[si-1][dsb + (64+16+j)]);
-	  seqScore[si][64 + 4*j + i] = m0 + c[i]/2;
+	  uint const jj = 64+16+j;
+	  float const m0 = std::max(scsim1[jj], scsim1[dsb + jj]);
+	  scsi[64 + 4*j + i] = m0 + cd2[i]; //c[i]/2;
 	  
 	  for(uint k = 0; k < 4; ++k) {
 	    uint const ii = 16*k + 4*j + i;
 	    // assume any wildcard is not all stop codons???
 	    if( geneticCode[ii] >= 0 ) {
-	      float const m1 = std::max(seqScore[si-1][64 + 4*k + j], seqScore[si-1][dsb + 64 + 4*k + j]);
-	      seqScore[si][ii] = m1 + c[i]/3;
+	      uint const kj = 64 + 4*k + j;
+	      float const m1 = std::max(scsim1[kj], scsim1[dsb + kj]);
+	      scsi[ii] = m1 + cd3[i]; // c[i]/3;
 	    } else {
-	      seqScore[si][ii] = -50000;
+	      scsi[ii] = stopCodonPenalty;
 	    }
 	  }
 	}
       }
       float const dc = cost(xi, gap, nbsi);
       for(uint i = 0; i < dsb; ++i) {
-	seqScore[si][dsb+i] = std::max(seqScore[si-1][i], seqScore[si-1][dsb + i]) + dc;
+	scsi[dsb+i] = std::max(scsim1[i], scsim1[dsb + i]) + dc;
       }
     }
-    float* s = seqScore[0];
-    float* p = profileScore[0];
-    for(uint i = 0; i < nCells; ++i) {
-      *p++ += *s++;
+    // add sequence scores to profile score matrix
+    {
+      float* s = seqScore[0];
+      float* p = profileScore[0];
+      for(uint i = 0; i < nCells; ++i) {
+	*p++ += *s++;
+      }
     }
   }
 
   byte* states = new byte [nSites];
-  int* istates = new int [nSites]();
+  int* istates = new int [nSites];
   std::fill(istates, istates+nSites, -1);
-  
+
+  // start trace back with the last non deleted column
   int si = nSites-1;
   while( imax(profileScore[si],0,nv) >= int(dsb) ) {
     states[si] = gap;
     si -= 1;
   }
 
-  uint i = imax(profileScore[si],0,nv);
-  states[si] = lastnuc(i);
-  istates[si] = i;
-  uint isi = i;
+  // state of previous column. We search backward for a column which is
+  // compatible with it.
+  uint prevColCode = imax(profileScore[si],0,nv);
+  states[si] = lastnuc(prevColCode);
+  istates[si] = prevColCode;
+  uint lastNonDeletedColumn = prevColCode;
   
   while( si > 0 ) {
     si -= 1;
-    uint i1 = imax(profileScore[si],0,nv);
-    if( i1 < dsb ) {
-      if( compat(i, i1) ) {
-        states[si] = lastnuc(i1);
-	istates[si] = i1;
+    uint colCode = imax(profileScore[si],0,nv);
+    if( colCode < dsb ) {
+      // not deleted
+      if( compat(prevColCode, colCode) ) {
+	// and compatible. how could you ask for more?
+        states[si] = lastnuc(colCode);
+	istates[si] = colCode;
         
-        i = i1 ;
-	isi = si;
+        prevColCode = colCode ;
+	lastNonDeletedColumn = si;
       } else {
-	//print "1",si,
+	// not compatible :( sort states by score, and look for the highest
+	// scoring column which is compatible.
+	
 	int sinds[nv];
 	sortv(profileScore[si], nv, sinds);
-	// i1 might not be top if there are equals to it
+	// colCode might not be top if there are codes eith equal score
 	for(uint k = 0; k < nv; ++k) {
-	  i1 = sinds[k];
-	  if( i1 < dsb ) {
-	    if( compat(i, i1) ) {
-              states[si] = lastnuc(i1);
-	      istates[si] = i1;
+	  colCode = sinds[k];
+	  if( colCode < dsb ) {
+	    if( compat(prevColCode, colCode) ) {
+	      // not deleted and compatible
+              states[si] = lastnuc(colCode);
+	      istates[si] = colCode;
 
-              i = i1 ; isi = si;
+              prevColCode = colCode ; lastNonDeletedColumn = si;
               break;
 	    }
 	  } else {
-	    if( compat(i, i1-dsb) ) {
+	    if( compat(prevColCode, colCode-dsb) ) {
+	      // deleted but compatible - delete the column
               states[si] = gap;
               break;
 	    }
@@ -1067,27 +1142,30 @@ getAAcons(SeqsList const& seqs, int const (&geneticCode)[64], uint& fstart)
 	}
       }
     } else {
-      // deleted state for site
+      // deleted column
       states[si] = gap;
-      if( ! compat(i, i1-dsb) ) {
-	// deleted state *is not* compatible with current
+      if( ! compat(prevColCode, colCode-dsb) ) {
+	// Deleted column state *is not* compatible with current.
+	// Look in decreasing score order for compatible options.
 	int sinds[nv];
 	sortv(profileScore[si], nv, sinds);
-	// i1 might not be top if there are equals to it
+	// colCode might not be top if there are codes eith equal score
+	// 11 is a fabricated number. I do not want to reverse the deleted
+	// status based on flimsy evidence (i.e. low scores).
 	for(uint k = 0; k < 11; ++k) {
-	  i1 = sinds[k];
-	  if( i1 >= dsb ) {
-	    if( compat(i, i1-dsb) ) {
+	  colCode = sinds[k];
+	  if( colCode >= dsb ) {
+	    if( compat(prevColCode, colCode-dsb) ) {
 	      // a deleted state compatible with current, keep deleted status
 	      break;
 	    }
 	  } else {
-	    if( compat(i, i1) ) {
+	    if( compat(prevColCode, colCode) ) {
 	      // a non deleted state compatible with current, cancel gap
-	      states[si] = lastnuc(i1)/*[-1]*/ ;
-	      istates[si] = i1;
+	      states[si] = lastnuc(colCode);
+	      istates[si] = colCode;
 
-	      i = i1 ; isi = si;
+	      prevColCode = colCode; lastNonDeletedColumn = si;
 	      break;
 	    }
 	  }
@@ -1096,10 +1174,10 @@ getAAcons(SeqsList const& seqs, int const (&geneticCode)[64], uint& fstart)
     }
   }
 
-  i = istates[isi];                assert( i < dsb );
+  prevColCode = istates[lastNonDeletedColumn];                assert( prevColCode < dsb );
   int t[3];
-  int const frame = decode(i,t) - 1;
-  fstart = isi + ((3-frame) % 3);
+  int const frame = decode(prevColCode,t) - 1;
+  fstart = lastNonDeletedColumn + ((3-frame) % 3);
   
   delete [] profileScore[0];
   delete [] seqScore[0];
@@ -1170,24 +1248,19 @@ aaCons(PyObject*, PyObject* args, PyObject* kwds)
   delete [] s;
   
   return tup;
-  
-  // PyObject* ret = Py_None;
-  // Py_INCREF(ret);
-  
-  // return ret;
 }
 
   
 PyDoc_STRVAR(aalign__doc__,
-"AA Sequence alignment");
+"AminoAcid sequence alignment to DNA.");
 
 
 static PyMethodDef aalignMethods[] = {
   {"acorrect",	(PyCFunction)aaCorrect, METH_VARARGS|METH_KEYWORDS,
-   "Align nucs to AA reference and correct errors."},
+   "Align DNA to AA reference and correct errors."},
   
   {"aacons",	(PyCFunction)aaCons, METH_VARARGS|METH_KEYWORDS,
-   "Valid coding amino acid from nuclieotide alignment."},
+   "Valid coding amino acid from a nuclieotide alignment."},
   
   {NULL, NULL, 0, NULL}        /* Sentinel */
 };

@@ -73,6 +73,7 @@ def createProfile(seqs) :
   return calign.createProfile(seqs)
 
 def alignToProfile(seq, profile) :
+  wasNucs = isinstance(seq[0], str)
   s = calign.profileAlign(seq, profile)
   s = iton(s) if wasNucs else s
   
@@ -301,12 +302,13 @@ def refineAlignment(al, ci = [0], drop = False, mx = -1, rev = False, verbose = 
       p2,rx = removeColumns(p2, ci)
     
     for n,s in can:
-      ra = calign.profileAlign(s, p2)
-      if drop :
-        ra = restoreColumns(list(ra),rx, calign.GAP)
-      al[n] = iton(ra)
-      if tuple(ra) != sasn(s) :
-        changed += 1
+      if len(s.replace('-','')) <= len(p2) :
+        ra = calign.profileAlign(s, p2)
+        if drop :
+          ra = restoreColumns(list(ra),rx, calign.GAP)
+        al[n] = iton(ra)
+        if tuple(ra) != sasn(s) :
+          changed += 1
 
   if changed :
     p = calign.createProfile(al)

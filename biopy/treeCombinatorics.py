@@ -15,7 +15,7 @@ list of trees. (Yes, this prohibits internal nodes with only one descendant).
 
 from __future__ import division
 
-from combinatorics import nPairs as c2, factorial as fac, _prod as prod
+from combinatorics import choose, nPairs as c2, factorial as fac, _prod as prod
 
 def toNewick(p) :
   """ From internal nested list representation to human readable form. """
@@ -27,7 +27,7 @@ def toNewick(p) :
 
 # Various counting formulas on number of trees/forests under special conditions
 
-def nLabeledHistories(n, k) :
+def nLabeledHistories(n, k=1) :
   """ Total number of ranked histories of (labeled) k-forests with total of
   n tips.""" 
   assert n >= k
@@ -64,7 +64,7 @@ def nTreeRankedTopologies(n1, n2, k) :
   """
   assert k <= n2
   
-  return nr(k+1) * nForestRankedTopologies(n1, n2, k)
+  return nLabeledHistories(k+1) * nForestRankedTopologies(n1, n2, k)
 
 # counting for a specific tree
 
