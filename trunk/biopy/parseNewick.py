@@ -4,12 +4,15 @@
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 
 from __future__ import division
+import sys
 from treeutils import TreeBuilder
 
 __all__ = ["parseNewick"]
 
 #from cchelp import parsetree
 from treesset import parsetree
+
+recorsionLimit = sys.getrecursionlimit()
 
 # Reference implementation in python - supposed to be the same as the C version
 # in cchelp.
@@ -247,6 +250,20 @@ def _build(nodes, weight=1.0, rooted=True, name='') :
       t[k].data.attributes = dict(x[3])
   return tb.finalize(t[-1])
 
+def _build(nodes, weight=1.0, rooted=True, name='') :
+  # name/support ignored
+  tb = TreeBuilder(weight=weight, rooted = rooted, name=name)
+  t = [None]*len(nodes)
+  for k, x in enumerate(nodes):
+    if x[2] is None or len(x[2]) == 0:
+      t[k] = (tb.createLeaf(x[0]),0)
+    else :
+      t[k] = (tb.mergeNodes([ [t[l][0], nodes[l][1]] for l in x[2]]),
+              max([t[l][1] for l in x[2]])+1)
+    if x[3] is not None:
+      t[k][0].data.attributes = dict(x[3])
+  return tb.finalize(t[-1][0]),t[-1][1]
+
 def _parseNewickPython(txt, weight=1.0, rooted=True, name='') :
   nodes = []
   nr = _readSubTree(txt, nodes)
@@ -254,8 +271,17 @@ def _parseNewickPython(txt, weight=1.0, rooted=True, name='') :
 
   if len(left) and not left == ';':
     raise ValueError("extraneous characters at tree end: '" + left[:5] + "'")
-  return _build(nodes, weight=weight, rooted = rooted, name=name)
+  t,depth = _build(nodes, weight=weight, rooted = rooted, name=name)
+  return t
 
 def parseNewick(txt, weight=1.0, rooted=True, name='') :
   nodes = parsetree(txt)
-  return _build(nodes, weight = weight, rooted = rooted, name = name)
+  t,depth = _build(nodes, weight = weight, rooted = rooted, name = name)
+
+  global recorsionLimit
+  if depth+10 > recorsionLimit:
+    sys.setrecursionlimit(depth+50)
+    recorsionLimit = sys.getrecursionlimit()
+    
+  return t
+

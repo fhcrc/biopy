@@ -12,9 +12,9 @@ import Bio.SubsMat.MatrixInfo
 from Bio.Data import CodonTable
 
 availScores = ','.join(Bio.SubsMat.MatrixInfo.available_matrices)
-class MyParser(argparse.ArgumentDefaultsHelpFormatter):
-    def format_epilog(self, formatter):
-        return self.epilog
+#class MyParser(argparse.ArgumentDefaultsHelpFormatter):
+#  def format_epilog(self, formatter):
+#      return self.epilog
       
 parser = argparse.ArgumentParser(description = """Correct a short coding DNA read """
                                  """ using an Amino Acid reference.""",
@@ -32,16 +32,28 @@ parser.add_argument("-t", "--translation", default = "Standard",
                     help="""Name of Genetic Code translation table."""
                     """ NCBI table numbers are supported as well.""")
 
-parser.add_argument("-m", "--match-scores", dest="mscores", default = "blosum80",
+parser.add_argument("-m", "--match-scores", dest = "mscores", default = "blosum80",
                     metavar='', choices = Bio.SubsMat.MatrixInfo.available_matrices,
                     help="""Amino Acid match scores.""")
 
-parser.add_argument("-c", "--correction-scores",  dest="cscores", default="-10,-10,-100",
+parser.add_argument("-c", "--correction-scores", dest="cscores", default="-10,-10,-100",
                     help="""Comma separated correction Penalties: Indel,Correction,StopCodon.""")
 
+parser.add_argument("--ncandidates", default=30, type = int,
+                    metavar='N', help=""".""")
+
+parser.add_argument("--method", choices = ["denovo","database"], default="database",
+                    help="""denovo: generate a single reference from the DNA sequences in the
+                    references file (first argument). database: pick the closest sequence from the
+                    (DNA) references file (using blast-like heuristics).""") 
+
+parser.add_argument("--search-scores", dest="dnaScores", metavar="M,X,G,E,F",
+                    default="10,-5,-6,-6,1", help="""Alignment scoring parameters
+                    to use when searching for a database match:
+                    match,mismatch,gapopen,gapextend,free-ends.""")
+
 parser.add_argument('aaref', metavar = "PEPTIDE-OR-FILE",
-                    help = """An AminoAcid reference sequence or a FASTA file. If a file, reference
-                    is generated de-novo from the DNA sequences in the file.""")
+                    help = """An amino acid reference sequence or a FASTA file.""")
 
 parser.add_argument('seqs', metavar = 'SEQUENCE-OR-FILE',
                     help = "A nuclieotide sequence or a FASTA file containing reads to correct.")
@@ -72,6 +84,8 @@ except Exception,e:
   
 
 from biopy import align, calign, aalign
+from biopy.bioutils import readFasta
+from biopy.genericutils import fileFromName
 
 geneticCode = [None]*(64)
 
@@ -86,38 +100,76 @@ for k1,c1 in ii :
         geneticCode[16*k1 + 4*k2+ k3] = -1
 
 for sc in transTable.stop_codons :
-  k1,k2,k3 = [ii["AGCT".index(x)][0] for x in sc]
-  assert geneticCode[16*k1 + 4*k2+ k3] == -1
+  k1,k2,k3 = [ii["AGCT".index(x)][0] for x in sc]     ; assert geneticCode[16*k1 + 4*k2+ k3] == -1
 
 assert all([x is not None for x in geneticCode])
 
-deNovoAA = os.path.exists(options.aaref)
-if deNovoAA :
-  from biopy.bioutils import readFasta
-  seqsForRef = list(readFasta(file(options.aaref)))
-  if len(seqsForRef) < 2 :
-    print >> sys.stderr, "Invalid seqeunces file for AA reference: (",options.aaref,")"
-    sys.exit(1)
+def getAAref(s) :
+  return aaref, None
 
-  def doTheCons(sqs, lengthQuant = 40) :
-    als = [(lengthQuant*(len(s)//lengthQuant), s) for s in sqs]
-    als = [x[1] for x in sorted(als, reverse=1)]
-    al = align.seqMultiAlign(als)
-    return al
+deNovoAA = 0
+if os.path.exists(options.aaref) :
 
-  al = doTheCons([x[1] for x in seqsForRef])
-  aaCons,fstart = aalign.aacons(al, geneticCode)
-  sq = filter(lambda x: x != calign.GAP, aaCons[fstart:])
-  aaref = [geneticCode[16*sq[3*k] + 4*sq[3*k+1] + sq[3*k+2]] for k in range(len(sq)//3)]
-  assert all([x >= 0 for x in aaref]), aaref
-  aaref = ''.join([aalign.AAorder[x] for x in aaref])
-  deNovoAA = len(al)
+  seqsForRef = list(readFasta(fileFromName(options.aaref)))
+  if options.method == "denovo" :
+    if len(seqsForRef) < 2 :
+      print >> sys.stderr, "Invalid seqeunces file for AA reference: (",options.aaref,")"
+      sys.exit(1)
+
+    def doTheCons(sqs, lengthQuant = 40) :
+      als = [(lengthQuant*(len(s)//lengthQuant), s) for s in sqs]
+      als = [x[1] for x in sorted(als, reverse=1)]
+      al = align.seqMultiAlign(als)
+      return al
+
+    al = doTheCons([x[1] for x in seqsForRef])
+    aaCons,fstart = aalign.aacons(al, geneticCode)
+    sq = filter(lambda x: x != calign.GAP, aaCons[fstart:])
+    aaref = [geneticCode[16*sq[3*k] + 4*sq[3*k+1] + sq[3*k+2]] for k in range(len(sq)//3)]
+    assert all([x >= 0 for x in aaref]), aaref
+    aaref = ''.join([aalign.AAorder[x] for x in aaref])
+    deNovoAA = len(al)
+    
+  else :
+    from biopy import cclust, otus
+    refs = [x[1] for x in seqsForRef]
+    matches = cclust.lookupTable(refs, removeSingles=0, native=1)
+    report = calign.DIVERGENCE
+
+    try :
+      scores = align.parseScores(options.dnaScores)
+    except RuntimeError,e:
+      print >> sys.stderr, "**Error in alignment scores:",e.message
+      sys.exit(1)
+
+    fdis = lambda seq,j : calign.globalAlign(seq, refs[j], report = report, scores = scores)
+    lseqs = [len(x) for x in refs]
+    nMatchesLim = options.ncandidates
+    ## if options.logrefs is not None :
+    ##   logrefs = file(options.logrefs, 'w')
+    ## else :
+    ##   logrefs = None
+    def getAAref(s) :
+      mc = otus.getMates(s, refs, lseqs, 1, fdis, matches, lim = nMatchesLim)
+      assert mc[0]
+      c = sorted(zip(mc[1],mc[0]))[0]
+      i = c[1]
+      sq = refs[i]
+      aaref = ''.join([transTable.forward_table[sq[3*k:3*k+3]] for k in range(len(sq)//3)])
+      #global logrefs
+      #if logrefs :
+      #  print >> logrefs,
+      return aaref,"%g\t%d\t%s" % (c[0], i, seqsForRef[i][0])
 else :
   aaref = ''.join([x.upper() for x in options.aaref])
-  if not all([x in aalign.AAorder for x in aaref]) :
-    print >> sys.stderr, "Invalid AA reference: (",options.aaref,")"
-    sys.exit(1)
-
+  if all([x in "AGCTN" for x in aaref]) :
+    # assume DNA
+    aaref = ''.join([transTable.forward_table[aaref[3*k:3*k+3]] for k in range(len(aaref)//3)])
+  else :
+    if not all([x in aalign.AAorder for x in aaref]) :
+      print >> sys.stderr, "Invalid AA reference: (",options.aaref,")"
+      sys.exit(1)
+  
 msc = [None]*(len(aalign.AAorder)**2)
 for k1,c1 in enumerate(aalign.AAorder) :
   for k2,c2 in enumerate(aalign.AAorder) :
@@ -174,17 +226,21 @@ def showframes(a, seq) :
     print
 
 if os.path.exists(options.seqs) :
-  from biopy.bioutils import readFasta
 
   if deNovoAA :
     print ";; De novo reference from",deNovoAA,"sequences:"
     print ";;", aaref
     print
     
-  allSeqs = list(readFasta(file(options.seqs)))
+  allSeqs = list(readFasta(fileFromName(options.seqs)))
   for nm,seq in allSeqs:
-    res = aalign.acorrect(seq, aaref, msc, geneticCode)
+    aar,desc = getAAref(seq)
+    res = aalign.acorrect(seq, aar, msc, geneticCode, indel = indelPenalty,
+                          correction = correctionPenalty, stopCodon = stopCodonPenalty)
 
+    if desc :
+      print ';; ',desc
+      
     stats = res[2]
     print ';;',stats["matches"],"matches,",stats["mismatches"],"mimatches,",stats["gaps"],"gaps."
     ci,cd = stats["correctionInsertions"], stats["correctionDeletions"]
@@ -196,8 +252,10 @@ if os.path.exists(options.seqs) :
     s = align.iton(res[0])
     if options.output != "sequence" :
       stats = res[2]
-      dnapre = ''.join([x.lower() for x in seq[:stats["dnaFreeStart"]]])
-      dnasuf = ''.join([x.lower() for x in seq[-stats["dnaFreeEnd"]:]])
+      p = stats["dnaFreeStart"]
+      dnapre = ''.join([x.lower() for x in seq[:p]]) if p else ''
+      p = stats["dnaFreeEnd"]
+      dnasuf = ''.join([x.lower() for x in seq[-p:]]) if p else ''
       s = dnapre + s + dnasuf
     print s
     print
@@ -208,7 +266,8 @@ else :
     print >> sys.stderr, "Expecting a sequence or a fasta file name"
     sys.exit(1)
 
-  res = aalign.acorrect(seq, aaref, msc, geneticCode, indel = indelPenalty,
+  aar,desc = getAAref(seq)
+  res = aalign.acorrect(seq, aar, msc, geneticCode, indel = indelPenalty,
                         correction = correctionPenalty, stopCodon = stopCodonPenalty)
   
   s = align.iton(res[0])
@@ -219,13 +278,15 @@ else :
     print s
   elif options.output == "full-sequence" :
     stats = res[2]
-    dnapre = ''.join([x.lower() for x in seq[:stats["dnaFreeStart"]]])
-    dnasuf = ''.join([x.lower() for x in seq[-stats["dnaFreeEnd"]:]])
+    p = stats["dnaFreeStart"]
+    dnapre = ''.join([x.lower() for x in seq[:p]]) if p else ''
+    p = stats["dnaFreeEnd"]
+    dnasuf = ''.join([x.lower() for x in seq[-p:]]) if p else ''
     print dnapre + s + dnasuf
   elif options.output == "fancy" :
     if deNovoAA :
       print "De novo reference from",deNovoAA,"sequences:"
-      print aaref
+      print aar
     
     stats = res[2]
     print stats["matches"],"matches,",stats["mismatches"],"mimatches,",stats["gaps"],"gaps."
@@ -235,9 +296,9 @@ else :
     dnapre = ''.join([x.lower() for x in seq[:stats["dnaFreeStart"]]])
     e = stats["dnaFreeEnd"]
     dnasuf = ''.join([x.lower() for x in seq[-e:]]) if e > 0 else ''
-    aapre = ''.join([x.lower() for x in aaref[:stats["aaFreeStart"]]])
+    aapre = ''.join([x.lower() for x in aar[:stats["aaFreeStart"]]])
     e = stats["aaFreeEnd"]
-    aasuf = ''.join([x.lower() for x in aaref[-e:]]) if e > 0 else ''
+    aasuf = ''.join([x.lower() for x in aar[-e:]]) if e > 0 else ''
     lpre = max(len(dnapre),len(aapre))
     codons = [s[3*k:3*k+3] for k in range(len(s)//3)]
     tr = [transTable.forward_table[x] if x != '---' else '-' for x in codons]
@@ -246,3 +307,7 @@ else :
     print ' '*(lpre-len(aapre)) + aapre,' '.join([' %c ' % x for x in aa]),aasuf
 
     showframes(res, seq)
+
+#if options.logrefs is not None :
+#  logrefs.close()
+
