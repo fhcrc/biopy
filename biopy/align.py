@@ -8,7 +8,9 @@ import sys
 import calign
 from collections import namedtuple
 
-__all__ = ["seqMultiAlign", "mpc", "mpa", "orderSeqsbyTree", "cons"]
+# messy code, still in various states of development
+
+__all__ = ["parseScores", "MatchScores", "seqMultiAlign", "mpc", "mpa", "orderSeqsbyTree", "cons"]
 
 MatchScores = namedtuple('MatchScores', "match mismatch gap gape freeEnds")
 defaultMatchScores = MatchScores(match = 10, mismatch = -5, gap = -6, gape = -6,
@@ -19,6 +21,24 @@ for x in 'AGCTN' :
   _tab[getattr(calign, x)] = x 
 _tab = "".join(_tab)
 _gtab = _tab + '-';                  assert _gtab[calign.GAP] == '-'
+
+def parseScores(strScores) :
+  if strScores is None :
+    return defaultMatchScores
+  
+  m = strScores.split(',')
+  if not 4 <= len(m) <= 5 :
+    raise RuntimeError("Expecting 4 or 5 comma separated values")
+  if len(m) == 4 :
+    m.insert(3,m[2])
+  ms = [float(x) if x != "" else dflt for x,dflt in zip(m,defaultMatchScores)[:4]]
+
+  f = bool(int(m[4])) if m[4] else defaultMatchScores.freeEnds
+  ms.append(f)
+  
+  if not (ms[0] > 0 and ms[1] <= 0 and ms[2] <= 0 and ms[3] <= 0) :
+    raise RuntimeError("Expecting a non positive mismatch score and gap penalty.")
+  return MatchScores(*ms)
 
 def ntoi(n) :
   i = _tab.find(n)
@@ -157,7 +177,7 @@ def seqMultiAlign(seqs, scores = defaultMatchScores, report=False) :
   if len(seqs) < 2:
     return seqs
   
-  a = calign.globalAlign(seqs[0], seqs[1], scores=scores, strip=1)
+  a = calign.globalAlign(seqs[0], seqs[1], scores=scores)
   ns = 2
   p = calign.createProfile(a)
 

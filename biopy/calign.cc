@@ -837,18 +837,18 @@ Alignment<T>::getStats(MatchScoreValues<T> const&  scores,
 PyObject*
 globAlign(PyObject*, PyObject* args, PyObject* kwds)
 {
-  static const char* kwlist[] = {"seq0", "seq1", "report", "strip", "scores",
+  static const char* kwlist[] = {"seq0", "seq1", "report" /*, "strip"*/, "scores",
 				 static_cast<const char*>(0)};
   PyObject* pseq1 = 0;
   PyObject* pseq2 = 0;
 
   ComparisonResult resultType = Default;
-  PyObject* pStrip = 0;
+  //PyObject* pStrip = 0;
   PyObject* mScores = 0;
   
-  if( ! PyArg_ParseTupleAndKeywords(args, kwds, "OO|iOO", const_cast<char**>(kwlist),
-				    &pseq1,&pseq2,&resultType,&pStrip,&mScores)) {
-    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+  if( ! PyArg_ParseTupleAndKeywords(args, kwds, "OO|iO", const_cast<char**>(kwlist),
+				    &pseq1,&pseq2,&resultType /*,&pStrip*/,&mScores)) {
+    PyErr_SetString(PyExc_ValueError, "wrong args (1).") ;
     return 0;
   }
 
@@ -937,7 +937,7 @@ globAlignAffine(PyObject*, PyObject* args, PyObject* kwds)
   
   if( ! PyArg_ParseTupleAndKeywords(args, kwds, "OOf|iOO", const_cast<char**>(kwlist),
 				    &pseq1,&pseq2,&gapExtend,&resultType,&pStrip,&mScores)) {
-    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    PyErr_SetString(PyExc_ValueError, "wrong args (2).") ;
     return 0;
   }
 
@@ -1260,7 +1260,7 @@ distMat(PyObject*, PyObject* args, PyObject* kwds)
   
   if( ! PyArg_ParseTupleAndKeywords(args, kwds, "O|OiOO", const_cast<char**>(kwlist),
 				    &pseqs, &palign, &resultType, &pReorder,&mScores)) {
-    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    PyErr_SetString(PyExc_ValueError, "wrong args (3).") ;
     return 0;
   }
   
@@ -1295,7 +1295,7 @@ distPairs(PyObject*, PyObject* args, PyObject* kwds)
   if( ! PyArg_ParseTupleAndKeywords(args, kwds, "OO|OiOO", const_cast<char**>(kwlist),
 				    &pseqs1, &pseqs2, &palign, &resultType,
 				    &order,&mScores)) {
-    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    PyErr_SetString(PyExc_ValueError, "wrong args (4).") ;
     return 0;
   }
   
@@ -1845,7 +1845,7 @@ alignToProfile(PyObject*, PyObject* args, PyObject* kwds)
   if( ! PyArg_ParseTupleAndKeywords(args, kwds, "OO|iOfff", const_cast<char**>(kwlist),
 				    &pSeq, &pPfofile,&pad,&pChop,
 				    &matchScore, &misMatchScore, &gapPenalty)) {
-    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    PyErr_SetString(PyExc_ValueError, "wrong args (5).") ;
     return 0;
   }
 
@@ -1950,7 +1950,7 @@ alignProfileToProfile(PyObject*, PyObject* args, PyObject* kwds)
   
   if( ! PyArg_ParseTupleAndKeywords(args, kwds, "OO|O", const_cast<char**>(kwlist),
 				    &pPfofile0, &pPfofile1, &mScores)) {
-    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    PyErr_SetString(PyExc_ValueError, "wrong args (6).") ;
     return 0;
   }
 
@@ -2003,7 +2003,7 @@ createProfile(PyObject*, PyObject* args, PyObject* kwds)
   
   if( ! PyArg_ParseTupleAndKeywords(args, kwds, "O", const_cast<char**>(kwlist),
 				    &pSeqs) ) {
-    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    PyErr_SetString(PyExc_ValueError, "wrong args (7).") ;
     return 0;
   }
 
@@ -2293,7 +2293,7 @@ UPGMA(PyObject*, PyObject* args, PyObject* kwds)
 				    &dists, &pseqs, &palign,
 				    &resultType, &saveDistancesTo, &pReorder, &mScores,
 				    &pWeights)) {
-    PyErr_SetString(PyExc_ValueError, "wrong args.") ;
+    PyErr_SetString(PyExc_ValueError, "wrong args (8).") ;
     return 0;
   }
 
@@ -2327,7 +2327,7 @@ UPGMA(PyObject*, PyObject* args, PyObject* kwds)
     }
     
     n = PySequence_Size(pseqs);
-    uint const nDists = (n*(n-1))/2;
+    ulong const nDists = (long(n)*(n-1))/2;
     ds = new float [nDists];             dsReleaser.reset(ds);
 	
     if( ! distmat(pseqs, palign, resultType, pReorder, mScores, ds) ) {
@@ -2366,17 +2366,25 @@ UPGMA(PyObject*, PyObject* args, PyObject* kwds)
       return 0;
     }
 
+    unsigned long const nDists = PySequence_Size(dists);
+    
     PyObject* rel = 0;
     if( ! (PyTuple_Check(dists) || PyList_Check(dists)) ) {
-      dists = PySequence_Fast(dists, "strange sequence");
-      rel = dists;
+      PyObject* d = PySequence_Fast(dists, "strange sequence");
+      if( d ) {
+	assert( PySequence_Check(d) );
+	rel = dists = d;
+      } else {
+	PyErr_SetString(PyExc_ValueError, "Can't handle that many distances");
+	return 0;
+      }
     }
     
-    unsigned long const nDists = PySequence_Size(dists);
-    n = static_cast<uint>(.5 + (sqrt(1+8*nDists)+1)/2);
+    n = static_cast<uint>(.5 + (sqrt(1+8*double(nDists))+1)/2);
 
     if( nDists == 0 || ((long(n)*(n-1))/2 != nDists) ) {
-      PyErr_SetString(PyExc_ValueError, "wrong args: incorrect dists") ;
+      PyErr_Format(PyExc_ValueError, "wrong args: incorrect dists (%u %lu %lu)",
+		   n, nDists, (long(n)*(n-1))/2);
       return 0;
     }
   
@@ -2386,7 +2394,7 @@ UPGMA(PyObject*, PyObject* args, PyObject* kwds)
       PyObject* d = PySequence_Fast_GET_ITEM(dists, i);
       ds[i] = PyFloat_AsDouble(d);
       if( ds[i] < 0 ) {
-	PyErr_SetString(PyExc_ValueError, "wrong args: incorrect diststances") ;
+	PyErr_Format(PyExc_ValueError, "wrong args: some negative diststances ([%d])", i) ;
 	return 0;
       }
     }

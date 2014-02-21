@@ -25,9 +25,9 @@ import scipy.cluster
 from scipy.optimize import brentq
 
 __all__ = ["findDuplicates", "deClutter", "deClutterDown", "treeFromSeqs",
-           "MatchScores", "defaultMatchScores", "declutterToTrees"
+           "defaultMatchScores", "declutterToTrees",
            "saveDistancesMatrix", "getDistanceMatrix",
-           "clusterFromTree", "assembleTree", "doTheCons"]
+           "clusterFromTree", "assembleTree", "doTheCons", "getMates"]
 
 from align import defaultMatchScores
                                       
@@ -53,7 +53,8 @@ def saveDistancesMatrix(fname, dsm, labels, compress = 0) :
       fs = gzip.open(fname, 'wb', min(compress, 9))
     else :
       fs = file(fname, 'w')
-    print >> fs, '#',' '.join(labels)
+    assert(all(['\t' not in x for x in labels]))
+    print >> fs, '#','\t'.join(labels)
     for x in dsm :
       print >> fs, x
     fs.close()
@@ -70,7 +71,7 @@ from itertools import repeat
 
 def getDistanceMatrix(saveName) :
   fl = fileFromName(saveName)
-  labs = [x.strip() for x in next(fl)[2:].split(' ')]
+  labs = [x.strip() for x in next(fl)[2:].split('\t')]
   dists = array.array('f',repeat(0.0,nPairs(labs)))
   i = 0
   for x in fl:
@@ -80,8 +81,10 @@ def getDistanceMatrix(saveName) :
   return dists,labs
 
 def findDuplicates(allSeqs, verbose = None) :
-  """ Locate sequences s1,s2 such that s1 is a prefix of s2.
-  Return the merge of those pairs."""
+  """ Locate duplicate sequences in 'allSeqs'. Return a list C with one entry
+  for each uniq sequence with more than one copy, where C[k] is a list with
+  index numbers of all identical copies.
+  """
   
   if verbose:
     tstart = time.clock()
@@ -101,29 +104,70 @@ def findDuplicates(allSeqs, verbose = None) :
     print >> verbose, "find duplicates in ", tohms(time.clock() - tstart)
     
   return cc
+if 0 :
+  def mergeGroupings(grps) :
+    """ Merge any partitions with a non empty intersetions. """
+    # must be a more efficient way, but what?
 
+    grps = sorted([sorted(x) for x in grps])
+
+    newGrps = [set(x) for x in grps]
+    for i in range(len(newGrps)-1, 0,-1) :
+      #merged = False
+      for j in range(i-1,-1,-1) :
+        if not newGrps[i].isdisjoint(newGrps[j]) :
+          newGrps[j].update(newGrps[i])
+          newGrps[i] = None
+          break
+
+    sGrps = sorted([sorted(x) for x in newGrps if x])
+    return sGrps
+
+# slower, not memory hungry
 def mergeGroupings(grps) :
-  """ Merge any partitions with a non empty intersetions. """
-  # must be a more efficient way, but what?
+  # maps item to its group index
+  gm = dict()
 
-  grps = sorted([sorted(x) for x in grps])
-  
-  newGrps = [set(x) for x in grps]
-  for i in range(len(newGrps)-1, 0,-1) :
-    merged = False
-    for j in range(i-1,-1,-1) :
-      if not newGrps[i].isdisjoint(newGrps[j]) :
-        newGrps[j].update(newGrps[i])
-        newGrps[i] = None
-        break
+  # first group items to group zero
+  for x in grps[0] :
+    gm[x] = 0
+    
+  for i in range(1,len(grps)) :
+    # all current gropus which intersect with group 'i'
+    m = set(gm.get(x) for x in grps[i])
+    m.discard(None)
+    
+    if not m :
+      # no intersections, new group
+      for x in grps[i] :
+        gm[x] = i
+    else :
+      # merge all groups, including new one - give them index of smallest 
+      gn = min(m)
+      m.remove(gn)
+      if m :
+        for x,v in gm.iteritems():
+          if v in m:
+            gm[x] = gn
+      for x in grps[i] :
+        gm[x] = gn
 
-  sGrps = sorted([sorted(x) for x in newGrps if x])
-  return sGrps
+  # reconstruct groups exlicitly from gm
+  grps = dict([(x,k) for k,x in enumerate(set(gm.itervalues()))])
+  g = [[] for k in range(len(grps))]
+  for x in gm :
+    g[grps[gm[x]]].append(x)
+  # return sorted groups
+  for k in range(len(g)) :
+    g[k] = sorted(g[k])
+  return sorted(g)
+      
+      
 
 # C code will be faster? yes but nothing dramatic (2x or 3x)
 from cclust import lookupTable
 def _buildLookupC(seqs, asSet=False) :
-  matches = lookupTable(seqs, 11, True)
+  matches = lookupTable(seqs, 11, True, native = True)
   if asSet:
     for k,v in matches.iteritems():
       matches[k] = set(v)
@@ -143,6 +187,12 @@ def _buildLookup(seqs, asSet=True) :
   matches = dict([(x,set(y) if asSet else y) for x,y in bl.iteritems() if len(y) > 1])
         
   return matches
+
+def hiternew(heap) :
+  x = cclust.popq(heap)
+  while x:
+    yield x
+    x = cclust.popq(heap)
 
 import heapq
 
@@ -263,7 +313,7 @@ def deClutter(seqs, th, correction, failsTH = 20, matches = None,
     fdis = lambda i,j : calign.globalAlign(seqs[i], seqs[j], scores = matchScores,
                                            report = calign.JCcorrection)
   else :
-    fdis = lambda i,j : calign.globalAlign(seqs[i], seqs[j],scores = matchScores,
+    fdis = lambda i,j : calign.globalAlign(seqs[i], seqs[j], scores = matchScores,
                                            report = calign.DIVERGENCE)
     
   doStats = True
@@ -378,29 +428,65 @@ def deClutter(seqs, th, correction, failsTH = 20, matches = None,
         for x in g :
           elem2grps[x] = g
       grps.append(g)
-        
+
   if verbose:
-    print >> verbose, "merging", len(grps), "groups"
-    
     if doStats:
       print >> verbose, totTries, "matching alignments,", totFails,"fails."
+    print >> verbose, "merging", len(grps), "groups",
+
+  if 0 :
+    ww =file("/tmp/gg",'w')
+    for g in grps:
+      for x in g:
+        print >> ww, x,
+      print >> ww
+    ww.close()
     
   mgrps = sorted(mergeGroupings(grps), key = lambda x : len(x), reverse=0)
+  
+  if verbose:
+    print >> verbose,"done, ", len(mgrps), "groups."
+    
   return list(singles),pairs,mgrps
 
-def getMates(seq, seqs, th, fdis, matches, lim = -1, failsTH = 30) :
-  cans = [0]*len(seqs)
-  cclust.counts(seq, matches, cans)
+if 0 :
+  def getMates(seq, seqs, th, fdis, matches, lim = -1, failsTH = 30) :
+    cans = [0]*len(seqs)
+    cclust.counts(seq, matches, cans)
 
-  lseq = len(seq)
-  scans = [(-x/min(lseq,len(seqs[k])), k) for k,x in enumerate(cans) if x > 0]
-  heapq.heapify(scans)
+    lseq = len(seq)
+    scans = [(-x/min(lseq,len(seqs[k])), k) for k,x in enumerate(cans) if x > 0]
+    heapq.heapify(scans)
 
+    fails = 0
+    matched = []
+    distances = []
+
+    for cn,k in hiter(scans) :
+      if lim > 0 and len(matched) >= lim:
+        break
+
+      djk = fdis(seq, k)
+      if djk <= th :
+        matched.append(k)
+        distances.append(djk)
+
+        fails = 0
+      else :
+        fails += 1
+        if fails > failsTH:
+          break
+    return matched,distances
+
+# matches = lookupTable(seqs, removeSingles = 0, native = 1)
+def getMates(seq, seqs, lseqs, th, fdis, matches, lim = -1, failsTH = 30) :
   fails = 0
   matched = []
   distances = []
 
-  for cn,k in hiter(scans) :
+  q = cclust.counts(seq, matches, len(seqs), lseqs)
+
+  for cn,k in hiternew(q) :
     if lim > 0 and len(matched) >= lim:
       break
 
@@ -416,13 +502,12 @@ def getMates(seq, seqs, th, fdis, matches, lim = -1, failsTH = 30) :
         break
   return matched,distances
 
-
 def guesstimateTH(seqs, nMax, thc, matches = None, scores = None, ns = 100) :
   q = 1- 1./((len(seqs)/nMax)-.5)
   if q <= 0 :
     return None
 
-  d = [[calign.globalAlign(x1,x2, report=calign.JCcorrection, scores=scores) for (x1,x2) in
+  d = [[calign.globalAlign(x1,x2, report = calign.JCcorrection, scores=scores) for (x1,x2) in
       [random.sample(seqs, 2)]][0] for k in range(4000)]
   #import pdb; pdb.set_trace()
   
@@ -498,7 +583,7 @@ if 0:
   return th,matches
 if 0 :
   def guesstimateTH(seqs, nMax, thc, matches = None, scores = None, ns = 100) :
-    d = [[calign.globalAlign(x1,x2, report=calign.JCcorrection, scores=scores) for (x1,x2) in
+    d = [[calign.globalAlign(x1,x2, report = calign.JCcorrection, scores = scores) for (x1,x2) in
         [random.sample(seqs, 2)]][0] for k in range(2000)]
     q = 1- 1./(len(seqs)/nMax)
     p = ([int(nMax * q**n) for n in range(0,100)])
@@ -636,7 +721,10 @@ def deClutterDown(seqs, ths, maxClade, correction, failsTH = 20,
   return result
 
 def thstr(th) :
-  assert 0 < th < 1
+  if th == 1 :
+    return "1"
+  
+  assert 0 < th < 1, ("th out of range (%g)" % th)
   p = "%g" % th
   return 'p' + p[p.index('.')+1:]
 
@@ -691,18 +779,97 @@ def declutterToTrees(breakdown, ths) :
       cnt += 1
   return trs
 
+def estimateNA(trs, factor = None) :
+  #trs = [t for t in INexus(simple=1).read(fname)]
+
+  cl = defaultdict(lambda : [])
+  #names = [t.name.split('_') for t in trs]
+  for t in trs:
+    n = t.name.split('_')
+    cl[tuple(n[1:3])].append(t)
+
+  def unc(tl, lv) :
+    assert len(tl) > 1
+    cx = defaultdict(lambda : [])
+    for t in tl:
+      n = t.name.split('_')
+      cx[tuple(n[lv:lv+2])].append(t)
+    for x in cx:
+      if len(cx[x]) > 1 :
+        cx[x] = unc(cx[x],lv+2)
+    return cx
+
+  for x in cl:
+    if len(cl[x]) > 1 :
+      cl[x] = unc(cl[x],3)
+
+  def n2(n) :
+    return ((n-1)*n)//2
+
+  def nal(tl, factor = 1) :
+    tot = 0
+    for x in tl:
+      tot += nsub(tl[x]) 
+    tot += n2(factor * len(tl))
+    return tot
+
+  def nsub(xx, factor = 1):
+    if isinstance(xx, dict) :
+      return nal(xx, factor)
+    else :
+      assert isinstance(xx, list) and len(xx) == 1
+      return n2(len(xx[0].get_terminals()))
+
+  na = nsub(cl)
+  if factor is not None:
+    na = na, nsub(cl, factor)
+  return na
+
+def safeTaxonStr(name) :
+  if name[0] == "'" or name[0] == '"' :
+    return name
+  if name.replace('_','').isalnum() :
+    return name
+  if "'" not in name :
+    return "'" + name + "'"
+  if '"' not in name :
+    return '"' + name + '"'
+  assert False, name
+  
 def _cln2newick(n, tax) :
   if n.is_leaf() :
-    return str(tax[n.id] if tax else n.id)
+    return str(safeTaxonStr(tax[n.id]) if tax else n.id)
   
   ch = (n.get_left(), n.get_right())
   c = [_cln2newick(x, tax) for x in ch]
   return '(' + ",".join([(c[i] + ':' + ("%f" % (n.dist - ch[i].dist)))
                          for i in (0,1)]) + ')'
 
+def _cln2newick(n, tax) :
+  if n.is_leaf() :
+    return str(safeTaxonStr(tax[n.id]) if tax else n.id)
+  
+  ch = (n.get_left(), n.get_right())
+  c = [_cln2newick(x, tax) for x in ch]
+  return '(' + ",".join([(c[i] + ':' + ("%f" % (n.dist - ch[i].dist)))
+                         for i in (0,1)]) + ')'
+
+def _cln2newick(nodes, tax) :
+  strees = [None]*len(nodes)
+  for k in range(len(strees)) :
+    n = nodes[k]
+    if n.is_leaf() :
+      strees[n.id] = str(safeTaxonStr(tax[n.id]) if tax else n.id)
+    else :
+      ch = (n.get_left(), n.get_right())
+      c = [strees[x.id] for x in ch]
+      strees[n.id] = '(' + ",".join([(c[i] + ':' + ("%f" % (n.dist - ch[i].dist)))
+                                     for i in (0,1)]) + ')'
+  return strees[-1]
+
 def upgma2tree(upgma, tax = None) :
-  tr = scipy.cluster.hierarchy.to_tree(upgma)
-  return _cln2newick(tr, tax)
+  tr = scipy.cluster.hierarchy.to_tree(upgma, True)
+  return _cln2newick(tr[1], tax)
 
 def treeFromDists(ds, tax = None, weights = None, asString = False) :
   #up = scipy.cluster.hierarchy.average([x/2. for x in ds])
@@ -723,14 +890,19 @@ def treeFromDists(ds, tax = None, weights = None, asString = False) :
   tr = upgma2tree(up, tax)
   return tr if asString else parseNewick(tr)
 
+def sumPairs(xs) :
+  return (sum(xs)**2 - sum([x**2 for x in xs]))//2
+
+alCellsPerSecond = 2.7*1e9 / 20
 
 def treeFromSeqs(seqs, tax = None, matchScores = None, correction = True,
-                 weights = None, asString = False, verbose = None) :
-  assert tax is None or len(seqs) == len(tax)
+                 weights = None, asString = False, verbose = None, saveDists = None) :
+  assert tax is None or len(seqs) == len(tax), "args???"
   
   if verbose :
-    m = sum([len(x) for x in seqs])/len(seqs) # and??
-    secs = (nPairs(seqs) * m**2)/(5/(20*1e-9))
+    # number of cells and?
+    m = sumPairs([len(x) for x in seqs]) 
+    secs = m * (1/alCellsPerSecond)
     print >> verbose, len(seqs),tohms(secs),time.strftime("%T"),
     verbose.flush()
     tnow = time.clock()
@@ -738,8 +910,10 @@ def treeFromSeqs(seqs, tax = None, matchScores = None, correction = True,
   sseqs,order = zip(*sorted(zip(seqs,count())))
 
   ds = calign.distances(sseqs, align = True, scores = matchScores, reorder = order,
-                        report = calign.JCcorrection if correction else calign.DIVERGENCE )
-
+                        report = calign.JCcorrection if correction else calign.DIVERGENCE)
+  if saveDists is not None :
+    saveDistancesMatrix(saveDists[0], ds, saveDists[1], compress = saveDists[2])
+  
   tr = treeFromDists(ds, tax = tax, weights = weights, asString = asString)
   
   if verbose :
@@ -747,8 +921,8 @@ def treeFromSeqs(seqs, tax = None, matchScores = None, correction = True,
     
   return tr,ds
 
-# th - half distance (i.e. height) 
 def clusterFromTree(tr, th, caHelper = None) :
+  """ th - half distance (i.e. height) """
   if len(tr.get_terminals()) == 1 :
     return [tr.node(1)]
   
@@ -805,8 +979,6 @@ def assembleTree(trees, thFrom, thTo, getSeqForTaxon,
                  nMaxReps = 20, maxPerCons = 100,
                  lowDiversity = 0.02, refineFactor = 1.1, refineUpperLimit = .15,
                  verbose = None) :
-  # cut trees at thFrom
-
   cahelpers = dict()
   cahelper = lambda t : cahelpers.get(t.name) or \
              (cahelpers.update([(t.name,CAhelper(t))])
@@ -815,6 +987,7 @@ def assembleTree(trees, thFrom, thTo, getSeqForTaxon,
   if verbose:
     print >> verbose, "cutting",len(trees),"trees at %g" % thFrom
   
+  # cut trees at thFrom
   pseudoTaxa  = cutForestAt(trees, thFrom, cahelper)
   nReps = len(pseudoTaxa)
 
@@ -855,7 +1028,7 @@ def assembleTree(trees, thFrom, thTo, getSeqForTaxon,
     cahelper(t) # populate rh
     mhs.append(n.data.rh)
 
-  # if both low diversity - use representative. If not valid or close to cluster height, do the
+  # if both low diversity - use consensus. If not valid or close to cluster height, do the
   # means thing. If not low diversity, use log representatives
   # low less then 4%??
   ## lowDiversity = 0.02
@@ -887,7 +1060,6 @@ def assembleTree(trees, thFrom, thTo, getSeqForTaxon,
     else :
       ap = calign.allpairs(ri, rj, align=True, scores = defaultMatchScores,
                            report = calign.JCcorrection)
-
       h = sum([sum(x) for x in ap])/nhs
       
     global acnt
@@ -916,8 +1088,7 @@ def assembleTree(trees, thFrom, thTo, getSeqForTaxon,
     verbose.flush()
     tnow = time.clock()
 
-  # use array??
-  #ds = [-1]*nPairs(nReps)
+  # Use array. those can get big
   ds = array.array('f',repeat(0.0,nPairs(nReps)))
 
   pos = 0

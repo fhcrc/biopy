@@ -11,14 +11,14 @@
 #include <cassert>
 
 #include <limits>
-#include<memory>
+#include <memory>
 #include <algorithm>
 #include <vector>
 using std::vector;
 
 #include "readseq.h"
 
-// last 3 (BXZ) are ambiguous, the are only 20 in nature
+// last 3 (BXZ) are ambiguous, only 20 AA in nature.
 static const char aminoAcidsOrder[24] = "ACDEFGHIKLMNPQRSTVWYBXZ";
 static uint const nAA = sizeof(aminoAcidsOrder)-1;
 

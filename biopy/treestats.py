@@ -3,6 +3,12 @@
 ## Author: Joseph Heled <jheled@gmail.com>
 ## See the files gpl.txt and lgpl.txt for copying conditions.
 
+"""
+=============================================
+Tree Statistics (for approximate phylogenies)
+=============================================
+"""
+
 from __future__ import division
 
 from math import log,exp
@@ -13,7 +19,7 @@ from biopy.treeutils import *
 from otus import clusterFromTree, nPairs
 
 __all__ = ["LineagesStat", "Chao1Stat", "EntropyStat", "SimpsonHill2Stat",
-          "treeStatsThroughTime",  "treeStatsThroughTimePerLoc",
+           "treeStatsThroughTime",  "treeStatsThroughTimePerLoc",
            "element2Cluster", "pairCounts", "clusteringTreeError",
            "NodeInfo"]
 

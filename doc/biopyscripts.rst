@@ -3,6 +3,8 @@ Biopy utilities
 
 .. toctree::
 
+   pup
+   
    gums
 
    beastutil

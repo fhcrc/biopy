@@ -7,7 +7,7 @@
 from __future__ import division
 
 """
-Summary Tree from posterior trees
+Summary Tree from Posterior Trees
 =================================
 """
 

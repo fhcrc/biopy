@@ -447,7 +447,7 @@ def _replace_parenthesized_ambigs(seq,rev_ambig_values):
 class Commandline:
     """Represent a commandline as command and options."""
     
-    def __init__(self, line, title):
+    def __init__(self, line, title, simple):
         self.options={}
         options=[]
         self.command=None
@@ -457,7 +457,11 @@ class Commandline:
         except ValueError: #Not matrix
             #self.command,options=line.split(' ',1)  #no: could be tab or spaces (translate...)
             self.command=line.split()[0]
-            options=' '.join(line.split()[1:])
+            if simple :
+              # keep multiple spaces intact
+              options=' '.join(line.split(' ')[1:])
+            else :
+              options=' '.join(line.split()[1:])
         self.command = self.command.strip().lower()
         if self.command in SPECIAL_COMMANDS:   # special command that need newlines and order of options preserved
             self.options=options.strip()
@@ -477,7 +481,6 @@ class Commandline:
                         self.options[options[token].lower()] = None
                 except ValueError:
                     raise NexusError, 'Incorrect formatting in line: %s' % line
-                
 class Block:
     """Represent a NEXUS block with block name and list of commandlines ."""
     def __init__(self,title=None):
@@ -631,6 +634,7 @@ class INexus(object):
         #now check for taxa,characters,data blocks. If this stuff is defined more than once
         #the later occurences will override the previous ones.
         block=self.structured[-1] 
+
         for line in block.commandlines:
             try:
               ii = getattr(self,'_'+line.command)(line.options)
@@ -976,7 +980,7 @@ class INexus(object):
         block=Block('')
         block.title = title            
         for line in lines:
-            block.commandlines.append(Commandline(line, title))
+            block.commandlines.append(Commandline(line, title,self.simple))
         self.structured.append(block)
        
     def _taxset(self, options):
